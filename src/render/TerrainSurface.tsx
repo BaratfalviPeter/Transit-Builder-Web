@@ -60,15 +60,14 @@ function surfaceColor(type: CellType): string {
 }
 
 export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps) {
-  // The surface geometry/colors depend only on the generated terrain (heights
-  // and base biome types), which are fixed for a given seed/size. Player edits
-  // (roads, buildings) don't change the surface — a Road still reads as grass
-  // underneath — so we key the memo on seed+size and skip rebuilding the heavy
-  // mesh on every build action.
+  // Rebuild when the terrain changes shape/biome: seed+size (regeneration) and
+  // `version`, which the store bumps on every runtime edit (terraforming edits
+  // heights and water cells, which DO change the surface). Road/building
+  // overlays also bump version but read as grass here, so a rebuild is cheap
+  // and harmless.
   const geometry = useMemo(
     () => buildTerrainGeometry(map, cellSize),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [map.seed, map.size, cellSize],
+    [map.seed, map.size, map.version, cellSize],
   );
 
   return (

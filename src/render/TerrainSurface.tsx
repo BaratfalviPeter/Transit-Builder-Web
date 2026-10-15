@@ -32,6 +32,13 @@ export interface TerrainSurfaceProps {
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 const WATER_SINK = 0.2;
+/**
+ * Uniform water surface height (cellSize units). ALL water cells render their
+ * top at this single level, regardless of how deep the basin was dug — so a
+ * body of water reads as one flat, filled surface (never a see-through hole).
+ * It sits just below the grass base so shorelines look right.
+ */
+const WATER_LEVEL = FLAT_TOP - WATER_SINK;
 /** How far below the grass base the solid block's floor sits (cellSize units). */
 const FLOOR_DROP = 1.5;
 
@@ -96,19 +103,9 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
 
 // --- Shared geometry math ---------------------------------------------------
 
-function cellSink(type: CellType, cellSize: number): number {
-  return type === CellType.Water ? WATER_SINK * cellSize : 0;
-}
-
-/** World Y of a cell corner (corner-max heightmap), minus the cell's sink. */
-function cornerY(
-  map: TerrainMap,
-  cx: number,
-  cz: number,
-  cellSize: number,
-  sink: number,
-): number {
-  return FLAT_TOP * cellSize + cornerHeightAt(map, cx, cz) * cellSize - sink;
+/** World Y of a cell corner from the corner-max heightmap. */
+function cornerY(map: TerrainMap, cx: number, cz: number, cellSize: number): number {
+  return FLAT_TOP * cellSize + cornerHeightAt(map, cx, cz) * cellSize;
 }
 
 /**
@@ -128,11 +125,15 @@ function writeCell(
   const { size } = map;
   const half = (size - 1) / 2;
   const floorY = FLAT_TOP * cellSize - FLOOR_DROP * cellSize;
-  const sink = cellSink(map.cells[x][z], cellSize);
+  const isWater = map.cells[x][z] === CellType.Water;
 
   const wx = (cx: number) => (cx - half - 0.5) * cellSize;
   const wz = (cz: number) => (cz - half - 0.5) * cellSize;
-  const y = (cx: number, cz: number) => cornerY(map, cx, cz, cellSize, sink);
+  // Water renders its TOP as one flat, uniform surface (so a dug basin fills
+  // back up to the common water level — no holes). Non-water uses the real
+  // corner-max heightmap.
+  const y = (cx: number, cz: number) =>
+    isWater ? WATER_LEVEL * cellSize : cornerY(map, cx, cz, cellSize);
 
   const top = surfaceColor(map.cells[x][z]);
 

@@ -37,15 +37,38 @@ export enum CellType {
   PowerPlant = 'PowerPlant',
   /** Auto-generated factory (gyár). Spawns near the city for testing. */
   Factory = 'Factory',
+  /**
+   * A cell occupied by the footprint of a large (3×3) industry, around its
+   * center cell. Nothing can be built, sculpted or bulldozed here.
+   */
+  IndustryLot = 'IndustryLot',
 }
 
-/** Special / industrial building types that get a floating UI icon. */
+/**
+ * Special / industrial building types (the CENTER cell of an industry). These
+ * get a floating UI icon and are counted as buildings.
+ */
 export const SPECIAL_BUILDINGS: ReadonlySet<CellType> = new Set([
   CellType.LumberMill,
   CellType.Mine,
   CellType.PowerPlant,
   CellType.Factory,
 ]);
+
+/** Industries that occupy a 3×3 footprint (center ± 1 cell). */
+export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
+  CellType.PowerPlant,
+  CellType.LumberMill,
+  CellType.Mine,
+]);
+
+/**
+ * Footprint radius of an industry in cells: 1 for the large 3×3 industries
+ * (center ± 1), 0 for single-cell buildings.
+ */
+export function industryFootprintRadius(type: CellType): number {
+  return LARGE_INDUSTRY.has(type) ? 1 : 0;
+}
 
 /** Cell types that count as flat, buildable ground for roads. */
 export function isFlatGround(cell: CellType): boolean {
@@ -548,10 +571,15 @@ function spawnScatteredIndustry(
         Math.max(Math.abs(px - x), Math.abs(pz - z)) >= INDUSTRY_MIN_SPACING,
     );
 
-  // True if any cell within RESOURCE_RADIUS of (x,z) is of `resource` type.
-  const nearResource = (x: number, z: number, resource: CellType): boolean => {
-    for (let dx = -RESOURCE_RADIUS; dx <= RESOURCE_RADIUS; dx++) {
-      for (let dz = -RESOURCE_RADIUS; dz <= RESOURCE_RADIUS; dz++) {
+  // True if any cell within `radius` (Chebyshev) of (x,z) is of `resource` type.
+  const nearResource = (
+    x: number,
+    z: number,
+    resource: CellType,
+    radius: number,
+  ): boolean => {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
         const nx = x + dx;
         const nz = z + dz;
         if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
@@ -561,15 +589,39 @@ function spawnScatteredIndustry(
     return false;
   };
 
+  /**
+   * Whether the whole footprint (center ± r) is free, flat, level ground:
+   * every cell in bounds, Empty, flat (all corners equal) and at the same
+   * corner height as the center — so a 3×3 industry sits on a level lot.
+   */
+  const footprintFree = (x: number, z: number, r: number): boolean => {
+    const level = cornerHeightAt(map, x, z);
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (nx < 0 || nz < 0 || nx >= size || nz >= size) return false;
+        if (cells[nx][nz] !== CellType.Empty) return false;
+        if (!isFlat(nx, nz)) return false;
+        if (cornerHeightAt(map, nx, nz) !== level) return false;
+      }
+    }
+    return true;
+  };
+
   for (const { type, resource } of INDUSTRY_SPECS) {
-    // Gather eligible cells for this industry.
+    const r = industryFootprintRadius(type);
+
+    // Gather eligible center cells for this industry.
     const candidates: Array<[number, number]> = [];
     for (let x = 0; x < size; x++) {
       for (let z = 0; z < size; z++) {
-        if (cells[x][z] !== CellType.Empty) continue;
-        if (!isFlat(x, z)) continue;
-        if (distFromCity(x, z) < INDUSTRY_CITY_GAP) continue;
-        if (resource !== null && !nearResource(x, z, resource)) continue;
+        if (distFromCity(x, z) < INDUSTRY_CITY_GAP + r) continue;
+        if (!footprintFree(x, z, r)) continue;
+        // The resource must be near the lot's edge, not just its center.
+        if (resource !== null && !nearResource(x, z, resource, RESOURCE_RADIUS + r)) {
+          continue;
+        }
         candidates.push([x, z]);
       }
     }
@@ -580,11 +632,19 @@ function spawnScatteredIndustry(
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
     }
 
-    // Greedily place up to N, honoring the global min spacing.
+    // Greedily place up to N, honoring the global min spacing (which is far
+    // larger than a footprint, so lots can never overlap).
     let n = 0;
     for (const [x, z] of candidates) {
       if (n >= INDUSTRY_PER_TYPE) break;
       if (!farEnough(x, z)) continue;
+      if (!footprintFree(x, z, r)) continue; // re-check after earlier placements
+      // Mark the surrounding footprint as occupied, the center as the industry.
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          cells[x + dx][z + dz] = CellType.IndustryLot;
+        }
+      }
       cells[x][z] = type;
       placed.push([x, z]);
       n++;

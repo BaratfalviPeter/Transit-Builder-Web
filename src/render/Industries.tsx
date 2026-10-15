@@ -11,7 +11,7 @@
  */
 
 import { useMemo } from 'react';
-import { CellType, type TerrainMap } from '../sim';
+import { CellType, SPECIAL_BUILDINGS, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 export interface IndustriesProps {
@@ -27,9 +27,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
         const t = map.cells[x][z];
-        if (t === CellType.LumberMill || t === CellType.Mine) {
-          out.push({ x, z, type: t });
-        }
+        if (SPECIAL_BUILDINGS.has(t)) out.push({ x, z, type: t });
       }
     }
     return out;
@@ -40,11 +38,19 @@ export function Industries({ map, cellSize }: IndustriesProps) {
       {items.map(({ x, z, type }) => {
         const wx = (x - half) * cellSize;
         const wz = (z - half) * cellSize;
-        return type === CellType.LumberMill ? (
-          <LumberMill key={`${x},${z}`} x={wx} z={wz} cellSize={cellSize} />
-        ) : (
-          <Mine key={`${x},${z}`} x={wx} z={wz} cellSize={cellSize} />
-        );
+        const key = `${x},${z}`;
+        switch (type) {
+          case CellType.LumberMill:
+            return <LumberMill key={key} x={wx} z={wz} cellSize={cellSize} />;
+          case CellType.Mine:
+            return <Mine key={key} x={wx} z={wz} cellSize={cellSize} />;
+          case CellType.PowerPlant:
+            return <PowerPlant key={key} x={wx} z={wz} cellSize={cellSize} />;
+          case CellType.Factory:
+            return <Factory key={key} x={wx} z={wz} cellSize={cellSize} />;
+          default:
+            return null;
+        }
       })}
     </group>
   );
@@ -108,6 +114,70 @@ function Mine({ x, z, cellSize }: { x: number; z: number; cellSize: number }) {
       <mesh position={[-0.14 * s, bodyH + 0.18 * s, -0.14 * s]} castShadow>
         <boxGeometry args={[0.1 * s, 0.4 * s, 0.1 * s]} />
         <meshStandardMaterial color="#2f3238" roughness={0.9} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Light-grey power plant with a cooling tower. */
+function PowerPlant({
+  x,
+  z,
+  cellSize,
+}: {
+  x: number;
+  z: number;
+  cellSize: number;
+}) {
+  const s = cellSize;
+  const color = CELL_STYLE[CellType.PowerPlant].color;
+  const bodyW = 0.65 * s;
+  const bodyH = 0.5 * s;
+  return (
+    <group position={[x, 0, z]}>
+      {/* Main hall */}
+      <mesh position={[-0.12 * s, bodyH / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[bodyW, bodyH, 0.5 * s]} />
+        <meshStandardMaterial color={color} roughness={0.6} />
+      </mesh>
+      {/* Cooling tower (hyperboloid-ish via a slightly tapered cylinder) */}
+      <mesh position={[0.26 * s, 0.4 * s, 0.12 * s]} castShadow>
+        <cylinderGeometry args={[0.2 * s, 0.26 * s, 0.8 * s, 16]} />
+        <meshStandardMaterial color="#dfe3e8" roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Grey factory with two chimney stacks. */
+function Factory({
+  x,
+  z,
+  cellSize,
+}: {
+  x: number;
+  z: number;
+  cellSize: number;
+}) {
+  const s = cellSize;
+  const color = CELL_STYLE[CellType.Factory].color;
+  const bodyW = 0.75 * s;
+  const bodyH = 0.5 * s;
+  return (
+    <group position={[x, 0, z]}>
+      {/* Main hall */}
+      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[bodyW, bodyH, bodyW]} />
+        <meshStandardMaterial color={color} roughness={0.8} />
+      </mesh>
+      {/* Two chimney stacks */}
+      <mesh position={[-0.18 * s, bodyH + 0.25 * s, -0.18 * s]} castShadow>
+        <cylinderGeometry args={[0.07 * s, 0.07 * s, 0.5 * s, 12]} />
+        <meshStandardMaterial color="#4a4e55" roughness={0.9} />
+      </mesh>
+      <mesh position={[0.02 * s, bodyH + 0.32 * s, -0.18 * s]} castShadow>
+        <cylinderGeometry args={[0.07 * s, 0.07 * s, 0.64 * s, 12]} />
+        <meshStandardMaterial color="#4a4e55" roughness={0.9} />
       </mesh>
     </group>
   );

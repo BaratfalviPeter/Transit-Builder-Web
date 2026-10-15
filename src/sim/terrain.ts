@@ -31,7 +31,19 @@ export enum CellType {
    * map generation; the player cannot place these.
    */
   Mine = 'Mine',
+  /** Auto-generated power plant (erőmű). Spawns near water for testing. */
+  PowerPlant = 'PowerPlant',
+  /** Auto-generated factory (gyár). Spawns near the city for testing. */
+  Factory = 'Factory',
 }
+
+/** Special / industrial building types that get a floating UI icon. */
+export const SPECIAL_BUILDINGS: ReadonlySet<CellType> = new Set([
+  CellType.LumberMill,
+  CellType.Mine,
+  CellType.PowerPlant,
+  CellType.Factory,
+]);
 
 /** Cell types that count as flat, buildable ground for roads. */
 export function isFlatGround(cell: CellType): boolean {
@@ -187,8 +199,12 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   // Auto-spawn industry next to natural resources (deterministic via `rng`):
   //  - LumberMill on Empty cells adjacent to a Forest.
   //  - Mine on Empty cells adjacent to a Hill.
+  //  - PowerPlant on Empty cells adjacent to Water (for testing icons).
+  //  - Factory on Empty cells adjacent to the CityCenter (for testing icons).
   spawnIndustry(cells, size, CellType.Forest, CellType.LumberMill, rng);
   spawnIndustry(cells, size, CellType.Hill, CellType.Mine, rng);
+  spawnIndustry(cells, size, CellType.Water, CellType.PowerPlant, rng);
+  spawnIndustry(cells, size, CellType.CityCenter, CellType.Factory, rng);
 
   return { size, seed, cells, heights };
 

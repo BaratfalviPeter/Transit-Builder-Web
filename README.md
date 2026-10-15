@@ -24,7 +24,8 @@ src/
             #   GameCanvas    – gyökér jelenet, click -> aktív eszköz
             #   MapGrid       – sík terep-csempék (instancing, típusonként)
             #   Hills         – összefüggő, low-poly domb-felszín (hézagmentes rámpák)
-            #   Industries    – auto-generált fatelep/bánya épületek
+            #   Industries    – auto-generált speciális épületek (fatelep/bánya/erőmű/gyár)
+            #   BuildingIcons – lebegő UI ikonok a speciális épületek fölött (drei Html)
             #   Roads         – utak (síkon, dombon megemelve)
             #   CityBuildings – a város auto-épületei (szint = magasság)
             #   GridFloor     – pick-sík a kattintáshoz
@@ -89,5 +90,7 @@ egy 2-es szintű magaslat éri el a korábbi 1-es szint magasságát. Dombra ép
 út felveszi a domb magasságát.
 
 Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
-(LumberMill) erdővel szomszédos üres cellára, és 2–3 **bánya** (Mine) dombbal
-szomszédos üres cellára.
+(LumberMill 🪓) erdő mellé, 2–3 **bánya** (Mine ⛏️) domb mellé, 2–3 **erőmű**
+(PowerPlant ⚡) víz mellé, és 2–3 **gyár** (Factory ⚙️) a városközpont mellé.
+A speciális épületek fölött **lebegő UI ikon** jelenik meg (drei `<Html>`), finom
+bobbing animációval, a könnyű azonosításhoz.

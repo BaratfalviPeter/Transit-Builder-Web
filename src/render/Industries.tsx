@@ -20,6 +20,7 @@ import {
 import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
 import { PowerPlantGLTF } from './PowerPlantGLTF';
+import { ModelErrorBoundary } from './ModelErrorBoundary';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -160,12 +161,17 @@ function PowerPlant({
   z: number;
   cellSize: number;
 }) {
+  const fallback = (
+    <PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />
+  );
   return (
-    <Suspense
-      fallback={<PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />}
-    >
-      <PowerPlantGLTF position={[x, y, z]} />
-    </Suspense>
+    // Error boundary first: if the glb fails to load/render for ANY reason, we
+    // show the procedural model instead of letting the throw blank the canvas.
+    <ModelErrorBoundary fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <PowerPlantGLTF position={[x, y, z]} />
+      </Suspense>
+    </ModelErrorBoundary>
   );
 }
 

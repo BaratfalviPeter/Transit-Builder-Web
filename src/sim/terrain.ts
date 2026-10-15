@@ -146,6 +146,9 @@ export function canBuildRoadAt(map: TerrainMap, x: number, z: number): boolean {
   // buildable; corners / peaks / multi-breaks are not.
   const kind = getSlopeKind(map, x, z);
   if (kind !== 'flat' && kind !== 'slopeX' && kind !== 'slopeZ') return false;
+  // The cell itself may rise at most ONE level across it — so a road climbs a
+  // hill one step at a time (0->1->2), never a single 2-high cliff/wall.
+  if (!cellRiseWithinOneStep(map, x, z)) return false;
   // Max-slope connectivity: the new cell may not connect to an adjacent
   // road/rail that is more than one height level away.
   return connectsWithinSlope(map, x, z, [CellType.Road]);
@@ -157,7 +160,21 @@ export function canBuildRailAt(map: TerrainMap, x: number, z: number): boolean {
   if (!canBuildRoad(map.cells[x][z])) return false;
   const kind = getSlopeKind(map, x, z);
   if (kind !== 'flat' && kind !== 'slopeX' && kind !== 'slopeZ') return false;
+  if (!cellRiseWithinOneStep(map, x, z)) return false;
   return connectsWithinSlope(map, x, z, [CellType.Rail]);
+}
+
+/**
+ * True if the cell's own corner heights span at most ONE level (HILL_STEP).
+ * A flat cell spans 0; a single-step ramp spans one HILL_STEP (buildable); a
+ * cell whose corners jump two levels is a steep wall/cliff face — a road laid
+ * there would climb two levels in one tile, which we forbid (you must step up
+ * one level per cell: 0 -> 1 -> 2).
+ */
+function cellRiseWithinOneStep(map: TerrainMap, x: number, z: number): boolean {
+  const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
+  const span = Math.max(h00, h10, h11, h01) - Math.min(h00, h10, h11, h01);
+  return span <= HILL_STEP + 1e-6;
 }
 
 /**

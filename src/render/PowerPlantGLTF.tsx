@@ -14,6 +14,7 @@
 import { useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Served from the public/ root at runtime. */
 const MODEL_URL = '/models/Untitled.glb';
@@ -31,8 +32,10 @@ export function PowerPlantGLTF({ position, rotation = [0, 0, 0] }: PowerPlantGLT
   const { scene } = useGLTF(MODEL_URL);
 
   // Clone the scene per instance and compute an auto-fit transform once.
+  // SkeletonUtils.clone correctly handles skinned/animated models (a plain
+  // Object3D.clone can break skeleton bindings on such a model).
   const { object, scale, yLift } = useMemo(() => {
-    const obj = scene.clone(true);
+    const obj = skeletonClone(scene);
     const box = new THREE.Box3().setFromObject(obj);
     const size = new THREE.Vector3();
     box.getSize(size);

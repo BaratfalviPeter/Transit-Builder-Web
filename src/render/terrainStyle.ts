@@ -37,4 +37,6 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   [CellType.Mine]: { color: '#555a60', scaleY: 1, offsetY: 0 },
   [CellType.PowerPlant]: { color: '#c9cdd4', scaleY: 1, offsetY: 0 },
   [CellType.Factory]: { color: '#7a7f88', scaleY: 1, offsetY: 0 },
+  // Footprint around a 3×3 industry — reads as grass under the model's base.
+  [CellType.IndustryLot]: { color: '#6f8f5f', scaleY: 0.15, offsetY: 0 },
 };

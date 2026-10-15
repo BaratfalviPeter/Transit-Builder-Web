@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import {
   CellType,
   cornerHeightAt,
+  LARGE_INDUSTRY,
   SPECIAL_BUILDINGS,
   type TerrainMap,
 } from '../sim';
@@ -63,7 +64,7 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
       {items.map(({ x, z, type }) => {
         // Float above the building, which rests on the cell's surface top
         // (grass level + the cell's corner height, raised on hills).
-        const iconY = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize + 1.6 * cellSize;
+        const iconY = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize + (LARGE_INDUSTRY.has(map.cells[x][z]) ? 3.2 : 1.6) * cellSize;
         return (
         <Html
           key={`${x},${z}`}

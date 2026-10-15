@@ -53,11 +53,21 @@ export function Industries({ map, cellSize }: IndustriesProps) {
         const key = `${x},${z}`;
         switch (type) {
           case CellType.LumberMill:
-            return <LumberMill key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
+            // Temporary: old small model scaled up to the 3x3 lot until the
+            // detailed LumberMillModel lands.
+            return <LumberMill key={key} x={wx} y={wy} z={wz} cellSize={cellSize * 2.4} />;
           case CellType.Mine:
-            return <Mine key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
+            return <Mine key={key} x={wx} y={wy} z={wz} cellSize={cellSize * 2.4} />;
           case CellType.PowerPlant:
-            return <PowerPlant key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
+            return (
+              <PowerPlantModel
+                key={key}
+                position={[wx, wy, wz]}
+                scale={cellSize}
+                rotationY={(((x * 7 + z * 13) % 4) * Math.PI) / 2}
+                phase={(x * 0.37 + z * 0.61) % 5}
+              />
+            );
           case CellType.Factory:
             return <Factory key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
           default:
@@ -140,27 +150,6 @@ function Mine({
         <meshStandardMaterial color="#2f3238" roughness={0.9} />
       </mesh>
     </group>
-  );
-}
-
-/**
- * Power plant — the detailed, animated PowerPlantModel scaled to the cell. The
- * model is ~10 units across at scale 1; scale it so its footprint sits on the
- * cell while the towers/chimney rise above (like the reference art).
- */
-function PowerPlant({
-  x,
-  y,
-  z,
-  cellSize,
-}: {
-  x: number;
-  y: number;
-  z: number;
-  cellSize: number;
-}) {
-  return (
-    <PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />
   );
 }
 

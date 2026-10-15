@@ -27,4 +27,6 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   [CellType.Mountain]: { color: '#8a8178', scaleY: 2, offsetY: 0 },
   [CellType.Forest]: { color: '#2e6b32', scaleY: 1.5, offsetY: 0 },
   [CellType.Mine]: { color: '#5a4a3a', scaleY: 1.2, offsetY: 0 },
+  // Player-built road: flat, dark-grey tile resting on the ground.
+  [CellType.Road]: { color: '#3a3d42', scaleY: 0.08, offsetY: 0.01 },
 };

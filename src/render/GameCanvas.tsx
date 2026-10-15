@@ -18,14 +18,26 @@ import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
+import { CityBuildings } from './CityBuildings';
 import { Buildings } from './Buildings';
-import { generateTerrain, useWorld, worldToCell, type TerrainMap } from '../sim';
+import {
+  generateTerrain,
+  useCityDevelopment,
+  useWorld,
+  worldToCell,
+  type TerrainMap,
+} from '../sim';
 
 const MAP_SIZE = 21;
+/** Game tick interval in ms (auto-spawn / growth cadence). */
+const TICK_MS = 2500;
 
 function Scene({ map }: { map: TerrainMap }) {
   const world = useWorld();
   const { cellSize, gridHalfExtent } = DEFAULT_CONFIG;
+
+  // Auto-spawning / growing city buildings, driven by the game-loop timer.
+  const { buildings } = useCityDevelopment(map, TICK_MS);
 
   const handleFloorClick = useCallback(
     (x: number, z: number) => {
@@ -59,6 +71,9 @@ function Scene({ map }: { map: TerrainMap }) {
 
       {/* Procedurally generated terrain (centered on origin). */}
       <MapGrid map={map} cellSize={cellSize} />
+
+      {/* Auto-spawned city buildings that grow taller as they level up. */}
+      <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
       {/* Faint reference grid + click/pick plane for building placement. */}
       <GridFloor

@@ -63,19 +63,22 @@ Az alsó-középső **eszköztárból** választhatsz eszközt (az **Út** az
 alapértelmezett):
 
 - **Kijelölés** – semleges egér.
-- **Út ($10)** – út építése üres (fű) cellára vagy domb tetejére.
+- **Út ($10)** – út építése üres (fű) cellára **vagy** domb tetejére/oldalára
+  (a dombon az út felveszi a lejtő dőlését és magasságát). **Húzva** is építhető:
+  tartsd nyomva a bal gombot és húzd végig a cellákon.
 - **Törlés** (bulldózer) – utak visszabontása üres talajjá; dombokat/vizet/
   várost/ipart **nem** lehet kitörölni.
 
-> Az ipar (fatelep, bánya) **magától generálódik** a nyersanyagok mellett — a
-> játékos csak utakat épít.
+> Az ipar (fatelep, bánya, erőmű, gyár) **magától generálódik** a nyersanyagok
+> mellett — a játékos csak utakat épít.
 
 Bal felül látszik a **pénz** ($1000-ról indul), az **épületek** (ipar) és a
 **lerakott utak** száma. Minden útépítés levonja az árat (ha nincs rá fedezet,
 nem épül).
 
+- **Bal gomb**: építés / törlés (kattintás vagy húzás) — a kamerát **nem** mozgatja
 - **Mozgás (pan)**: WASD vagy nyílbillentyűk (sima, folyamatos)
-- **Bal húzás**: pásztázás · **Jobb húzás**: forgatás · **Görgő**: zoom
+- **Jobb húzás**: forgatás · **Görgő / középső gomb**: zoom
 
 A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.
 
@@ -88,6 +91,10 @@ egybefüggő, sík, beépíthető fűterület, valamint víz és erdő. A dombok
 a korábbi lépcső fele), egy összefüggő, hézagmentes low-poly rámpa-felszínen —
 egy 2-es szintű magaslat éri el a korábbi 1-es szint magasságát. Dombra épített
 út felveszi a domb magasságát.
+
+A várost **nem zárhatják körbe** a dombok: a központ körül **5 cellás védőzóna**
+teljesen hegymentes, és az **északi/déli** szélek mentén erősen csökkentett a
+domb-esély, így mindig marad legalább két szabad terjeszkedési folyosó.
 
 Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
 (LumberMill 🪓) erdő mellé, 2–3 **bánya** (Mine ⛏️) domb mellé, 2–3 **erőmű**

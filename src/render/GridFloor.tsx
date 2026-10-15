@@ -3,33 +3,60 @@
  *
  * - The visible grid lines are drawn with drei's <Grid> helper, scaled by
  *   `cellSize`.
- * - An invisible, pointer-enabled plane (`floorRef`) spans the whole grid and
- *   receives click events. We attach the raycast hit handler here and forward
- *   the world-space point to the parent, which performs snap-to-grid.
+ * - An invisible, pointer-enabled plane spans the whole grid and receives
+ *   pointer events. It drives both single-click building and drag-to-build:
+ *     - onPointerDown  => begin a build gesture at the hit cell
+ *     - onPointerMove  => while dragging, continue building along the path
+ *     - onPointerUp    => end the gesture
+ *   The parent is notified via `onPaint(worldX, worldZ)` for each cell that
+ *   should be acted on, and via `onDragChange` when the drag state flips.
+ *
+ * We only react to the primary (left) button; camera rotation/zoom use the
+ * other buttons (see CameraRig).
  */
 
 import { Grid } from '@react-three/drei';
 import { type ThreeEvent } from '@react-three/fiber';
+import { useRef } from 'react';
 
 export interface GridFloorProps {
   cellSize: number;
   gridHalfExtent: number;
-  /** Called with the world-space (x, z) where the floor was clicked. */
-  onFloorClick?: (x: number, z: number) => void;
+  /** Called for each cell to act on (world-space x,z of the pointer hit). */
+  onPaint?: (x: number, z: number) => void;
+  /** Called when a drag gesture starts (true) or ends (false). */
+  onDragChange?: (dragging: boolean) => void;
 }
 
 export function GridFloor({
   cellSize,
   gridHalfExtent,
-  onFloorClick,
+  onPaint,
+  onDragChange,
 }: GridFloorProps) {
   // Total world extent of the grid (full width/depth in meters).
   const size = gridHalfExtent * 2 * cellSize;
 
-  const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    // Only react to the primary (nearest) intersection.
+  const dragging = useRef(false);
+
+  const handleDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.button !== 0) return; // left button only
     e.stopPropagation();
-    onFloorClick?.(e.point.x, e.point.z);
+    dragging.current = true;
+    onDragChange?.(true);
+    onPaint?.(e.point.x, e.point.z); // paint the starting cell immediately
+  };
+
+  const handleMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!dragging.current) return;
+    e.stopPropagation();
+    onPaint?.(e.point.x, e.point.z);
+  };
+
+  const endDrag = () => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    onDragChange?.(false);
   };
 
   return (
@@ -52,7 +79,10 @@ export function GridFloor({
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0]}
-        onClick={handleClick}
+        onPointerDown={handleDown}
+        onPointerMove={handleMove}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
       >
         <planeGeometry args={[size, size]} />
         <meshBasicMaterial visible={false} />

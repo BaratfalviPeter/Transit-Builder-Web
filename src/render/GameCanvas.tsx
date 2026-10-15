@@ -13,7 +13,7 @@
 
 import { Canvas } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
@@ -45,17 +45,23 @@ function Scene() {
   // Auto-spawning / growing city buildings, driven by the game-loop timer.
   const { buildings } = useCityDevelopment(map, TICK_MS);
 
-  const handleFloorClick = useCallback(
+  // Remember the last cell acted on during a drag so we don't re-process the
+  // same cell many times as the pointer wiggles within it.
+  const lastCell = useRef<string | null>(null);
+
+  const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
       // World point -> terrain cell index (grid is centered on origin).
       const x = Math.round(worldX / cellSize + half);
       const z = Math.round(worldZ / cellSize + half);
+      const key = `${x},${z}`;
+      if (key === lastCell.current) return; // same cell as last event
+      lastCell.current = key;
 
       const tool = TOOLS[game.getActiveTool()];
-
       switch (tool.id) {
         case 'select':
-          return; // no-op for now
+          return; // no-op
         case 'bulldoze':
           terrain.bulldoze(x, z);
           return;
@@ -70,6 +76,22 @@ function Scene() {
     },
     [terrain, game, cellSize, half],
   );
+
+  // Reset the dedupe key whenever a drag starts/ends so the first cell of the
+  // next gesture is always processed.
+  const handleDragChange = useCallback(() => {
+    lastCell.current = null;
+  }, []);
+
+  // Safety net: if the pointer is released anywhere (even off the pick plane),
+  // clear the dedupe key so a stuck drag can't keep painting.
+  useEffect(() => {
+    const onUp = () => {
+      lastCell.current = null;
+    };
+    window.addEventListener('pointerup', onUp);
+    return () => window.removeEventListener('pointerup', onUp);
+  }, []);
 
   return (
     <>
@@ -100,11 +122,12 @@ function Scene() {
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
-      {/* Click/pick plane for the active build tool. */}
+      {/* Click + drag pick plane for the active build tool. */}
       <GridFloor
         cellSize={cellSize}
         gridHalfExtent={gridHalfExtent}
-        onFloorClick={handleFloorClick}
+        onPaint={handlePaint}
+        onDragChange={handleDragChange}
       />
     </>
   );

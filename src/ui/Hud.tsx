@@ -1,26 +1,18 @@
 /**
- * Hud — top-left status overlay (money + counters) and the bottom hint.
- *
- * Reads discrete simulation snapshots (not per-frame state): the player's
- * money, the number of auto-generated industries ("Épületek"), and the number
- * of roads ("Lerakott utak").
+ * Hud — top-left counters (industries, roads) and the bottom controls hint.
+ * Money and the date/economy now live in the SidePanel.
  */
 
-import { useGameSnapshot, useIndustryCount, useRoadCount } from '../sim';
+import { useIndustryCount, useRoadCount } from '../sim';
 import './hud.css';
 
 export function Hud() {
-  const { money } = useGameSnapshot();
   const industryCount = useIndustryCount();
   const roadCount = useRoadCount();
 
   return (
     <div className="hud">
       <div className="hud__panel">
-        <div className="hud__row">
-          <span className="hud__label">Pénz</span>
-          <span className="hud__value">${money}</span>
-        </div>
         <div className="hud__row">
           <span className="hud__label">Épületek</span>
           <span className="hud__value">{industryCount}</span>
@@ -32,8 +24,8 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Bal klikk/húzás: építés–törlés a kiválasztott eszközzel · Mozgás: WASD
-        vagy nyilak · Jobb húzás: forgatás · Görgő: zoom
+        Bal klikk/húzás: építés–tereprendezés a kiválasztott eszközzel · Mozgás:
+        WASD vagy nyilak · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>
   );

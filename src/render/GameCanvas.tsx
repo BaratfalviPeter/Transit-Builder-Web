@@ -11,7 +11,7 @@
  * stores so the canvas, toolbar, and HUD all stay in sync.
  */
 
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import { useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
@@ -20,6 +20,7 @@ import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
+import { Rails } from './Rails';
 import { Industries } from './Industries';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
@@ -31,6 +32,20 @@ import {
   useTerrainMap,
   useTerrainStore,
 } from '../sim';
+
+/**
+ * GameClock — advances the in-game date from the render loop, scaled by the
+ * current game speed (pause/normal/fast). Lives inside the Canvas so it can use
+ * useFrame; it mutates GameState imperatively and only publishes on whole-day
+ * changes (no per-frame React re-renders).
+ */
+function GameClock() {
+  const game = useGame();
+  useFrame((_, delta) => {
+    game.tickClock(delta);
+  });
+  return null;
+}
 
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
@@ -73,6 +88,24 @@ function Scene() {
           if (terrain.buildRoad(x, z)) game.spend(tool.cost);
           return;
         }
+        case 'rail': {
+          if (!terrain.inBounds(x, z)) return;
+          if (!game.canAfford(tool.cost)) return;
+          if (terrain.buildRail(x, z)) game.spend(tool.cost);
+          return;
+        }
+        case 'raise': {
+          if (!terrain.inBounds(x, z)) return;
+          if (!game.canAfford(tool.cost)) return;
+          if (terrain.raise(x, z)) game.spend(tool.cost);
+          return;
+        }
+        case 'lower': {
+          if (!terrain.inBounds(x, z)) return;
+          if (!game.canAfford(tool.cost)) return;
+          if (terrain.lower(x, z)) game.spend(tool.cost);
+          return;
+        }
       }
     },
     [terrain, game, cellSize, half],
@@ -101,6 +134,7 @@ function Scene() {
   return (
     <>
       <CameraRig />
+      <GameClock />
 
       {/* Lighting */}
       <ambientLight intensity={0.6} />
@@ -125,6 +159,8 @@ function Scene() {
       <BuildingIcons map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}
       <Roads map={map} cellSize={cellSize} />
+      {/* Rails: gravel bed + sleepers + metal rails, slope-aware. */}
+      <Rails map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />

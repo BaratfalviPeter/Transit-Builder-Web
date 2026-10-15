@@ -12,8 +12,6 @@ import './toolbar.css';
 const ICON: Record<ToolId, string> = {
   select: '🖱️',
   road: '🛣️',
-  lumberjack: '🪓',
-  mine: '⛏️',
   bulldoze: '🚜',
 };
 

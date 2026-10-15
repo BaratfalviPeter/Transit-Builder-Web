@@ -11,7 +11,6 @@
 
 import {
   CellType,
-  canBuildIndustry,
   canBuildRoad,
   canBulldoze,
   generateTerrain,
@@ -29,6 +28,9 @@ export class TerrainStore {
 
   constructor(options: GenerateOptions = {}) {
     this.map = generateTerrain(options);
+    // Count the industries placed by the auto-spawn pass at generation time.
+    this.industryCount =
+      this.countType(CellType.LumberMill) + this.countType(CellType.Mine);
   }
 
   /** Current immutable map snapshot (stable until the next mutation). */
@@ -41,7 +43,7 @@ export class TerrainStore {
     return this.roadCount;
   }
 
-  /** Number of player-built industry cells (lumberjack + mine building). */
+  /** Number of auto-generated industry cells (lumber mills + mines). */
   getIndustryCount(): number {
     return this.industryCount;
   }
@@ -73,35 +75,16 @@ export class TerrainStore {
   }
 
   /**
-   * Build a player industry (lumberjack or mine building) on Empty ground.
-   * `type` must be CellType.Lumberjack or CellType.MineBuilding.
-   */
-  buildIndustry(x: number, z: number, type: CellType): boolean {
-    if (!this.inBounds(x, z)) return false;
-    if (type !== CellType.Lumberjack && type !== CellType.MineBuilding) {
-      return false;
-    }
-    if (!canBuildIndustry(this.map.cells[x][z])) return false;
-
-    this.applyCell(x, z, type);
-    this.industryCount += 1;
-    this.emit();
-    return true;
-  }
-
-  /**
-   * Bulldoze `(x, z)` back to Empty if it holds a player-built thing (Road,
-   * Lumberjack, MineBuilding). Natural terrain (Hills, Water, Forest, Mine,
-   * CityCenter) cannot be bulldozed. Returns true if something was cleared.
+   * Bulldoze `(x, z)` back to Empty if it holds a player-built road. Natural
+   * terrain and auto-generated industry (LumberMill/Mine) cannot be bulldozed.
+   * Returns true if a road was cleared.
    */
   bulldoze(x: number, z: number): boolean {
     if (!this.inBounds(x, z)) return false;
     const current = this.map.cells[x][z];
     if (!canBulldoze(current)) return false;
 
-    if (current === CellType.Road) this.roadCount -= 1;
-    else this.industryCount -= 1;
-
+    this.roadCount -= 1;
     this.applyCell(x, z, CellType.Empty);
     this.emit();
     return true;
@@ -115,8 +98,7 @@ export class TerrainStore {
     this.map = generateTerrain(options);
     this.roadCount = this.countType(CellType.Road);
     this.industryCount =
-      this.countType(CellType.Lumberjack) +
-      this.countType(CellType.MineBuilding);
+      this.countType(CellType.LumberMill) + this.countType(CellType.Mine);
     this.emit();
   }
 

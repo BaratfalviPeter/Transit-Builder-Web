@@ -2,12 +2,12 @@
  * GameCanvas — the root R3F scene.
  *
  * Composes the camera rig, lighting, terrain (flat tiles + ramp-like hills),
- * roads, player industries, the auto-growing city, and the tool-driven click
- * interaction.
+ * roads, auto-generated industry, the auto-growing city, and the tool-driven
+ * click interaction.
  *
  * Clicking the floor resolves the world point to a grid cell and dispatches on
- * the active tool (from GameState): build a road / industry (deducting its
- * cost if affordable) or bulldoze. The terrain and game state live in shared
+ * the active tool (from GameState): build a road (deducting its cost if
+ * affordable) or bulldoze a road. The terrain and game state live in shared
  * stores so the canvas, toolbar, and HUD all stay in sync.
  */
 
@@ -20,9 +20,9 @@ import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { Hills } from './Hills';
 import { Roads } from './Roads';
+import { Industries } from './Industries';
 import { CityBuildings } from './CityBuildings';
 import {
-  CellType,
   TOOLS,
   useCityDevelopment,
   useGame,
@@ -65,17 +65,6 @@ function Scene() {
           if (terrain.buildRoad(x, z)) game.spend(tool.cost);
           return;
         }
-        case 'lumberjack':
-        case 'mine': {
-          const type =
-            tool.id === 'lumberjack'
-              ? CellType.Lumberjack
-              : CellType.MineBuilding;
-          if (!terrain.inBounds(x, z)) return;
-          if (!game.canAfford(tool.cost)) return;
-          if (terrain.buildIndustry(x, z, type)) game.spend(tool.cost);
-          return;
-        }
       }
     },
     [terrain, game, cellSize, half],
@@ -96,10 +85,12 @@ function Scene() {
       />
       <Sky sunPosition={[30, 50, 20]} />
 
-      {/* Flat terrain tiles + industries (hills & roads drawn separately). */}
+      {/* Flat terrain tiles (hills, roads, industry drawn separately). */}
       <MapGrid map={map} cellSize={cellSize} />
-      {/* Ramp-like hills (custom slope geometry). */}
+      {/* Continuous low-poly hill surface (gapless ramps). */}
       <Hills map={map} cellSize={cellSize} />
+      {/* Auto-generated industry buildings (lumber mills + mines). */}
+      <Industries map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}
       <Roads map={map} cellSize={cellSize} />
 

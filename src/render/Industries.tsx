@@ -19,7 +19,7 @@ import {
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
-import { PowerPlantGLTF } from './PowerPlantGLTF';
+import { PowerPlantModelGltf } from './PowerPlantModelGltf';
 import { ModelErrorBoundary } from './ModelErrorBoundary';
 
 export interface IndustriesProps {
@@ -169,7 +169,7 @@ function PowerPlant({
     // show the procedural model instead of letting the throw blank the canvas.
     <ModelErrorBoundary fallback={fallback}>
       <Suspense fallback={fallback}>
-        <PowerPlantGLTF position={[x, y, z]} />
+        <PowerPlantModelGltf position={[x, y, z]} />
       </Suspense>
     </ModelErrorBoundary>
   );

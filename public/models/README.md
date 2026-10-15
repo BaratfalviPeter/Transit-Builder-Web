@@ -4,14 +4,18 @@ Place `.obj` / `.glb` building and vehicle models here. They are served from
 the root at runtime, e.g. a file at `public/models/house.glb` is available at
 `/models/house.glb`.
 
-## Swapping placeholder boxes for real models
+## In use
 
-The entire visual representation of a placed object goes through a single,
-isolated component: `src/render/BuildingModel.tsx`. It currently renders a
-placeholder box. To use a real model:
+- **`Untitled.glb`** — the power plant model, loaded by
+  `src/render/PowerPlantGLTF.tsx` (drei's `useGLTF`) and rendered for every
+  `PowerPlant` cell by `src/render/Industries.tsx`. It is auto-fitted: the
+  loader measures the model's bounding box, scales it to a target footprint,
+  and lifts it so its base rests on the cell surface — so the raw model's size
+  (~60 units) and origin don't matter.
 
-1. Drop the asset in this folder (e.g. `house.glb`).
-2. In `BuildingModel.tsx`, load it (drei's `useGLTF` for `.glb`, or
-   `useLoader(OBJLoader, ...)` for `.obj`) keyed by `PlaceableKind` and render
-   `<primitive>` instead of the `<boxGeometry>`.
-3. Keep the same props and a ~1-cell footprint so no caller needs to change.
+## Swapping / adding models
+
+The power plant uses the swappable loader `PowerPlantGLTF.tsx`. To replace it,
+drop a new `.glb` here and update `MODEL_URL` in that file (or add a new loader
+component for another building type, following the same auto-fit pattern). The
+procedural `PowerPlantModel.tsx` remains as the Suspense fallback.

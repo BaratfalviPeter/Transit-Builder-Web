@@ -21,6 +21,7 @@ import { MapGrid } from './MapGrid';
 import { Hills } from './Hills';
 import { Roads } from './Roads';
 import { Industries } from './Industries';
+import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import {
   TOOLS,
@@ -89,8 +90,10 @@ function Scene() {
       <MapGrid map={map} cellSize={cellSize} />
       {/* Continuous low-poly hill surface (gapless ramps). */}
       <Hills map={map} cellSize={cellSize} />
-      {/* Auto-generated industry buildings (lumber mills + mines). */}
+      {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <Industries map={map} cellSize={cellSize} />
+      {/* Floating UI icons above special buildings (for easy identification). */}
+      <BuildingIcons map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}
       <Roads map={map} cellSize={cellSize} />
 

@@ -33,4 +33,6 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   // these colors are the main building color.
   [CellType.LumberMill]: { color: '#8a5a2b', scaleY: 1, offsetY: 0 },
   [CellType.Mine]: { color: '#555a60', scaleY: 1, offsetY: 0 },
+  [CellType.PowerPlant]: { color: '#c9cdd4', scaleY: 1, offsetY: 0 },
+  [CellType.Factory]: { color: '#7a7f88', scaleY: 1, offsetY: 0 },
 };

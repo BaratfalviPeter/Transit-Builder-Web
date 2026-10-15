@@ -14,6 +14,7 @@ import {
   canBuildRoad,
   canBulldoze,
   generateTerrain,
+  SPECIAL_BUILDINGS,
   type GenerateOptions,
   type TerrainMap,
 } from './terrain';
@@ -28,9 +29,8 @@ export class TerrainStore {
 
   constructor(options: GenerateOptions = {}) {
     this.map = generateTerrain(options);
-    // Count the industries placed by the auto-spawn pass at generation time.
-    this.industryCount =
-      this.countType(CellType.LumberMill) + this.countType(CellType.Mine);
+    // Count the special buildings placed by the auto-spawn pass at gen time.
+    this.industryCount = this.countSpecialBuildings();
   }
 
   /** Current immutable map snapshot (stable until the next mutation). */
@@ -43,7 +43,10 @@ export class TerrainStore {
     return this.roadCount;
   }
 
-  /** Number of auto-generated industry cells (lumber mills + mines). */
+  /**
+   * Number of auto-generated special buildings (lumber mills, mines, power
+   * plants, factories).
+   */
   getIndustryCount(): number {
     return this.industryCount;
   }
@@ -97,8 +100,7 @@ export class TerrainStore {
   regenerate(options: GenerateOptions = {}): void {
     this.map = generateTerrain(options);
     this.roadCount = this.countType(CellType.Road);
-    this.industryCount =
-      this.countType(CellType.LumberMill) + this.countType(CellType.Mine);
+    this.industryCount = this.countSpecialBuildings();
     this.emit();
   }
 
@@ -127,6 +129,16 @@ export class TerrainStore {
     for (let x = 0; x < this.map.size; x++) {
       for (let z = 0; z < this.map.size; z++) {
         if (this.map.cells[x][z] === type) n++;
+      }
+    }
+    return n;
+  }
+
+  private countSpecialBuildings(): number {
+    let n = 0;
+    for (let x = 0; x < this.map.size; x++) {
+      for (let z = 0; z < this.map.size; z++) {
+        if (SPECIAL_BUILDINGS.has(this.map.cells[x][z])) n++;
       }
     }
     return n;

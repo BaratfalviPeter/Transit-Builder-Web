@@ -4,14 +4,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  /* ~3x the original badge size (was 30px / 16px font). */
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   background: rgba(18, 20, 28, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
   color: #ffe27a; /* warm yellow tint for the glyph */
-  font-size: 16px;
+  font-size: 48px;
   line-height: 1;
   user-select: none;
   pointer-events: none; /* icons never intercept map clicks */
@@ -21,9 +22,9 @@
 
 /* Larger badge variant (e.g. factories), to stand out more. */
 .bicon--lg {
-  width: 44px;
-  height: 44px;
-  font-size: 24px;
+  width: 132px;
+  height: 132px;
+  font-size: 72px;
 }
 
 /* Slight glyph shadow so emojis read on bright terrain. */
@@ -37,6 +38,6 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-4px);
+    transform: translateY(-8px);
   }
 }

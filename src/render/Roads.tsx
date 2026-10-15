@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { CellType, type TerrainMap } from '../sim';
+import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 export interface RoadsProps {
@@ -28,12 +28,25 @@ const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 // Small lift so the road never z-fights the hill surface it rests on.
 const SURFACE_LIFT = 0.02;
 
+/**
+ * A road cell is drawn FLAT only if all four of its corner heights are equal
+ * (true flat ground, or a flat hilltop). If the corners differ the cell is on a
+ * slope — even when its own nominal `heights[x][z]` is 0 (a ramp foot whose
+ * corners rise toward a neighbouring hill) — so it must be drawn by HillRoads
+ * to actually sit on the incline. This mirrors the build rule's corner-based
+ * slope check, fixing roads that previously rendered flat at the slope's base.
+ */
+function isFlatRoad(map: TerrainMap, x: number, z: number): boolean {
+  const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
+  return h00 === h10 && h10 === h11 && h11 === h01;
+}
+
 export function Roads({ map, cellSize }: RoadsProps) {
   const flatCoords = useMemo(() => {
     const out: Array<[number, number]> = [];
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
-        if (map.cells[x][z] === CellType.Road && map.heights[x][z] === 0) {
+        if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z)) {
           out.push([x, z]);
         }
       }
@@ -67,15 +80,17 @@ function FlatRoads({
     if (!mesh) return;
     const dummy = new THREE.Object3D();
     const thickness = ROAD_STYLE.scaleY * cellSize;
-    // Rest the road ON TOP of the grass tile (grass top = FLAT_TOP*cellSize),
-    // plus a small lift. Previously the road sat near y=0 and was buried in /
-    // coplanar with the grass tile, so it was invisible or z-fought.
-    const grassTop = FLAT_TOP * cellSize;
+    // Rest the road ON TOP of the surface. For a flat cell all corners are
+    // equal, so the uniform corner height gives the tile's elevation (0 on flat
+    // ground, or the hill top for a flat hilltop). Previously it was pinned to
+    // grass level, so hilltop roads sank into the hill.
     for (let i = 0; i < coords.length; i++) {
       const [x, z] = coords[i];
+      const cornerH = cellCornerHeights(map, x, z)[0]; // all equal => any corner
+      const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
       dummy.position.set(
         (x - half) * cellSize,
-        grassTop + thickness / 2 + SURFACE_LIFT * cellSize,
+        surfaceTop + thickness / 2 + SURFACE_LIFT * cellSize,
         (z - half) * cellSize,
       );
       dummy.scale.set(cellSize, thickness, cellSize);
@@ -145,6 +160,19 @@ function buildHillRoadSurface(
       cellHeight(cx, cz),
     );
 
+  // A cell is flat iff its four corners are equal (handled by FlatRoads).
+  const isFlatRoadCorners = (
+    cornerH: (cx: number, cz: number) => number,
+    x: number,
+    z: number,
+  ): boolean => {
+    const a = cornerH(x, z);
+    const b = cornerH(x + 1, z);
+    const c = cornerH(x + 1, z + 1);
+    const d = cornerH(x, z + 1);
+    return a === b && b === c && c === d;
+  };
+
   const base = FLAT_TOP * cellSize + SURFACE_LIFT * cellSize;
   const corner = (cx: number, cz: number): THREE.Vector3 =>
     new THREE.Vector3(
@@ -157,7 +185,12 @@ function buildHillRoadSurface(
   let any = false;
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
-      if (cells[x][z] !== CellType.Road || heights[x][z] === 0) continue;
+      if (cells[x][z] !== CellType.Road) continue;
+      // Only slope cells here; flat cells (all corners equal) are drawn as
+      // tiles by FlatRoads. A ramp foot can have heights[x][z] === 0 yet have
+      // unequal corners, so classify by corners — this is the fix for level-1
+      // ramp roads previously rendering flat at the slope base.
+      if (isFlatRoadCorners(cornerHeight, x, z)) continue;
       const c00 = corner(x, z);
       const c10 = corner(x + 1, z);
       const c11 = corner(x + 1, z + 1);

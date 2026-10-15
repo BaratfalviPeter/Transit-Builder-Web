@@ -19,6 +19,17 @@ export enum CellType {
   Mountain = 'Mountain',
   Forest = 'Forest',
   Mine = 'Mine',
+  /** Player-built road. Only buildable on Empty cells. */
+  Road = 'Road',
+}
+
+/**
+ * Whether a road may be built on the cell type currently in `cell`.
+ * Rule: roads can only be placed on Empty ground — not on Water, Mountain,
+ * Forest, Mine or CityCenter, and not on an existing Road.
+ */
+export function canBuildRoad(cell: CellType): boolean {
+  return cell === CellType.Empty;
 }
 
 /** Full generated map: a size×size grid of cell types plus its parameters. */

@@ -1,57 +1,49 @@
 /**
  * GameCanvas — the root R3F scene.
  *
- * Composes the camera rig, lighting, procedurally generated terrain, grid
- * floor, and placed buildings.
+ * Composes the camera rig, lighting, procedurally generated terrain, the
+ * auto-growing city, and the click-to-build-roads interaction.
  *
- * The terrain map is generated once (pure-TS `generateTerrain`) and held in
- * React state here, so gameplay systems (pathfinding, traffic, economy) can
- * read the same 21×21 grid later. Floor clicks are snapped to the nearest grid
- * cell and forwarded to the simulation (World.place); the World enforces one
- * object per cell.
+ * The terrain lives in a shared `TerrainStore` (via TerrainProvider), so both
+ * this canvas and the DOM HUD read the same grid. Clicking the floor converts
+ * the hit point to a grid cell and asks the store to build a road there; the
+ * store enforces the rule that roads may only replace Empty ground.
  */
 
 import { Canvas } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { CityBuildings } from './CityBuildings';
 import { Buildings } from './Buildings';
-import {
-  generateTerrain,
-  useCityDevelopment,
-  useWorld,
-  worldToCell,
-  type TerrainMap,
-} from '../sim';
+import { useCityDevelopment, useTerrainMap, useTerrainStore } from '../sim';
 
-const MAP_SIZE = 21;
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
 
-function Scene({ map }: { map: TerrainMap }) {
-  const world = useWorld();
+function Scene() {
   const { cellSize, gridHalfExtent } = DEFAULT_CONFIG;
+
+  const terrain = useTerrainStore();
+  const map = useTerrainMap();
+  const half = (map.size - 1) / 2;
 
   // Auto-spawning / growing city buildings, driven by the game-loop timer.
   const { buildings } = useCityDevelopment(map, TICK_MS);
 
   const handleFloorClick = useCallback(
-    (x: number, z: number) => {
-      const coord = worldToCell(x, z, cellSize);
-      // Clamp to the grid bounds so you can't place beyond the visible floor.
-      if (
-        Math.abs(coord.cx) > gridHalfExtent ||
-        Math.abs(coord.cz) > gridHalfExtent
-      ) {
-        return;
-      }
-      world.place('house', coord);
+    (worldX: number, worldZ: number) => {
+      // World point -> terrain cell index. Terrain is centered on origin, so
+      // cell [x][z] sits at ((x-half)*cellSize, _, (z-half)*cellSize); invert
+      // that and round to the nearest cell.
+      const x = Math.round(worldX / cellSize + half);
+      const z = Math.round(worldZ / cellSize + half);
+      terrain.buildRoad(x, z);
     },
-    [world, cellSize, gridHalfExtent],
+    [terrain, cellSize, half],
   );
 
   return (
@@ -69,13 +61,13 @@ function Scene({ map }: { map: TerrainMap }) {
       />
       <Sky sunPosition={[30, 50, 20]} />
 
-      {/* Procedurally generated terrain (centered on origin). */}
+      {/* Procedurally generated terrain + player-built roads. */}
       <MapGrid map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
-      {/* Faint reference grid + click/pick plane for building placement. */}
+      {/* Faint reference grid + click/pick plane (click = build road). */}
       <GridFloor
         cellSize={cellSize}
         gridHalfExtent={gridHalfExtent}
@@ -88,10 +80,6 @@ function Scene({ map }: { map: TerrainMap }) {
 }
 
 export function GameCanvas() {
-  // Generate the map once and keep it in React state. Regenerating would be a
-  // matter of calling setMap(generateTerrain(...)) with a new seed.
-  const [map] = useState<TerrainMap>(() => generateTerrain({ size: MAP_SIZE }));
-
   return (
     <Canvas
       shadows
@@ -99,7 +87,7 @@ export function GameCanvas() {
       style={{ position: 'absolute', inset: 0 }}
     >
       <color attach="background" args={['#adc8e6']} />
-      <Scene map={map} />
+      <Scene />
     </Canvas>
   );
 }

@@ -274,6 +274,8 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   // fewer blobs of hills/forest/water rather than fine-grained noise.
   const freq = 0.35 * (REFERENCE_SIZE / size);
 
+  // --- Pass 1: base terrain (hills, water, city, empty) + heights ---------
+  // Trees and buildings are NOT placed here — the ground is generated first.
   const cells: CellType[][] = [];
   const heights: number[][] = [];
   for (let x = 0; x < size; x++) {
@@ -288,17 +290,43 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     heights.push(hcol);
   }
 
-  // Auto-spawn industry next to natural resources (deterministic via `rng`):
-  //  - LumberMill on Empty cells adjacent to a Forest.
-  //  - Mine on Empty cells adjacent to a Hill.
-  //  - PowerPlant on Empty cells adjacent to Water (for testing icons).
-  //  - Factory on Empty cells adjacent to the CityCenter (for testing icons).
-  spawnIndustry(cells, size, CellType.Forest, CellType.LumberMill, rng);
-  spawnIndustry(cells, size, CellType.Hill, CellType.Mine, rng);
-  spawnIndustry(cells, size, CellType.Water, CellType.PowerPlant, rng);
-  spawnIndustry(cells, size, CellType.CityCenter, CellType.Factory, rng);
+  const base: TerrainMap = { size, seed, cells, heights };
 
-  return { size, seed, cells, heights };
+  /**
+   * A cell can host a decoration/building only if its slope is a clean flat
+   * (all four corners equal) — never a corner/peak/multi-break piece. This is
+   * the same corner rule roads use, applied to trees & buildings too, so
+   * nothing sits on broken geometry.
+   */
+  const isFlatCell = (x: number, z: number): boolean => {
+    const [h00, h10, h11, h01] = cellCornerHeights(base, x, z);
+    return h00 === h10 && h10 === h11 && h11 === h01;
+  };
+
+  // --- Pass 2: forests (trees) on top of the terrain ----------------------
+  // Trees grow on grass OR on flat hill tops (raised), on moist ground, but
+  // never on a sloped corner cell. The cell keeps its height, so hill forests
+  // render elevated.
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      const t = cells[x][z];
+      if (t !== CellType.Empty && t !== CellType.Hill) continue;
+      if (distFromCity(x, z) <= cityHalf + 1) continue; // keep city clear
+      if (!isFlatCell(x, z)) continue; // corner rule for trees too
+      const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
+      const d = detail(x * freq * 2.1, z * freq * 2.1);
+      if (m > 0.64 && d > 0.42) cells[x][z] = CellType.Forest;
+    }
+  }
+
+  // --- Pass 3: auto-spawn industry next to resources ----------------------
+  // Only on flat cells (corner rule), so buildings never sit on broken slopes.
+  spawnIndustry(base, CellType.Forest, CellType.LumberMill, rng, isFlatCell);
+  spawnIndustry(base, CellType.Hill, CellType.Mine, rng, isFlatCell);
+  spawnIndustry(base, CellType.Water, CellType.PowerPlant, rng, isFlatCell);
+  spawnIndustry(base, CellType.CityCenter, CellType.Factory, rng, isFlatCell);
+
+  return base;
 
   /** Chebyshev distance (in cells) from the city center. */
   function distFromCity(x: number, z: number): number {
@@ -356,23 +384,18 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     }
 
     // 3) Noise-based biome classification.
-    const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
-    const d = detail(x * freq * 2.1, z * freq * 2.1);
-
     // High elevation => hills (rarer now; see hillLevel threshold).
     if (hillLevel(x, z) > 0) {
       return CellType.Hill;
     }
     // Low elevation + wet => water (kept uncommon).
     const e = elevation(x * freq, z * freq);
+    const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
     if (e < 0.3 && m > 0.55) {
       return CellType.Water;
     }
-    // Mid/high moisture => forest.
-    if (m > 0.64 && d > 0.42) {
-      return CellType.Forest;
-    }
 
+    // Forests are placed in a later pass (so they can sit on hills too).
     return CellType.Empty;
   }
 }
@@ -387,20 +410,24 @@ const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
 
 /**
  * Replace 2–3 random Empty cells that are adjacent to a `resource` cell with
- * `industry`. Mutates `cells` in place. Deterministic given `rng`.
+ * `industry`. Mutates `map.cells` in place. Deterministic given `rng`. Only
+ * flat cells are eligible (`isFlat` — the corner rule), so buildings never sit
+ * on broken slopes.
  */
 function spawnIndustry(
-  cells: CellType[][],
-  size: number,
+  map: TerrainMap,
   resource: CellType,
   industry: CellType,
   rng: () => number,
+  isFlat: (x: number, z: number) => boolean,
 ): void {
-  // Collect all Empty cells with at least one orthogonal `resource` neighbour.
+  const { size, cells } = map;
+  // Collect all flat Empty cells with at least one orthogonal `resource` neighbour.
   const candidates: Array<[number, number]> = [];
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
       if (cells[x][z] !== CellType.Empty) continue;
+      if (!isFlat(x, z)) continue; // corner rule for buildings
       const adjacent = NEIGHBORS.some(([dx, dz]) => {
         const nx = x + dx;
         const nz = z + dz;

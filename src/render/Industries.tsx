@@ -11,13 +11,21 @@
  */
 
 import { useMemo } from 'react';
-import { CellType, SPECIAL_BUILDINGS, type TerrainMap } from '../sim';
+import {
+  CellType,
+  cornerHeightAt,
+  SPECIAL_BUILDINGS,
+  type TerrainMap,
+} from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 export interface IndustriesProps {
   map: TerrainMap;
   cellSize: number;
 }
+
+/** Grass surface top (where buildings rest on flat ground), in cellSize units. */
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export function Industries({ map, cellSize }: IndustriesProps) {
   const half = (map.size - 1) / 2;
@@ -38,16 +46,19 @@ export function Industries({ map, cellSize }: IndustriesProps) {
       {items.map(({ x, z, type }) => {
         const wx = (x - half) * cellSize;
         const wz = (z - half) * cellSize;
+        // Buildings spawn on flat cells, so the cell's uniform corner height is
+        // its surface top; raise the building onto it (hill-top buildings too).
+        const wy = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize;
         const key = `${x},${z}`;
         switch (type) {
           case CellType.LumberMill:
-            return <LumberMill key={key} x={wx} z={wz} cellSize={cellSize} />;
+            return <LumberMill key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
           case CellType.Mine:
-            return <Mine key={key} x={wx} z={wz} cellSize={cellSize} />;
+            return <Mine key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
           case CellType.PowerPlant:
-            return <PowerPlant key={key} x={wx} z={wz} cellSize={cellSize} />;
+            return <PowerPlant key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
           case CellType.Factory:
-            return <Factory key={key} x={wx} z={wz} cellSize={cellSize} />;
+            return <Factory key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
           default:
             return null;
         }
@@ -59,10 +70,12 @@ export function Industries({ map, cellSize }: IndustriesProps) {
 /** Brown sawmill building + a chimney. */
 function LumberMill({
   x,
+  y,
   z,
   cellSize,
 }: {
   x: number;
+  y: number;
   z: number;
   cellSize: number;
 }) {
@@ -72,7 +85,7 @@ function LumberMill({
   const bodyH = 0.55 * s;
   const roofH = 0.3 * s;
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, y, z]}>
       {/* Main building */}
       <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[bodyW, bodyH, bodyW]} />
@@ -93,13 +106,23 @@ function LumberMill({
 }
 
 /** Dark-grey quarry building + a conical rock/spoil pile. */
-function Mine({ x, z, cellSize }: { x: number; z: number; cellSize: number }) {
+function Mine({
+  x,
+  y,
+  z,
+  cellSize,
+}: {
+  x: number;
+  y: number;
+  z: number;
+  cellSize: number;
+}) {
   const s = cellSize;
   const color = CELL_STYLE[CellType.Mine].color;
   const bodyW = 0.6 * s;
   const bodyH = 0.5 * s;
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, y, z]}>
       {/* Quarry shed */}
       <mesh position={[-0.14 * s, bodyH / 2, -0.14 * s]} castShadow receiveShadow>
         <boxGeometry args={[bodyW, bodyH, bodyW]} />
@@ -122,10 +145,12 @@ function Mine({ x, z, cellSize }: { x: number; z: number; cellSize: number }) {
 /** Light-grey power plant with a cooling tower. */
 function PowerPlant({
   x,
+  y,
   z,
   cellSize,
 }: {
   x: number;
+  y: number;
   z: number;
   cellSize: number;
 }) {
@@ -134,7 +159,7 @@ function PowerPlant({
   const bodyW = 0.65 * s;
   const bodyH = 0.5 * s;
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, y, z]}>
       {/* Main hall */}
       <mesh position={[-0.12 * s, bodyH / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[bodyW, bodyH, 0.5 * s]} />
@@ -152,10 +177,12 @@ function PowerPlant({
 /** Grey factory with two chimney stacks. */
 function Factory({
   x,
+  y,
   z,
   cellSize,
 }: {
   x: number;
+  y: number;
   z: number;
   cellSize: number;
 }) {
@@ -164,7 +191,7 @@ function Factory({
   const bodyW = 0.75 * s;
   const bodyH = 0.5 * s;
   return (
-    <group position={[x, 0, z]}>
+    <group position={[x, y, z]}>
       {/* Main hall */}
       <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[bodyW, bodyH, bodyW]} />

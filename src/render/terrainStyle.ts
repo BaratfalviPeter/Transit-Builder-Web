@@ -1,0 +1,30 @@
+/**
+ * Visual style per terrain cell type. Keeps all look-and-feel in one place so
+ * the MapGrid renderer stays declarative.
+ *
+ * - `color`:   mesh color
+ * - `scaleY`:  vertical scale of the unit cube (1 = flat-ish tile)
+ * - `offsetY`: extra vertical offset of the tile base (e.g. water sits low)
+ *
+ * Heights are expressed in multiples of `cellSize` by the renderer, so the look
+ * is consistent regardless of grid scale.
+ */
+
+import { CellType } from '../sim';
+
+export interface CellStyle {
+  color: string;
+  /** Vertical scale factor applied to a base tile height. */
+  scaleY: number;
+  /** Vertical offset of the tile (in cellSize units); negative = sunken. */
+  offsetY: number;
+}
+
+export const CELL_STYLE: Record<CellType, CellStyle> = {
+  [CellType.Empty]: { color: '#6f8f5f', scaleY: 0.15, offsetY: 0 },
+  [CellType.CityCenter]: { color: '#b7e08a', scaleY: 0.12, offsetY: 0 },
+  [CellType.Water]: { color: '#3b7fd4', scaleY: 0.12, offsetY: -0.2 },
+  [CellType.Mountain]: { color: '#8a8178', scaleY: 2, offsetY: 0 },
+  [CellType.Forest]: { color: '#2e6b32', scaleY: 1.5, offsetY: 0 },
+  [CellType.Mine]: { color: '#5a4a3a', scaleY: 1.2, offsetY: 0 },
+};

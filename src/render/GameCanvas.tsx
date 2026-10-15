@@ -1,22 +1,29 @@
 /**
  * GameCanvas — the root R3F scene.
  *
- * Composes the camera rig, lighting, grid floor, and placed buildings.
- * Floor clicks are snapped to the nearest grid cell and forwarded to the
- * simulation (World.place). The World is the authority on occupancy — one
- * object per cell — so clicking an occupied cell is a no-op there.
+ * Composes the camera rig, lighting, procedurally generated terrain, grid
+ * floor, and placed buildings.
+ *
+ * The terrain map is generated once (pure-TS `generateTerrain`) and held in
+ * React state here, so gameplay systems (pathfinding, traffic, economy) can
+ * read the same 21×21 grid later. Floor clicks are snapped to the nearest grid
+ * cell and forwarded to the simulation (World.place); the World enforces one
+ * object per cell.
  */
 
 import { Canvas } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
+import { MapGrid } from './MapGrid';
 import { Buildings } from './Buildings';
-import { useWorld, worldToCell } from '../sim';
+import { generateTerrain, useWorld, worldToCell, type TerrainMap } from '../sim';
 
-function Scene() {
+const MAP_SIZE = 21;
+
+function Scene({ map }: { map: TerrainMap }) {
   const world = useWorld();
   const { cellSize, gridHalfExtent } = DEFAULT_CONFIG;
 
@@ -50,6 +57,10 @@ function Scene() {
       />
       <Sky sunPosition={[30, 50, 20]} />
 
+      {/* Procedurally generated terrain (centered on origin). */}
+      <MapGrid map={map} cellSize={cellSize} />
+
+      {/* Faint reference grid + click/pick plane for building placement. */}
       <GridFloor
         cellSize={cellSize}
         gridHalfExtent={gridHalfExtent}
@@ -62,6 +73,10 @@ function Scene() {
 }
 
 export function GameCanvas() {
+  // Generate the map once and keep it in React state. Regenerating would be a
+  // matter of calling setMap(generateTerrain(...)) with a new seed.
+  const [map] = useState<TerrainMap>(() => generateTerrain({ size: MAP_SIZE }));
+
   return (
     <Canvas
       shadows
@@ -69,7 +84,7 @@ export function GameCanvas() {
       style={{ position: 'absolute', inset: 0 }}
     >
       <color attach="background" args={['#adc8e6']} />
-      <Scene />
+      <Scene map={map} />
     </Canvas>
   );
 }

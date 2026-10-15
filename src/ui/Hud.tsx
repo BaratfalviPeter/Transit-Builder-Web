@@ -32,8 +32,8 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Út ($10) építése / Törlés: bal klikk · Mozgás: WASD vagy nyilak · Bal
-        húzás: pásztázás · Jobb húzás: forgatás · Görgő: zoom
+        Bal klikk/húzás: építés–törlés a kiválasztott eszközzel · Mozgás: WASD
+        vagy nyilak · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>
   );

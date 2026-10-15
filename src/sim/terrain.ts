@@ -96,6 +96,12 @@ export const HILL_STEP = 0.45;
 /** Reference grid size the noise frequency was tuned for. */
 const REFERENCE_SIZE = 21;
 
+/**
+ * Protective buffer (in cells, Chebyshev radius) around the city center in
+ * which no hills may spawn — guarantees flat, buildable room to expand.
+ */
+const CITY_BUFFER = 5;
+
 export interface GenerateOptions {
   /** Grid dimension (size × size). Default 61 (large play area). */
   size?: number;
@@ -208,14 +214,39 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
 
   return { size, seed, cells, heights };
 
-  /** Discrete hill level (0 = flat, 1, 2, …) from the elevation field. */
+  /** Chebyshev distance (in cells) from the city center. */
+  function distFromCity(x: number, z: number): number {
+    return Math.max(Math.abs(x - center), Math.abs(z - center));
+  }
+
+  /**
+   * Discrete hill level (0 = flat, 1, 2, …) from the elevation field, shaped by
+   * two constraints so the city never gets walled in:
+   *   - Buffer zone: no hills within CITY_BUFFER cells of the city center.
+   *   - Expansion corridors: the elevation threshold is raised near the north &
+   *     south map edges (low z and high z), drastically lowering hill chance
+   *     there, so those two directions stay open for the town to grow.
+   * Overall the thresholds are higher than before, making hills rarer and the
+   * landscape flatter / more spacious.
+   */
   function hillLevel(x: number, z: number): number {
+    // Hard buffer: absolutely no hills close to the city.
+    if (distFromCity(x, z) <= CITY_BUFFER) return 0;
+
     const e = elevation(x * freq, z * freq);
-    // Rarer hills than before (threshold raised 0.68 -> 0.78) and stacked into
-    // levels, so most high ground is a gentle level-1 rise with occasional
-    // level-2 peaks.
-    if (e > 0.9) return 2;
-    if (e > 0.78) return 1;
+
+    // Keep north/south corridors clear: strongly suppress hills within a band
+    // of the top/bottom edges by raising the required elevation there.
+    const edgeBand = Math.max(4, Math.floor(size * 0.14));
+    const nearNorth = z < edgeBand;
+    const nearSouth = z >= size - edgeBand;
+    const corridorPenalty = nearNorth || nearSouth ? 0.18 : 0;
+
+    const lvl1 = 0.82 + corridorPenalty; // rarer than before (was 0.78)
+    const lvl2 = 0.93 + corridorPenalty; // rarer (was 0.9)
+
+    if (e > lvl2) return 2;
+    if (e > lvl1) return 1;
     return 0;
   }
 

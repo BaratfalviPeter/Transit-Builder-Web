@@ -16,7 +16,7 @@
 
 import { MapControls } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 
@@ -109,12 +109,24 @@ export function CameraRig() {
     }
   });
 
+  // Free the LEFT mouse button for building (no camera grab on left-drag).
+  // MIDDLE zooms (dolly), RIGHT rotates/orbits. Panning is done with WASD.
+  const mouseButtons = useMemo(
+    () => ({
+      LEFT: null as unknown as THREE.MOUSE, // disabled; left = build/drag
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE,
+    }),
+    [],
+  );
+
   return (
     <MapControls
       ref={controlsRef}
       makeDefault
       enableDamping
       dampingFactor={0.1}
+      mouseButtons={mouseButtons}
       // Keep the camera above the horizon so you always look down onto the map.
       minPolarAngle={0}
       maxPolarAngle={Math.PI / 2.2}

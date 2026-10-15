@@ -21,7 +21,7 @@ import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 
 /** Pan speed in world units per second (at 60fps baseline). */
-const PAN_SPEED = 40;
+const PAN_SPEED = 70;
 
 export function CameraRig() {
   const controlsRef = useRef<MapControlsImpl | null>(null);
@@ -119,7 +119,7 @@ export function CameraRig() {
       minPolarAngle={0}
       maxPolarAngle={Math.PI / 2.2}
       minDistance={5}
-      maxDistance={120}
+      maxDistance={260}
       // Pan in the screen plane feels more natural for a top-down builder.
       screenSpacePanning={false}
     />

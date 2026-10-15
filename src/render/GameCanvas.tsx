@@ -111,7 +111,7 @@ export function GameCanvas() {
   return (
     <Canvas
       shadows
-      camera={{ position: [40, 40, 40], fov: 50, near: 0.1, far: 1000 }}
+      camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}
     >
       <color attach="background" args={['#adc8e6']} />

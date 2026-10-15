@@ -80,9 +80,13 @@ A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.
 
 ### Terep
 
-A 21×21-es rács procedurálisan generált: középen 5×5-ös városközpont, körülötte
-víz, erdő és **lankás dombok** (összefüggő, hézagmentes low-poly rámpa-felszín).
-Dombra épített út felveszi a domb magasságát.
+A **61×61-es** rács procedurálisan generált (nagy játéktér): a pontos közepén
+5×5-ös városközpont, körülötte **ritkásan elszórt dombcsoportok** és sok
+egybefüggő, sík, beépíthető fűterület, valamint víz és erdő. A dombok
+**lépcsőzetes szinteken** emelkednek (szintenként `HILL_STEP = 0.45` egység,
+a korábbi lépcső fele), egy összefüggő, hézagmentes low-poly rámpa-felszínen —
+egy 2-es szintű magaslat éri el a korábbi 1-es szint magasságát. Dombra épített
+út felveszi a domb magasságát.
 
 Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
 (LumberMill) erdővel szomszédos üres cellára, és 2–3 **bánya** (Mine) dombbal

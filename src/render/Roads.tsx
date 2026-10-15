@@ -67,11 +67,15 @@ function FlatRoads({
     if (!mesh) return;
     const dummy = new THREE.Object3D();
     const thickness = ROAD_STYLE.scaleY * cellSize;
+    // Rest the road ON TOP of the grass tile (grass top = FLAT_TOP*cellSize),
+    // plus a small lift. Previously the road sat near y=0 and was buried in /
+    // coplanar with the grass tile, so it was invisible or z-fought.
+    const grassTop = FLAT_TOP * cellSize;
     for (let i = 0; i < coords.length; i++) {
       const [x, z] = coords[i];
       dummy.position.set(
         (x - half) * cellSize,
-        thickness / 2 + ROAD_STYLE.offsetY * cellSize,
+        grassTop + thickness / 2 + SURFACE_LIFT * cellSize,
         (z - half) * cellSize,
       );
       dummy.scale.set(cellSize, thickness, cellSize);
@@ -93,7 +97,16 @@ function FlatRoads({
       receiveShadow
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color={ROAD_STYLE.color} roughness={0.8} />
+      {/* polygonOffset pulls the road's polygons toward the camera in the depth
+          buffer so they always win over the coplanar grass tile — a robust
+          z-fighting fix on top of the small Y lift. */}
+      <meshStandardMaterial
+        color={ROAD_STYLE.color}
+        roughness={0.8}
+        polygonOffset
+        polygonOffsetFactor={-1}
+        polygonOffsetUnits={-1}
+      />
     </instancedMesh>
   );
 }

@@ -30,6 +30,11 @@ const ICON: Partial<Record<CellType, string>> = {
   [CellType.Factory]: '⚙️',
 };
 
+/** Extra CSS size modifier per type (factories get a larger badge). */
+const SIZE_CLASS: Partial<Record<CellType, string>> = {
+  [CellType.Factory]: 'bicon--lg',
+};
+
 export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
   const half = (map.size - 1) / 2;
 
@@ -60,7 +65,7 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
           // always see them.
           occlude={false}
         >
-          <div className="bicon">
+          <div className={`bicon${SIZE_CLASS[type] ? ` ${SIZE_CLASS[type]}` : ''}`}>
             <span className="bicon__glyph" role="img" aria-label={type}>
               {ICON[type]}
             </span>

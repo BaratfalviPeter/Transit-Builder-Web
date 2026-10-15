@@ -51,13 +51,92 @@ export function isFlatGround(cell: CellType): boolean {
 }
 
 /**
- * Whether a road may be built on the cell currently of type `cell`.
- * Roads can be placed on Empty ground or on top of a Hill (where the road
- * takes the hill's elevation). Not on Water, Forest, CityCenter, auto-spawned
- * industry (LumberMill/Mine), or an existing Road.
+ * Whether a road may be built on the cell currently of type `cell` (type-level
+ * check only). Roads can go on Empty ground or on a Hill; the Hill case is
+ * further constrained to buildable slopes by `canBuildRoadAt` below. Not on
+ * Water, Forest, CityCenter, industry, or an existing Road.
  */
 export function canBuildRoad(cell: CellType): boolean {
   return cell === CellType.Empty || cell === CellType.Hill;
+}
+
+/**
+ * Slope classification of a cell, derived from its four corner heights.
+ * (OpenTTD-style.)
+ *   - 'flat'    : all four corners equal — flat ground or a flat hilltop.
+ *   - 'slopeX'  : a clean, uni-directional ramp along the X axis (E–W).
+ *   - 'slopeZ'  : a clean, uni-directional ramp along the Z axis (N–S).
+ *   - 'invalid' : a corner piece, a peak, or any multi-directional break.
+ */
+export type SlopeKind = 'flat' | 'slopeX' | 'slopeZ' | 'invalid';
+
+/** Cell height (in cellSize units), 0 outside the grid. */
+function cellHeightAt(map: TerrainMap, x: number, z: number): number {
+  if (x < 0 || z < 0 || x >= map.size || z >= map.size) return 0;
+  return map.heights[x][z];
+}
+
+/**
+ * The four corner heights of cell (x, z), using the corner-max heightmap the
+ * renderer uses: a corner's height is the max of the up-to-4 cells touching it.
+ * Returned as [h00, h10, h11, h01] for corners (x,z),(x+1,z),(x+1,z+1),(x,z+1).
+ */
+export function cellCornerHeights(
+  map: TerrainMap,
+  x: number,
+  z: number,
+): [number, number, number, number] {
+  const corner = (cx: number, cz: number): number =>
+    Math.max(
+      cellHeightAt(map, cx - 1, cz - 1),
+      cellHeightAt(map, cx, cz - 1),
+      cellHeightAt(map, cx - 1, cz),
+      cellHeightAt(map, cx, cz),
+    );
+  return [
+    corner(x, z),
+    corner(x + 1, z),
+    corner(x + 1, z + 1),
+    corner(x, z + 1),
+  ];
+}
+
+/**
+ * Classify a cell's slope from its corner heights.
+ * Corners: h00=(x,z), h10=(x+1,z), h11=(x+1,z+1), h01=(x,z+1).
+ * X axis runs between x and x+1; Z axis between z and z+1.
+ */
+export function getSlopeKind(map: TerrainMap, x: number, z: number): SlopeKind {
+  const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
+
+  if (h00 === h10 && h10 === h11 && h11 === h01) return 'flat';
+
+  // slopeX: constant along Z, i.e. the two corners at each X match
+  // (low edge x, high edge x+1 or vice versa). => h00==h01 and h10==h11.
+  if (h00 === h01 && h10 === h11 && h00 !== h10) return 'slopeX';
+
+  // slopeZ: constant along X, i.e. the two corners at each Z match.
+  // => h00==h10 and h01==h11.
+  if (h00 === h10 && h01 === h11 && h00 !== h01) return 'slopeZ';
+
+  // Anything else is a corner / peak / multi-break => not buildable.
+  return 'invalid';
+}
+
+/**
+ * Full road-build rule at a specific cell: the type must allow a road, and if
+ * it's a Hill the slope must be flat or a single straight ramp (not a corner
+ * or peak). Flat ground (height 0) is always allowed.
+ */
+export function canBuildRoadAt(map: TerrainMap, x: number, z: number): boolean {
+  if (x < 0 || z < 0 || x >= map.size || z >= map.size) return false;
+  if (!canBuildRoad(map.cells[x][z])) return false;
+  // Slope rule is driven by the cell's corner heights (which reflect the
+  // surrounding terrain), not the cell's nominal center height — so a cell at
+  // the foot of a corner ramp is still rejected. Flat, slopeX and slopeZ are
+  // buildable; corners / peaks / multi-breaks are not.
+  const kind = getSlopeKind(map, x, z);
+  return kind === 'flat' || kind === 'slopeX' || kind === 'slopeZ';
 }
 
 /**

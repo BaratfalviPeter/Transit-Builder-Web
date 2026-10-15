@@ -1,87 +1,129 @@
 /**
- * MineModel — a detailed, animated low-poly open-pit mine on a 3×3-cell lot.
+ * MineModel — a modernised 1970s open-pit mine on a 3×3-cell lot, styled to
+ * match PowerPlantModel (concrete, slate-blue steel halls, rust/blue/grey
+ * pipes, yellow safety rails).
  *
- * Built in CELL UNITS like PowerPlantModel: the base is exactly [3, 0.1, 3]
- * centered on the origin, resting on Y=0; the caller scales by `cellSize`.
+ * Built in CELL UNITS: the base slab is exactly [3, 0.1, 3] centered on the
+ * origin, resting on Y=0; the caller scales the group by `cellSize`.
  *
- * Contents:
- *   - gravel slab with a curb,
- *   - an open pit (stepped lathe terraces) with ladders, an ore floor and a
- *     small excavator digging,
- *   - an inclined conveyor on wooden trestles from the pit to a rusty crusher
- *     with big gears,
- *   - an output belt up to a loading bunker over a rail track with ore carts,
- *   - a shaft headframe with a spinning sheave, a hoist cage and a winch house,
- *   - a site office shed and a flood-light pole (one pointLight, no shadows).
+ * Because the model sits ON the terrain (nothing can go below Y=0), the yard is
+ * a raised concrete deck (top at DECK) walled by segmented concrete blocks, and
+ * the quarry pit is cut into that deck as stepped terraces down to the slab.
  *
- * Animations (useFrame): ore chunks on both belts, crusher gears spinning and
- * the hopper shaking, dust puffs, excavator arm digging, ore train shuttling,
- * hoist cage going up/down with the sheave + winch drum turning in sync.
- * `phase` desyncs multiple mines.
+ * Layout (−Z = back, +Z = front):
+ *   - front/centre: stepped quarry pit, dark tunnel portal + warm lamp at the
+ *     bottom, yellow railings around the rim;
+ *   - back-left: slate-blue processing hall with glowing windows, rust sliding
+ *     door, roof vents/stacks, two steel silos beside it;
+ *   - back-middle: a steel headframe with a spinning sheave;
+ *   - back-right: heavy crusher with a pounding hammer, two counter-rotating
+ *     gears and a smoking chimney;
+ *   - rust/blue/grey pipes between hall and crusher; a cart track across the
+ *     yard with two shuttling ore carts;
+ *   - two steel conveyors climbing from the pit floor to the hall and crusher.
+ *
+ * Animations (useFrame): hammer lift-and-slam, gears, stones on both belts
+ * (loop bottom→top), crusher smoke, sheave, ore carts. `phase` desyncs
+ * multiple mines.
  */
 
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { BOX, Box, Steam } from './PowerPlantModel';
+import { BOX, Box, Elbow, Pipe, Steam } from './PowerPlantModel';
 
 type V3 = [number, number, number];
 
 export interface MineModelProps {
+  /** World position of the lot center (the model rests on this Y). */
   position?: V3;
+  /** World units per cell — the model is built in cell units. */
   scale?: number;
+  /** Rotation around Y (radians), e.g. a multiple of π/2. */
   rotationY?: number;
+  /** Animation time offset (seconds). */
   phase?: number;
 }
+
+// --- Shared materials (same palette as the power plant) ---------------------
 
 const std = (
   color: string,
   extra: Partial<THREE.MeshStandardMaterialParameters> = {},
-) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
+) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra });
 
 const M = {
-  gravel: std('#a3977f', { roughness: 1 }),
-  curb: std('#857a66'),
-  dirt: std('#9c7650', { roughness: 1, flatShading: true, side: THREE.DoubleSide }),
-  oreFloor: std('#5d4a3a', { roughness: 1 }),
-  ore: std('#8c5a3c', { roughness: 1, flatShading: true }),
-  rock: std('#6f6a64', { roughness: 1, flatShading: true }),
-  wood: std('#7a5530'),
-  woodDark: std('#5a3d22'),
-  rust: std('#8f4a2f', { roughness: 0.7, metalness: 0.3 }),
-  rustDark: std('#6a3420', { roughness: 0.7, metalness: 0.3 }),
-  steel: std('#7d828b', { roughness: 0.5, metalness: 0.5 }),
-  dark: std('#2c2f35', { roughness: 0.7 }),
-  belt: std('#3b3e44'),
-  yellow: std('#e8b82e', { roughness: 0.5 }),
-  shed: std('#6d7f8c'),
-  roof: std('#4a4f57'),
+  slab: std('#b9b2a3', { roughness: 0.95 }),
+  deck: std('#cfc6b4', { roughness: 0.95 }),
+  block: std('#d9d6cf', { roughness: 0.95 }),
+  blockAlt: std('#c3bfb6', { roughness: 0.95 }),
+  terraceA: std('#4b4d52', { roughness: 1, flatShading: true }),
+  terraceB: std('#6b6259', { roughness: 1, flatShading: true }),
+  pitFloor: std('#3a3734', { roughness: 1 }),
+  hall: std('#4a5262'),
+  hallDark: std('#363c48'),
+  roof: std('#3d4452'),
+  window: new THREE.MeshBasicMaterial({ color: '#ffd36b', toneMapped: false }),
+  lampGlow: new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
+  tunnel: new THREE.MeshBasicMaterial({ color: '#120d08' }),
   door: std('#8a3f26'),
-  window: std('#ffd36b', { emissive: '#ffb84a', emissiveIntensity: 0.9, roughness: 0.4 }),
-  lamp: new THREE.MeshBasicMaterial({ color: '#fff1b8', toneMapped: false }),
-  cable: std('#1d1f23'),
+  rust: std('#8f4a2f', { roughness: 0.6, metalness: 0.2 }),
+  rustDark: std('#6a3420', { roughness: 0.7, metalness: 0.3 }),
+  pipeGrey: std('#9aa0a7', { roughness: 0.5, metalness: 0.35 }),
+  pipeBlue: std('#4f7fae', { roughness: 0.5, metalness: 0.2 }),
+  steel: std('#7d828b', { roughness: 0.5, metalness: 0.5 }),
+  steelBlue: std('#566273', { roughness: 0.6, metalness: 0.4 }),
+  gear: std('#8b9097', { roughness: 0.45, metalness: 0.6 }),
+  frame: std('#2f333a', { roughness: 0.6, metalness: 0.4 }),
+  belt: std('#2a2c30'),
+  black: std('#1f2227', { roughness: 0.7 }),
+  yellow: std('#e8c13a', { roughness: 0.5 }),
+  wood: std('#6e4a2a'),
+  stone: std('#8a8a88', { roughness: 1, flatShading: true }),
+  ore: std('#6d6a66', { roughness: 1, flatShading: true }),
 };
 
-/** Pit center (x, z) and outer radius, in lot units. */
-const PIT: V3 = [-0.52, 0.1, 0.5];
-const PIT_R = 0.88;
+const STONE_GEOM = new THREE.IcosahedronGeometry(1, 0);
 
-/** Lathe profile (radius, height above the slab) — a stepped crater. */
-const PIT_PROFILE = [
-  [0.88, 0],
-  [0.8, 0.3],
-  [0.72, 0.3],
-  [0.72, 0.2],
-  [0.58, 0.2],
-  [0.58, 0.1],
-  [0.44, 0.1],
-  [0.44, 0.01],
-  [0.0, 0.01],
-].map(([r, y]) => new THREE.Vector2(r, y));
-const PIT_GEOM = new THREE.LatheGeometry(PIT_PROFILE, 14);
+// --- Layout constants (lot units) ------------------------------------------------
+
+/** Slab top / pit floor height. */
+const FLOOR = 0.1;
+/** Top of the raised concrete deck. */
+const DECK = 0.45;
+/** Inner edge of the perimeter block wall. */
+const WALL_IN = 1.4;
+
+/** Pit: centre and half-extents of the opening in the deck. */
+const PIT_CX = 0;
+const PIT_CZ = 0.55;
+const PIT_HX = 0.85;
+const PIT_HZ = 0.7;
+/** Terrace count, inset per step and drop per step. */
+const STEPS = 3;
+const STEP_IN = 0.14;
+const STEP_H = (DECK - FLOOR) / (STEPS + 1);
+
+/** Ground height (top surface) at a lot point — used for trestle feet. */
+function groundY(x: number, z: number): number {
+  const dx = PIT_HX - Math.abs(x - PIT_CX);
+  const dz = PIT_HZ - Math.abs(z - PIT_CZ);
+  if (dx <= 0 || dz <= 0) return DECK;
+  const k = Math.floor(Math.min(dx, dz) / STEP_IN);
+  return k >= STEPS ? FLOOR : DECK - (k + 1) * STEP_H;
+}
+
+/** Processing hall (back-left). */
+const HALL = { x: -0.85, z: -1.0, w: 1.0, d: 0.75, h: 0.7 };
+/** Crusher body (back-right), centre + size. */
+const CR = { x: 0.95, z: -0.95, w: 0.6, d: 0.5, h: 0.45 };
+/** Cart track depth. */
+const TRACK_Z = -0.4;
+
+// --- Helpers ----------------------------------------------------------------------------
 
 /** A thin rod between two arbitrary points (shared unit box, oriented). */
-function Rod({ from, to, w = 0.012, m }: { from: V3; to: V3; w?: number; m: THREE.Material }) {
+function Rod({ from, to, w = 0.015, m }: { from: V3; to: V3; w?: number; m: THREE.Material }) {
   const { pos, quat, len } = useMemo(() => {
     const a = new THREE.Vector3(...from);
     const b = new THREE.Vector3(...to);
@@ -92,17 +134,32 @@ function Rod({ from, to, w = 0.012, m }: { from: V3; to: V3; w?: number; m: THRE
       d.normalize(),
     );
     return { pos: a.add(b).multiplyScalar(0.5), quat, len };
-  }, [from, to]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from[0], from[1], from[2], to[0], to[1], to[2]]);
   return (
-    <mesh
-      geometry={BOX}
-      material={m}
-      position={pos}
-      quaternion={quat}
-      scale={[w, len, w]}
-    />
+    <mesh geometry={BOX} material={m} position={pos} quaternion={quat} scale={[w, len, w]} castShadow />
   );
 }
+
+/** Yellow safety railing along a straight line on a surface at height y. */
+function Railing({ from, to, y }: { from: [number, number]; to: [number, number]; y: number }) {
+  const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const posts = Math.max(2, Math.round(len / 0.22) + 1);
+  return (
+    <group>
+      <Rod from={[from[0], y + 0.12, from[1]]} to={[to[0], y + 0.12, to[1]]} w={0.014} m={M.yellow} />
+      <Rod from={[from[0], y + 0.065, from[1]]} to={[to[0], y + 0.065, to[1]]} w={0.01} m={M.yellow} />
+      {Array.from({ length: posts }).map((_, i) => {
+        const f = i / (posts - 1);
+        const x = from[0] + (to[0] - from[0]) * f;
+        const z = from[1] + (to[1] - from[1]) * f;
+        return <Box key={i} p={[x, y + 0.06, z]} s={[0.014, 0.12, 0.014]} m={M.yellow} />;
+      })}
+    </group>
+  );
+}
+
+// --- Model ----------------------------------------------------------------------------------
 
 export function MineModel({
   position = [0, 0, 0],
@@ -112,230 +169,346 @@ export function MineModel({
 }: MineModelProps) {
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
-      <Base />
-      <Pit phase={phase} />
-      <MainConveyor phase={phase} />
-      <Crusher phase={phase} />
-      <OutputLine phase={phase} />
-      <OreTrain phase={phase} />
+      <BaseAndDeck />
+      <QuarryPit />
+      <ProcessingHall />
+      <Silos />
       <Headframe phase={phase} />
-      <Office />
-      <FloodLight />
-      {/* Dust from the crusher hopper + a faint haze over the pit */}
-      <Steam origin={[0.72, 0.85, 0.35]} count={4} rise={0.6} spread={0.18} size={0.07} color="#b7a58c" phase={phase} />
-      <Steam origin={[PIT[0] - 0.1, 0.15, PIT[2] + 0.05]} count={3} rise={0.4} spread={0.15} size={0.06} color="#a8957a" phase={phase + 1.3} />
+      <Crusher phase={phase} />
+      <Piping />
+      <CartTrack phase={phase} />
+      {/* Conveyors: pit floor → hall front, pit floor → crusher front */}
+      <Conveyor
+        a={[-0.18, FLOOR + 0.04, 0.48]}
+        b={[-0.62, DECK + 0.5, HALL.z + HALL.d / 2 + 0.02]}
+        legs={[0.3, 0.66]}
+        stones={8}
+        speed={0.13}
+        phase={phase}
+      />
+      <Conveyor
+        a={[0.18, FLOOR + 0.04, 0.48]}
+        b={[0.82, DECK + 0.42, CR.z + CR.d / 2 + 0.02]}
+        legs={[0.3, 0.66]}
+        stones={8}
+        speed={0.15}
+        phase={phase + 0.9}
+      />
+      {/* Warm work-area light between the hall and the crusher */}
+      <pointLight position={[0.1, DECK + 0.6, -0.45]} color="#ffaa00" intensity={2} distance={5} decay={1} />
+      {/* Crusher chimney smoke */}
+      <Steam origin={[1.15, DECK + 1.12, -1.1]} count={5} rise={0.9} spread={0.18} size={0.07} color="#7d8087" phase={phase} />
     </group>
   );
 }
 
-// --- Base ---------------------------------------------------------------------
+// --- 1. Base, deck + perimeter --------------------------------------------------------------
 
-function Base() {
+function BaseAndDeck() {
+  const deckH = DECK - FLOOR;
+  const deckY = FLOOR + deckH / 2;
+  const x0 = PIT_CX - PIT_HX;
+  const x1 = PIT_CX + PIT_HX;
+  const z0 = PIT_CZ - PIT_HZ;
+  const z1 = PIT_CZ + PIT_HZ;
+
+  // Segmented concrete blocks around the outer edge (the deck's side wall).
+  const blocks = useMemo(() => {
+    const out: Array<{ p: V3; s: V3; alt: boolean }> = [];
+    const n = 10;
+    const seg = 3 / n;
+    const h = DECK - FLOOR + 0.05;
+    for (let i = 0; i < n; i++) {
+      const c = -1.5 + seg * (i + 0.5);
+      const alt = i % 2 === 1;
+      out.push({ p: [c, FLOOR + h / 2, 1.45], s: [seg - 0.015, h, 0.1], alt });
+      out.push({ p: [c, FLOOR + h / 2, -1.45], s: [seg - 0.015, h, 0.1], alt: !alt });
+    }
+    // Side walls fill between the front and back rows (z −1.4..1.4).
+    const ns = 9;
+    const sseg = (WALL_IN * 2) / ns;
+    for (let i = 0; i < ns; i++) {
+      const c = -WALL_IN + sseg * (i + 0.5);
+      const alt = i % 2 === 0;
+      out.push({ p: [1.45, FLOOR + h / 2, c], s: [0.1, h, sseg - 0.015], alt });
+      out.push({ p: [-1.45, FLOOR + h / 2, c], s: [0.1, h, sseg - 0.015], alt: !alt });
+    }
+    return out;
+  }, []);
+
   return (
     <group>
-      <Box p={[0, 0.05, 0]} s={[3, 0.1, 3]} m={M.gravel} />
-      <Box p={[0, 0.13, -1.47]} s={[3, 0.06, 0.06]} m={M.curb} />
-      <Box p={[0, 0.13, 1.47]} s={[3, 0.06, 0.06]} m={M.curb} />
-      <Box p={[-1.47, 0.13, 0]} s={[0.06, 0.06, 2.88]} m={M.curb} />
-      <Box p={[1.47, 0.13, 0]} s={[0.06, 0.06, 2.88]} m={M.curb} />
-      {/* Rock heaps on the free corner */}
-      <mesh material={M.rock} position={[1.15, 0.2, 1.15]} castShadow>
-        <coneGeometry args={[0.22, 0.2, 6]} />
+      {/* The 3×3 slab: exactly [3, 0.1, 3], bottom on Y=0. */}
+      <Box p={[0, 0.05, 0]} s={[3, 0.1, 3]} m={M.slab} />
+      {/* Deck pieces around the pit opening */}
+      <Box p={[0, deckY, (-WALL_IN + z0) / 2]} s={[WALL_IN * 2, deckH, z0 + WALL_IN]} m={M.deck} cast />
+      <Box p={[0, deckY, (z1 + WALL_IN) / 2]} s={[WALL_IN * 2, deckH, WALL_IN - z1]} m={M.deck} cast />
+      <Box p={[(-WALL_IN + x0) / 2, deckY, PIT_CZ]} s={[x0 + WALL_IN, deckH, z1 - z0]} m={M.deck} cast />
+      <Box p={[(x1 + WALL_IN) / 2, deckY, PIT_CZ]} s={[WALL_IN - x1, deckH, z1 - z0]} m={M.deck} cast />
+      {blocks.map((b, i) => (
+        <Box key={i} p={b.p} s={b.s} m={b.alt ? M.blockAlt : M.block} cast />
+      ))}
+      {/* Rock + ore heaps on the free front corners */}
+      <mesh material={M.ore} position={[1.13, DECK + 0.09, 1.0]} castShadow>
+        <coneGeometry args={[0.18, 0.18, 6]} />
       </mesh>
-      <mesh material={M.ore} position={[0.85, 0.17, 1.25]} castShadow>
-        <coneGeometry args={[0.15, 0.14, 6]} />
+      <mesh material={M.stone} position={[1.05, DECK + 0.06, 0.62]} castShadow>
+        <coneGeometry args={[0.12, 0.12, 5]} />
       </mesh>
+      <mesh material={M.ore} position={[-1.12, DECK + 0.07, 1.05]} castShadow>
+        <coneGeometry args={[0.14, 0.14, 6]} />
+      </mesh>
+      {/* Front railing on top of the block wall */}
+      <Railing from={[-1.38, 1.45]} to={[1.38, 1.45]} y={DECK + 0.05} />
     </group>
   );
 }
 
-// --- Open pit -------------------------------------------------------------------
+// --- 2. Stepped quarry pit -------------------------------------------------------------------------
 
-function Ladder({ angle, r, y0, h }: { angle: number; r: number; y0: number; h: number }) {
-  const rungs = Math.max(2, Math.round(h / 0.035));
+function QuarryPit() {
+  // Ring k: band between the opening inset k*STEP_IN and (k+1)*STEP_IN, its top
+  // dropping one STEP_H per ring.
+  const rings = useMemo(() => {
+    const out: Array<{ p: V3; s: V3; m: THREE.Material }> = [];
+    for (let k = 0; k < STEPS; k++) {
+      const top = DECK - (k + 1) * STEP_H;
+      const h = top - FLOOR;
+      const y = FLOOR + h / 2;
+      const ox = PIT_HX - k * STEP_IN;
+      const oz = PIT_HZ - k * STEP_IN;
+      const ix = ox - STEP_IN;
+      const iz = oz - STEP_IN;
+      const m = k % 2 === 0 ? M.terraceA : M.terraceB;
+      // back + front bands (full outer width), left + right bands (inner depth)
+      out.push({ p: [PIT_CX, y, PIT_CZ - (oz + iz) / 2], s: [ox * 2, h, STEP_IN], m });
+      out.push({ p: [PIT_CX, y, PIT_CZ + (oz + iz) / 2], s: [ox * 2, h, STEP_IN], m });
+      out.push({ p: [PIT_CX - (ox + ix) / 2, y, PIT_CZ], s: [STEP_IN, h, iz * 2], m });
+      out.push({ p: [PIT_CX + (ox + ix) / 2, y, PIT_CZ], s: [STEP_IN, h, iz * 2], m });
+    }
+    return out;
+  }, []);
+
+  // A few loose boulders on the terraces.
+  const boulders: Array<[number, number, number]> = [
+    [-0.62, 0.62, 0.05],
+    [0.6, 0.85, 0.04],
+    [-0.3, 1.0, 0.035],
+    [0.42, 0.18, 0.04],
+  ];
+
+  const floorX = PIT_HX - STEPS * STEP_IN;
+  const floorZ = PIT_HZ - STEPS * STEP_IN;
+  const backFace = PIT_CZ - floorZ; // z of the innermost back wall face
+  const portalH = 0.2;
+
   return (
-    <group
-      position={[PIT[0] + Math.cos(angle) * r, PIT[1] + y0, PIT[2] + Math.sin(angle) * r]}
-      rotation={[0, -angle + Math.PI / 2, 0]}
-    >
-      <Box p={[-0.025, h / 2, 0]} s={[0.008, h + 0.03, 0.008]} m={M.woodDark} />
-      <Box p={[0.025, h / 2, 0]} s={[0.008, h + 0.03, 0.008]} m={M.woodDark} />
-      {Array.from({ length: rungs }).map((_, i) => (
-        <Box key={i} p={[0, ((i + 0.5) * h) / rungs, 0]} s={[0.05, 0.006, 0.006]} m={M.wood} />
+    <group>
+      {rings.map((r, i) => (
+        <Box key={i} p={r.p} s={r.s} m={r.m} cast />
+      ))}
+      {/* Dark pit floor */}
+      <Box p={[PIT_CX, FLOOR + 0.004, PIT_CZ]} s={[floorX * 2, 0.008, floorZ * 2]} m={M.pitFloor} />
+      {boulders.map(([x, z, r]) => (
+        <mesh
+          key={`${x}${z}`}
+          geometry={STONE_GEOM}
+          material={M.stone}
+          position={[x, groundY(x, z) + r * 0.6, z]}
+          scale={r}
+          rotation={[x * 3, z * 5, 0]}
+          castShadow
+        />
+      ))}
+
+      {/* Tunnel portal in the back wall of the pit floor */}
+      <group position={[PIT_CX, FLOOR, backFace]}>
+        {/* Rock headwall the portal is cut into */}
+        <Box p={[0, 0.15, -0.07]} s={[0.36, 0.3, 0.14]} m={M.terraceB} cast />
+        {/* Dark opening + timber frame */}
+        <Box p={[0, portalH / 2, 0.003]} s={[0.16, portalH, 0.006]} m={M.tunnel} />
+        <Box p={[-0.095, portalH / 2, 0.005]} s={[0.03, portalH + 0.02, 0.03]} m={M.wood} cast />
+        <Box p={[0.095, portalH / 2, 0.005]} s={[0.03, portalH + 0.02, 0.03]} m={M.wood} cast />
+        <Box p={[0, portalH + 0.02, 0.005]} s={[0.24, 0.035, 0.04]} m={M.wood} cast />
+        {/* Glow inside + lamp above the portal */}
+        <Box p={[0, 0.05, 0.007]} s={[0.1, 0.06, 0.004]} m={M.lampGlow} />
+        <mesh material={M.lampGlow} position={[0, portalH + 0.06, 0.03]}>
+          <sphereGeometry args={[0.022, 8, 6]} />
+        </mesh>
+        <pointLight position={[0, portalH * 0.7, 0.12]} color="#ffb347" intensity={1.2} distance={2} decay={1} />
+        {/* Mine-cart rails out of the tunnel */}
+        <Box p={[-0.035, 0.012, 0.12]} s={[0.01, 0.01, 0.24]} m={M.steel} />
+        <Box p={[0.035, 0.012, 0.12]} s={[0.01, 0.01, 0.24]} m={M.steel} />
+      </group>
+
+      {/* Yellow safety railings around the pit rim (on the deck) */}
+      <Railing from={[PIT_CX - PIT_HX - 0.04, PIT_CZ - PIT_HZ - 0.04]} to={[PIT_CX + PIT_HX + 0.04, PIT_CZ - PIT_HZ - 0.04]} y={DECK} />
+      <Railing from={[PIT_CX - PIT_HX - 0.04, PIT_CZ + PIT_HZ + 0.04]} to={[PIT_CX + PIT_HX + 0.04, PIT_CZ + PIT_HZ + 0.04]} y={DECK} />
+      <Railing from={[PIT_CX - PIT_HX - 0.04, PIT_CZ - PIT_HZ - 0.04]} to={[PIT_CX - PIT_HX - 0.04, PIT_CZ + PIT_HZ + 0.04]} y={DECK} />
+      <Railing from={[PIT_CX + PIT_HX + 0.04, PIT_CZ - PIT_HZ - 0.04]} to={[PIT_CX + PIT_HX + 0.04, PIT_CZ + PIT_HZ + 0.04]} y={DECK} />
+    </group>
+  );
+}
+
+// --- 3. Processing hall + silos -----------------------------------------------------------------------
+
+function ProcessingHall() {
+  const { w: W, d: D, h: H } = HALL;
+  const front = D / 2 + 0.011;
+  const side = W / 2 + 0.011;
+  return (
+    <group position={[HALL.x, DECK, HALL.z]}>
+      <Box p={[0, H / 2, 0]} s={[W, H, D]} m={M.hall} cast />
+      {/* Mansard roof: flat top + sloped front/back panels */}
+      <Box p={[0, H + 0.1, 0]} s={[W - 0.02, 0.04, D - 0.3]} m={M.roof} cast />
+      <group position={[0, H + 0.04, D / 2 - 0.08]} rotation={[0.9, 0, 0]}>
+        <Box p={[0, 0, 0]} s={[W, 0.03, 0.2]} m={M.roof} cast />
+      </group>
+      <group position={[0, H + 0.04, -D / 2 + 0.08]} rotation={[-0.9, 0, 0]}>
+        <Box p={[0, 0, 0]} s={[W, 0.03, 0.2]} m={M.roof} cast />
+      </group>
+      <Box p={[-W / 2 + 0.01, H + 0.06, 0]} s={[0.02, 0.12, D - 0.04]} m={M.hallDark} />
+      <Box p={[W / 2 - 0.01, H + 0.06, 0]} s={[0.02, 0.12, D - 0.04]} m={M.hallDark} />
+      {/* Steel pilasters on the front + side */}
+      {[-0.48, -0.24, 0, 0.24, 0.48].map((px) => (
+        <Box key={`f${px}`} p={[px, H / 2, D / 2 + 0.01]} s={[0.035, H, 0.02]} m={M.hallDark} />
+      ))}
+      {[-0.3, 0, 0.3].map((pz) => (
+        <Box key={`s${pz}`} p={[-W / 2 - 0.01, H / 2, pz]} s={[0.02, H, 0.035]} m={M.hallDark} />
+      ))}
+      {/* Glowing square windows: upper row across the front, lower on the left */}
+      {[-0.36, -0.12, 0.12, 0.36].map((px) => (
+        <Box key={`u${px}`} p={[px, 0.52, front]} s={[0.09, 0.09, 0.02]} m={M.window} />
+      ))}
+      {[-0.36, -0.12].map((px) => (
+        <Box key={`l${px}`} p={[px, 0.28, front]} s={[0.09, 0.09, 0.02]} m={M.window} />
+      ))}
+      {[-0.2, 0.2].flatMap((pz) =>
+        [0.3, 0.52].map((py) => (
+          <Box key={`sw${pz}${py}`} p={[-side, py, pz]} s={[0.02, 0.09, 0.09]} m={M.window} />
+        )),
+      )}
+      {/* Rust sliding door + its rail */}
+      <Box p={[0.3, 0.19, front]} s={[0.24, 0.38, 0.02]} m={M.door} />
+      {[0.22, 0.3, 0.38].map((px) => (
+        <Box key={`dr${px}`} p={[px, 0.19, front + 0.008]} s={[0.008, 0.36, 0.01]} m={M.rustDark} />
+      ))}
+      <Box p={[0.3, 0.4, front + 0.01]} s={[0.4, 0.02, 0.02]} m={M.frame} />
+      {/* Roof vent box + two small stacks + a rust pipe loop */}
+      <Box p={[-0.15, H + 0.16, 0]} s={[0.2, 0.08, 0.14]} m={M.steel} cast />
+      {[-0.2, -0.13, -0.06].map((px) => (
+        <Box key={`v${px}`} p={[px, H + 0.205, 0]} s={[0.04, 0.01, 0.12]} m={M.frame} />
+      ))}
+      {[-0.4, -0.32].map((px) => (
+        <mesh key={`st${px}`} material={M.steel} position={[px, H + 0.22, -0.05]} castShadow>
+          <cylinderGeometry args={[0.025, 0.028, 0.2, 10]} />
+        </mesh>
+      ))}
+      <Pipe from={[0.1, H + 0.2, 0.05]} to={[0.4, H + 0.2, 0.05]} r={0.025} m={M.rust} />
+      <Pipe from={[0.1, H + 0.12, 0.05]} to={[0.1, H + 0.2, 0.05]} r={0.025} m={M.rust} />
+      <Pipe from={[0.4, H + 0.12, 0.05]} to={[0.4, H + 0.2, 0.05]} r={0.025} m={M.rust} />
+      {/* Downpipe on the front-left corner */}
+      <Pipe from={[-W / 2 + 0.04, 0.02, D / 2 + 0.04]} to={[-W / 2 + 0.04, H, D / 2 + 0.04]} r={0.02} m={M.pipeGrey} />
+    </group>
+  );
+}
+
+function Silos() {
+  const tanks: Array<[number, number]> = [
+    [-0.15, -1.28],
+    [-0.15, -1.0],
+  ];
+  return (
+    <group>
+      {tanks.map(([x, z]) => (
+        <group key={z} position={[x, DECK, z]}>
+          {[
+            [-0.06, -0.06],
+            [0.06, -0.06],
+            [0.06, 0.06],
+            [-0.06, 0.06],
+          ].map(([lx, lz]) => (
+            <Box key={`${lx}${lz}`} p={[lx, 0.06, lz]} s={[0.018, 0.12, 0.018]} m={M.frame} />
+          ))}
+          <mesh material={M.steel} position={[0, 0.07, 0]} castShadow>
+            <coneGeometry args={[0.1, 0.06, 12]} />
+          </mesh>
+          <mesh material={M.steel} position={[0, 0.25, 0]} rotation={[Math.PI, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.1, 0.1, 0.26, 14]} />
+          </mesh>
+          <mesh material={M.frame} position={[0, 0.3, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.102, 0.008, 6, 18]} />
+          </mesh>
+          <mesh material={M.steel} position={[0, 0.41, 0]} castShadow>
+            <coneGeometry args={[0.1, 0.07, 12]} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
 }
 
-function Pit({ phase }: { phase: number }) {
-  const boom = useRef<THREE.Group>(null);
-  const stick = useRef<THREE.Group>(null);
-  const cab = useRef<THREE.Group>(null);
+// --- 4. Headframe ---------------------------------------------------------------------------------------
+
+const HF = { x: 0.25, z: -1.15, h: 0.95 };
+
+function Headframe({ phase }: { phase: number }) {
+  const sheave = useRef<THREE.Group>(null);
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
-    const dig = Math.sin(t * 1.3);
-    if (boom.current) boom.current.rotation.z = 0.5 + dig * 0.25;
-    if (stick.current) stick.current.rotation.z = -1.2 - dig * 0.35;
-    if (cab.current) cab.current.rotation.y = Math.sin(t * 0.35) * 0.6;
+    if (sheave.current) sheave.current.rotation.z = t * 1.5;
   });
-
+  const legs: Array<[number, number]> = [
+    [-0.13, -0.11],
+    [0.13, -0.11],
+    [0.13, 0.11],
+    [-0.13, 0.11],
+  ];
+  const k = 0.45; // top taper
   return (
-    <group>
-      <mesh geometry={PIT_GEOM} material={M.dirt} position={PIT} castShadow receiveShadow />
-      {/* Dark ore floor */}
-      <mesh material={M.oreFloor} position={[PIT[0], PIT[1] + 0.012, PIT[2]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[0.44, 14]} />
-      </mesh>
-      {/* Yellow safety rail along part of the rim */}
-      {Array.from({ length: 7 }).map((_, i) => {
-        const a = -2.6 + i * 0.32;
-        return (
-          <Box
-            key={i}
-            p={[PIT[0] + Math.cos(a) * 0.79, PIT[1] + 0.36, PIT[2] + Math.sin(a) * 0.79]}
-            s={[0.012, 0.1, 0.012]}
-            m={M.yellow}
-          />
-        );
-      })}
-      <Ladder angle={2.3} r={0.57} y0={0.1} h={0.1} />
-      <Ladder angle={-0.9} r={0.71} y0={0.2} h={0.1} />
-      <Ladder angle={1.2} r={0.43} y0={0.01} h={0.09} />
-
-      {/* Ore pile at the belt intake */}
-      <mesh material={M.ore} position={[PIT[0] + 0.1, PIT[1] + 0.06, PIT[2] - 0.14]} castShadow>
-        <coneGeometry args={[0.1, 0.1, 6]} />
-      </mesh>
-
-      {/* Little excavator digging */}
-      <group position={[PIT[0] - 0.18, PIT[1] + 0.012, PIT[2] + 0.1]}>
-        <Box p={[0, 0.02, 0]} s={[0.14, 0.035, 0.11]} m={M.dark} />
-        <group ref={cab}>
-          <Box p={[0, 0.06, 0]} s={[0.11, 0.045, 0.09]} m={M.yellow} cast />
-          <Box p={[-0.02, 0.1, 0.02]} s={[0.05, 0.045, 0.045]} m={M.yellow} />
-          <Box p={[-0.02, 0.1, 0.043]} s={[0.04, 0.03, 0.002]} m={M.window} />
-          <group ref={boom} position={[0.04, 0.08, -0.015]}>
-            <Box p={[0.06, 0, 0]} s={[0.12, 0.016, 0.016]} m={M.yellow} />
-            <group ref={stick} position={[0.12, 0, 0]}>
-              <Box p={[0.04, 0, 0]} s={[0.08, 0.013, 0.013]} m={M.yellow} />
-              <Box p={[0.085, -0.01, 0]} s={[0.025, 0.03, 0.035]} m={M.dark} />
-            </group>
+    <group position={[HF.x, DECK, HF.z]}>
+      <Box p={[0, 0.015, 0]} s={[0.32, 0.03, 0.28]} m={M.black} />
+      {legs.map(([lx, lz]) => (
+        <Rod key={`${lx}${lz}`} from={[lx, 0, lz]} to={[lx * k, HF.h, lz * k]} w={0.022} m={M.frame} />
+      ))}
+      {/* Lattice cross-bracing on front and back */}
+      {[0, 0.25, 0.5, 0.75].map((f) => {
+        const f2 = f + 0.25;
+        const s1 = 1 - (1 - k) * f;
+        const s2 = 1 - (1 - k) * f2;
+        return [-0.11, 0.11].map((lz) => (
+          <group key={`${f}${lz}`}>
+            <Rod from={[-0.13 * s1, HF.h * f, lz * s1]} to={[0.13 * s2, HF.h * f2, lz * s2]} w={0.01} m={M.frame} />
+            <Rod from={[0.13 * s1, HF.h * f, lz * s1]} to={[-0.13 * s2, HF.h * f2, lz * s2]} w={0.01} m={M.frame} />
           </group>
-        </group>
+        ));
+      })}
+      <Box p={[0, HF.h, 0]} s={[0.16, 0.025, 0.14]} m={M.steel} />
+      <group ref={sheave} position={[0, HF.h + 0.08, 0]}>
+        <mesh material={M.black}>
+          <torusGeometry args={[0.07, 0.01, 6, 18]} />
+        </mesh>
+        <Box p={[0, 0, 0]} s={[0.14, 0.01, 0.01]} m={M.black} />
+        <Box p={[0, 0, 0]} s={[0.01, 0.14, 0.01]} m={M.black} />
       </group>
+      {/* Cables down into the shaft */}
+      <Rod from={[-0.07, HF.h + 0.08, 0]} to={[-0.07, 0.03, 0]} w={0.005} m={M.black} />
+      <Rod from={[0.07, HF.h + 0.08, 0]} to={[0.07, 0.03, 0]} w={0.005} m={M.black} />
     </group>
   );
 }
 
-// --- Conveyors --------------------------------------------------------------------
+// --- 5. Crusher ------------------------------------------------------------------------------------------
 
-/** Inclined belt from `a` to `b` (along X or Z) with ore chunks moving a->b. */
-function Belt({
-  a,
-  b,
-  chunks,
-  speed,
-  phase,
-  legs,
-  legBase = 0.1,
-  m = M.wood,
-}: {
-  a: V3;
-  b: V3;
-  chunks: number;
-  speed: number;
-  phase: number;
-  /** Fractions 0..1 along the belt where a trestle stands. */
-  legs: number[];
-  legBase?: number;
-  m?: THREE.Material;
-}) {
-  const refs = useRef<Array<THREE.Mesh | null>>([]);
-  const geo = useMemo(() => {
-    const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-    const len = d.length();
-    const horiz = Math.hypot(d.x, d.z);
-    const yaw = Math.atan2(-d.z, d.x);
-    const pitch = Math.atan2(d.y, horiz);
-    const mid: V3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
-    return { len, yaw, pitch, mid };
-  }, [a, b]);
-
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime() + phase;
-    for (let i = 0; i < chunks; i++) {
-      const c = refs.current[i];
-      if (!c) continue;
-      const k = (t * speed + i / chunks) % 1;
-      c.position.x = -geo.len / 2 + k * geo.len;
-    }
-  });
-
+/** Flat toothed gear facing ±X (rotates around its local X axis). */
+function Gear({ r, teeth }: { r: number; teeth: number }) {
   return (
     <group>
-      <group position={geo.mid} rotation={[0, geo.yaw, 0]}>
-        <group rotation={[0, 0, geo.pitch]}>
-          <Box p={[0, 0, 0]} s={[geo.len, 0.02, 0.1]} m={M.belt} cast />
-          <Box p={[0, 0.015, 0.055]} s={[geo.len, 0.03, 0.012]} m={M.steel} />
-          <Box p={[0, 0.015, -0.055]} s={[geo.len, 0.03, 0.012]} m={M.steel} />
-          {Array.from({ length: chunks }).map((_, i) => (
-            <mesh
-              key={i}
-              ref={(el) => {
-                refs.current[i] = el;
-              }}
-              geometry={BOX}
-              material={M.ore}
-              position={[0, 0.03, i % 2 ? 0.015 : -0.015]}
-              scale={[0.04, 0.035, 0.04]}
-            />
-          ))}
-        </group>
-      </group>
-      {/* Wooden trestles (A-frames) */}
-      {legs.map((f) => {
-        const x = a[0] + (b[0] - a[0]) * f;
-        const y = a[1] + (b[1] - a[1]) * f - 0.02;
-        const z = a[2] + (b[2] - a[2]) * f;
-        const alongX = Math.abs(b[0] - a[0]) > Math.abs(b[2] - a[2]);
-        const off = 0.07;
-        const p1: V3 = alongX ? [x, legBase, z - off] : [x - off, legBase, z];
-        const p2: V3 = alongX ? [x, legBase, z + off] : [x + off, legBase, z];
-        const top: V3 = [x, y, z];
-        return (
-          <group key={f}>
-            <Rod from={p1} to={top} w={0.018} m={m} />
-            <Rod from={p2} to={top} w={0.018} m={m} />
-            <Rod
-              from={[(p1[0] + x) / 2, (legBase + y) / 2, (p1[2] + z) / 2]}
-              to={[(p2[0] + x) / 2, (legBase + y) / 2, (p2[2] + z) / 2]}
-              w={0.01}
-              m={m}
-            />
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-const MAIN_A: V3 = [-0.45, 0.16, 0.38];
-const MAIN_B: V3 = [0.62, 0.86, 0.38];
-
-function MainConveyor({ phase }: { phase: number }) {
-  return <Belt a={MAIN_A} b={MAIN_B} chunks={7} speed={0.16} phase={phase} legs={[0.45, 0.75]} />;
-}
-
-// --- Crusher ------------------------------------------------------------------------
-
-function Gear({ r, teeth, m }: { r: number; teeth: number; m: THREE.Material }) {
-  return (
-    <group>
-      <mesh material={m} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[r, r, 0.03, 16]} />
+      <mesh material={M.gear} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[r, r, 0.035, 18]} />
       </mesh>
-      <mesh material={M.dark} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[r * 0.3, r * 0.3, 0.045, 10]} />
+      <mesh material={M.frame} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[r * 0.28, r * 0.28, 0.05, 10]} />
       </mesh>
       {Array.from({ length: teeth }).map((_, i) => {
         const a = (i / teeth) * Math.PI * 2;
@@ -343,8 +516,8 @@ function Gear({ r, teeth, m }: { r: number; teeth: number; m: THREE.Material }) 
           <Box
             key={i}
             p={[0, Math.cos(a) * r, Math.sin(a) * r]}
-            s={[0.03, r * 0.35, r * 0.35]}
-            m={m}
+            s={[0.035, r * 0.3, r * 0.3]}
+            m={M.gear}
           />
         );
       })}
@@ -352,276 +525,276 @@ function Gear({ r, teeth, m }: { r: number; teeth: number; m: THREE.Material }) 
   );
 }
 
+const G1_R = 0.17;
+const G2_R = 0.11;
+
 function Crusher({ phase }: { phase: number }) {
+  const hammer = useRef<THREE.Group>(null);
   const g1 = useRef<THREE.Group>(null);
   const g2 = useRef<THREE.Group>(null);
-  const fly = useRef<THREE.Group>(null);
-  const hopper = useRef<THREE.Group>(null);
+  const HAM_LOW = CR.h + 0.06;
+  const HAM_HIGH = CR.h + 0.32;
+
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
-    if (g1.current) g1.current.rotation.x = t * 1.2;
-    if (g2.current) g2.current.rotation.x = -t * 1.2 * (0.13 / 0.08);
-    if (fly.current) fly.current.rotation.z = -t * 2.4;
-    if (hopper.current) {
-      hopper.current.position.x = Math.sin(t * 37) * 0.004;
-      hopper.current.position.z = Math.cos(t * 29) * 0.004;
+    // Hammer: slow lift (70% of the cycle), then a hard accelerating slam.
+    if (hammer.current) {
+      const u = (t / 0.9) % 1;
+      const y =
+        u < 0.7
+          ? HAM_LOW + (HAM_HIGH - HAM_LOW) * Math.sin(((u / 0.7) * Math.PI) / 2)
+          : HAM_HIGH - (HAM_HIGH - HAM_LOW) * ((u - 0.7) / 0.3) ** 2;
+      hammer.current.position.y = y;
     }
+    // Meshing gears: opposite directions, speed ∝ 1/radius.
+    if (g1.current) g1.current.rotation.x = t * 0.9;
+    if (g2.current) g2.current.rotation.x = -t * 0.9 * (G1_R / G2_R) + 0.15;
   });
 
-  // Body: x 0.525..1.075, z 0.1..0.6, top at y 0.6.
+  const { w: W, d: D, h: H } = CR;
+  const guide = 0.12;
   return (
-    <group position={[0.8, 0.1, 0.35]}>
-      <Box p={[0, 0.03, 0]} s={[0.62, 0.06, 0.56]} m={M.dark} />
-      <Box p={[0, 0.28, 0]} s={[0.55, 0.44, 0.5]} m={M.rust} cast />
-      {/* Riveted bands */}
-      {[0.14, 0.42].map((y) => (
-        <Box key={y} p={[0, y, 0]} s={[0.57, 0.03, 0.52]} m={M.rustDark} />
+    <group position={[CR.x, DECK, CR.z]}>
+      {/* Plinth + steel-blue body with rust bands */}
+      <Box p={[0, 0.03, 0]} s={[W + 0.08, 0.06, D + 0.06]} m={M.rustDark} cast />
+      <Box p={[0, H / 2 + 0.03, 0]} s={[W, H - 0.06, D]} m={M.steelBlue} cast />
+      {[0.14, 0.34].map((y) => (
+        <Box key={y} p={[0, y, 0]} s={[W + 0.02, 0.03, D + 0.02]} m={M.rust} />
       ))}
-      {/* Hopper (inverted square funnel), shaking */}
-      <group ref={hopper}>
-        <mesh material={M.rustDark} position={[-0.08, 0.6, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
-          <cylinderGeometry args={[0.2, 0.1, 0.2, 4]} />
-        </mesh>
-      </group>
-      {/* Gears on the +X face */}
-      <group ref={g1} position={[0.3, 0.3, -0.08]}>
-        <Gear r={0.13} teeth={10} m={M.rustDark} />
-      </group>
-      <group ref={g2} position={[0.3, 0.15, 0.13]}>
-        <Gear r={0.08} teeth={7} m={M.steel} />
-      </group>
-      {/* Flywheel on the front (+Z) */}
-      <group position={[0.12, 0.25, 0.27]}>
-        <group ref={fly}>
-          <mesh material={M.dark}>
-            <torusGeometry args={[0.1, 0.018, 6, 16]} />
-          </mesh>
-          {[0, 1, 2].map((i) => (
-            <group key={i} rotation={[0, 0, (i * Math.PI) / 3]}>
-              <Box p={[0, 0, 0]} s={[0.012, 0.2, 0.012]} m={M.dark} />
-            </group>
-          ))}
-        </group>
-      </group>
-      {/* Discharge chute toward the output belt (back, −Z) */}
-      <Box p={[0, 0.22, -0.28]} s={[0.12, 0.08, 0.08]} m={M.rustDark} />
-    </group>
-  );
-}
+      {/* Intake chute on the front, where the conveyor lands */}
+      <mesh material={M.rust} position={[-0.13, H - 0.02, D / 2 + 0.02]} rotation={[0, Math.PI / 4, 0]} castShadow>
+        <cylinderGeometry args={[0.11, 0.06, 0.1, 4]} />
+      </mesh>
+      <Box p={[0.12, 0.12, D / 2 + 0.01]} s={[0.14, 0.18, 0.02]} m={M.black} />
 
-// --- Output belt + bunker + rail ------------------------------------------------------
-
-const OUT_A: V3 = [0.8, 0.32, 0.02];
-const OUT_B: V3 = [0.8, 0.9, -1.0];
-const RAIL_Z = -1.2;
-
-function OutputLine({ phase }: { phase: number }) {
-  return (
-    <group>
-      <Belt a={OUT_A} b={OUT_B} chunks={5} speed={0.12} phase={phase + 0.4} legs={[0.35, 0.75]} m={M.steel} />
-      {/* Loading bunker on legs, straddling the rails */}
-      <group position={[0.8, 0.1, RAIL_Z]}>
-        {[
-          [-0.14, -0.14],
-          [0.14, -0.14],
-          [0.14, 0.14],
-          [-0.14, 0.14],
-        ].map(([lx, lz]) => (
-          <Box key={`${lx}${lz}`} p={[lx, 0.3, lz]} s={[0.025, 0.6, 0.025]} m={M.steel} />
-        ))}
-        <Box p={[0, 0.66, 0]} s={[0.32, 0.18, 0.32]} m={M.rust} cast />
-        <mesh material={M.rustDark} position={[0, 0.51, 0]} rotation={[0, Math.PI / 4, 0]}>
-          <cylinderGeometry args={[0.2, 0.06, 0.12, 4]} />
-        </mesh>
-      </group>
-      {/* Track */}
-      <Box p={[0, 0.115, RAIL_Z - 0.045]} s={[2.8, 0.015, 0.012]} m={M.steel} />
-      <Box p={[0, 0.115, RAIL_Z + 0.045]} s={[2.8, 0.015, 0.012]} m={M.steel} />
-      {Array.from({ length: 19 }).map((_, i) => (
-        <Box key={i} p={[-1.35 + i * 0.15, 0.104, RAIL_Z]} s={[0.03, 0.01, 0.14]} m={M.woodDark} />
+      {/* Hammer tower: four guide posts, cap + piston */}
+      {[
+        [-guide, -guide],
+        [guide, -guide],
+        [guide, guide],
+        [-guide, guide],
+      ].map(([gx, gz]) => (
+        <Box key={`${gx}${gz}`} p={[gx, H + 0.22, gz]} s={[0.03, 0.44, 0.03]} m={M.frame} />
       ))}
-      {/* Buffer stops */}
-      <Box p={[-1.38, 0.15, RAIL_Z]} s={[0.04, 0.07, 0.14]} m={M.yellow} />
-      <Box p={[1.38, 0.15, RAIL_Z]} s={[0.04, 0.07, 0.14]} m={M.yellow} />
-    </group>
-  );
-}
-
-function OreTrain({ phase }: { phase: number }) {
-  const train = useRef<THREE.Group>(null);
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime() + phase;
-    if (train.current) train.current.position.x = Math.sin(t * 0.3) * 0.85;
-  });
-  return (
-    <group ref={train} position={[0, 0.1, RAIL_Z]}>
-      {[-0.2, 0, 0.2].map((cx, i) => (
-        <group key={cx} position={[cx, 0, 0]}>
-          <Box p={[0, 0.07, 0]} s={[0.16, 0.08, 0.13]} m={i === 1 ? M.rustDark : M.rust} cast />
-          <mesh material={M.ore} position={[0, 0.12, 0]} castShadow>
-            <coneGeometry args={[0.07, 0.05, 5]} />
-          </mesh>
-          {[-0.05, 0.05].map((wx) =>
-            [-0.06, 0.06].map((wz) => (
-              <mesh key={`${wx}${wz}`} material={M.dark} position={[wx, 0.03, wz]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.022, 0.022, 0.012, 8]} />
-              </mesh>
-            )),
-          )}
-          {i < 2 && <Box p={[0.1, 0.05, 0]} s={[0.04, 0.01, 0.01]} m={M.dark} />}
-        </group>
-      ))}
-    </group>
-  );
-}
-
-// --- Headframe + winch -------------------------------------------------------------------
-
-const HF: V3 = [-1.1, 0.1, -0.7];
-const HF_H = 0.9;
-const SHEAVE_R = 0.09;
-const DRUM: V3 = [-0.66, 0.3, -0.7];
-const DRUM_R = 0.05;
-
-function Headframe({ phase }: { phase: number }) {
-  const cage = useRef<THREE.Group>(null);
-  const cable = useRef<THREE.Mesh>(null);
-  const sheave = useRef<THREE.Group>(null);
-  const drum = useRef<THREE.Group>(null);
-  const sheaveY = HF[1] + HF_H + 0.06;
-  const cableX = HF[0];
-
-  useFrame((state) => {
-    const t = state.clock.getElapsedTime() + phase;
-    const y = 0.45 + 0.27 * Math.sin(t * 0.45); // cage bottom (lot units)
-    if (cage.current) cage.current.position.y = y;
-    if (cable.current) {
-      const top = sheaveY;
-      const bottom = y + 0.12;
-      cable.current.position.y = (top + bottom) / 2;
-      cable.current.scale.y = Math.max(0.001, top - bottom);
-    }
-    if (sheave.current) sheave.current.rotation.z = y / SHEAVE_R;
-    if (drum.current) drum.current.rotation.z = -y / DRUM_R;
-  });
-
-  const legs: Array<[number, number]> = [
-    [-0.15, -0.13],
-    [0.15, -0.13],
-    [0.15, 0.13],
-    [-0.15, 0.13],
-  ];
-  return (
-    <group>
-      {/* Shaft collar */}
-      <Box p={[HF[0], HF[1] + 0.02, HF[2]]} s={[0.36, 0.04, 0.32]} m={M.dark} />
-      {/* Tapered steel legs + cross braces */}
-      {legs.map(([lx, lz]) => (
-        <Rod
-          key={`${lx}${lz}`}
-          from={[HF[0] + lx, HF[1], HF[2] + lz]}
-          to={[HF[0] + lx * 0.6, HF[1] + HF_H, HF[2] + lz * 0.6]}
-          w={0.022}
-          m={M.rustDark}
-        />
-      ))}
-      {[0.3, 0.6].map((f) => {
-        const k = 1 - 0.4 * f;
-        const y = HF[1] + HF_H * f;
-        return (
-          <group key={f}>
-            <Box p={[HF[0], y, HF[2] - 0.13 * k]} s={[0.3 * k, 0.012, 0.012]} m={M.steel} />
-            <Box p={[HF[0], y, HF[2] + 0.13 * k]} s={[0.3 * k, 0.012, 0.012]} m={M.steel} />
-          </group>
-        );
-      })}
-      {/* Back strut toward the winch */}
-      <Rod from={[HF[0] + 0.36, HF[1], HF[2]]} to={[HF[0] + 0.09, HF[1] + HF_H, HF[2]]} w={0.02} m={M.rustDark} />
-      {/* Top platform */}
-      <Box p={[HF[0], HF[1] + HF_H, HF[2]]} s={[0.2, 0.025, 0.16]} m={M.steel} />
-      {/* Sheave wheel (spins with the hoist) */}
-      <group ref={sheave} position={[HF[0] + SHEAVE_R, sheaveY, HF[2]]}>
-        <mesh material={M.dark}>
-          <torusGeometry args={[SHEAVE_R, 0.012, 6, 18]} />
-        </mesh>
-        <Box p={[0, 0, 0]} s={[SHEAVE_R * 2, 0.01, 0.01]} m={M.dark} />
-        <Box p={[0, 0, 0]} s={[0.01, SHEAVE_R * 2, 0.01]} m={M.dark} />
-      </group>
-      {/* Hoist cable down to the cage (rescaled every frame) */}
-      <mesh ref={cable} geometry={BOX} material={M.cable} position={[cableX, 0.6, HF[2]]} scale={[0.008, 0.5, 0.008]} />
-      {/* Cable from the sheave top to the winch drum */}
-      <Rod from={[HF[0] + SHEAVE_R, sheaveY + SHEAVE_R, HF[2]]} to={[DRUM[0], DRUM[1] + DRUM_R, DRUM[2]]} w={0.007} m={M.cable} />
-      {/* Cage */}
-      <group ref={cage} position={[cableX, 0.4, HF[2]]}>
-        <Box p={[0, 0.06, 0]} s={[0.09, 0.12, 0.09]} m={M.yellow} cast />
-        <Box p={[0, 0.06, 0.046]} s={[0.05, 0.07, 0.002]} m={M.dark} />
+      <Box p={[0, H + 0.46, 0]} s={[0.3, 0.06, 0.3]} m={M.steelBlue} cast />
+      <Box p={[0, H + 0.53, 0]} s={[0.12, 0.08, 0.12]} m={M.rust} cast />
+      <Box p={[0, H + 0.01, 0]} s={[0.22, 0.03, 0.22]} m={M.black} />
+      <group ref={hammer} position={[0, HAM_HIGH, 0]}>
+        {/* Head */}
+        <Box p={[0, 0.05, 0]} s={[0.18, 0.1, 0.18]} m={M.steel} cast />
+        <Box p={[0, 0.005, 0]} s={[0.14, 0.02, 0.14]} m={M.frame} />
+        {/* Piston rod reaching up into the cap (long enough at the low stop) */}
+        <Box p={[0, 0.22, 0]} s={[0.035, 0.34, 0.035]} m={M.gear} />
       </group>
 
-      {/* Winch house + drum on a stand */}
-      <group position={[-0.4, 0.1, -0.7]}>
-        <Box p={[0, 0.13, 0]} s={[0.3, 0.26, 0.26]} m={M.shed} cast />
-        <Box p={[0, 0.275, 0]} s={[0.34, 0.03, 0.3]} m={M.roof} cast />
-        <Box p={[0.151, 0.15, 0.05]} s={[0.002, 0.06, 0.06]} m={M.window} />
-        <Box p={[0, 0.1, 0.131]} s={[0.08, 0.16, 0.002]} m={M.door} />
+      {/* Two big counter-rotating gears on the +X side */}
+      <group ref={g1} position={[W / 2 + 0.03, 0.24, -0.08]}>
+        <Gear r={G1_R} teeth={12} />
       </group>
-      <Box p={[DRUM[0], 0.2, DRUM[2] - 0.06]} s={[0.03, 0.2, 0.02]} m={M.steel} />
-      <Box p={[DRUM[0], 0.2, DRUM[2] + 0.06]} s={[0.03, 0.2, 0.02]} m={M.steel} />
-      <group ref={drum} position={DRUM}>
-        <mesh material={M.rust} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[DRUM_R, DRUM_R, 0.1, 12]} />
-        </mesh>
-        <Box p={[0, 0, 0]} s={[DRUM_R * 2.4, 0.012, 0.104]} m={M.rustDark} />
+      <group ref={g2} position={[W / 2 + 0.03, 0.31, -0.08 + 0.27]}>
+        <Gear r={G2_R} teeth={8} />
       </group>
-    </group>
-  );
-}
 
-// --- Office + flood light -------------------------------------------------------------------
-
-function Office() {
-  return (
-    <group position={[0.2, 0.1, -0.5]}>
-      <Box p={[0, 0.15, 0]} s={[0.45, 0.3, 0.34]} m={M.shed} cast />
-      {/* Sloped corrugated roof */}
-      <group position={[0, 0.33, 0]} rotation={[0.18, 0, 0]}>
-        <Box p={[0, 0, 0]} s={[0.5, 0.025, 0.4]} m={M.roof} cast />
-        {[-0.18, -0.09, 0, 0.09, 0.18].map((rx) => (
-          <Box key={rx} p={[rx, 0.016, 0]} s={[0.012, 0.008, 0.4]} m={M.dark} />
-        ))}
-      </group>
-      <Box p={[-0.1, 0.18, 0.171]} s={[0.1, 0.07, 0.002]} m={M.window} />
-      <Box p={[0.08, 0.18, 0.171]} s={[0.1, 0.07, 0.002]} m={M.window} />
-      <Box p={[0.2, 0.1, 0.171]} s={[0.07, 0.18, 0.002]} m={M.door} />
-      {/* Crates + barrels by the door */}
-      <Box p={[0.3, 0.04, 0.25]} s={[0.08, 0.08, 0.08]} m={M.wood} cast />
-      <Box p={[0.3, 0.11, 0.25]} s={[0.06, 0.06, 0.06]} m={M.woodDark} />
-      <mesh material={M.yellow} position={[-0.27, 0.05, 0.22]} castShadow>
-        <cylinderGeometry args={[0.035, 0.035, 0.1, 8]} />
+      {/* Grey smoking chimney at the back */}
+      <mesh material={M.pipeGrey} position={[0.2, H + 0.32, -0.15]} castShadow>
+        <cylinderGeometry args={[0.04, 0.05, 0.64, 12]} />
+      </mesh>
+      <mesh material={M.black} position={[0.2, H + 0.64, -0.15]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.042, 0.012, 6, 14]} />
       </mesh>
     </group>
   );
 }
 
-function FloodLight() {
-  const lightRef = useRef<THREE.PointLight>(null);
+// --- 6. Pipes between hall and crusher -------------------------------------------------------------------
+
+function Piping() {
+  const xS = HALL.x + HALL.w / 2; // hall right wall
+  const xC = CR.x - CR.w / 2; // crusher left wall
+  const z = -0.8;
+  const yR = DECK + 0.68; // rust run (high, drops into the crusher roof)
+  const R = 0.07;
+  const xE = 0.7;
   return (
-    <group position={[0.45, 0.1, -0.05]}>
-      <Box p={[0, 0.02, 0]} s={[0.06, 0.04, 0.06]} m={M.dark} />
-      <Box p={[0, 0.45, 0]} s={[0.025, 0.9, 0.025]} m={M.steel} />
-      <Box p={[-0.05, 0.9, 0]} s={[0.12, 0.02, 0.02]} m={M.steel} />
-      <Box p={[-0.1, 0.88, 0]} s={[0.07, 0.035, 0.06]} m={M.dark} />
-      <Box p={[-0.1, 0.86, 0]} s={[0.06, 0.006, 0.05]} m={M.lamp} />
-      <pointLight
-        ref={lightRef}
-        position={[-0.25, 0.8, 0.2]}
-        color="#ffd9a0"
-        intensity={6}
-        distance={7}
-        decay={2}
-      />
+    <group>
+      {/* Thick rust run over the headframe yard, elbowing down into the crusher */}
+      <Pipe from={[xS, yR, z]} to={[xE, yR, z]} r={0.045} m={M.rust} />
+      <Elbow p={[xE, yR - R, z]} rot={[0, 0, 0]} R={R} r={0.045} m={M.rust} />
+      <Pipe from={[xE + R, yR - R, z]} to={[xE + R, DECK + CR.h, z]} r={0.045} m={M.rust} />
+      {/* Blue + grey runs straight into the crusher wall */}
+      <Pipe from={[xS, DECK + 0.42, z + 0.02]} to={[xC, DECK + 0.42, z + 0.02]} r={0.035} m={M.pipeBlue} />
+      <Pipe from={[xS, DECK + 0.28, z - 0.03]} to={[xC, DECK + 0.28, z - 0.03]} r={0.04} m={M.pipeGrey} />
+      {/* Flanges + a valve */}
+      {[0.0, 0.45].map((fx) => (
+        <mesh key={fx} material={M.frame} position={[fx, yR, z]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.058, 0.058, 0.03, 12]} />
+        </mesh>
+      ))}
+      <mesh material={M.yellow} position={[-0.05, DECK + 0.47, z + 0.02]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.035, 0.009, 6, 12]} />
+      </mesh>
+      {/* Supports (portal frames) */}
+      {[-0.05, 0.5].map((sx) => (
+        <group key={sx}>
+          <Box p={[sx, DECK + (yR - DECK) / 2, z - 0.07]} s={[0.025, yR - DECK, 0.025]} m={M.frame} />
+          <Box p={[sx, DECK + (yR - DECK) / 2, z + 0.07]} s={[0.025, yR - DECK, 0.025]} m={M.frame} />
+          <Box p={[sx, yR - 0.05, z]} s={[0.025, 0.02, 0.16]} m={M.frame} />
+        </group>
+      ))}
     </group>
   );
 }
 
-// Keep the pit radius exported for potential future placement checks.
-export const MINE_PIT_RADIUS = PIT_R;
+// --- 7. Cart track ------------------------------------------------------------------------------------------
+
+function CartTrack({ phase }: { phase: number }) {
+  const carts = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime() + phase;
+    if (carts.current) carts.current.position.x = Math.sin(t * 0.35) * 0.8;
+  });
+  return (
+    <group>
+      <Box p={[0, DECK + 0.008, TRACK_Z - 0.04]} s={[2.7, 0.015, 0.01]} m={M.steel} />
+      <Box p={[0, DECK + 0.008, TRACK_Z + 0.04]} s={[2.7, 0.015, 0.01]} m={M.steel} />
+      {Array.from({ length: 18 }).map((_, i) => (
+        <Box key={i} p={[-1.28 + i * 0.15, DECK + 0.003, TRACK_Z]} s={[0.025, 0.006, 0.12]} m={M.wood} />
+      ))}
+      <Box p={[-1.36, DECK + 0.035, TRACK_Z]} s={[0.035, 0.06, 0.12]} m={M.yellow} />
+      <Box p={[1.36, DECK + 0.035, TRACK_Z]} s={[0.035, 0.06, 0.12]} m={M.yellow} />
+      <group ref={carts} position={[0, DECK, TRACK_Z]}>
+        {[-0.1, 0.1].map((cx) => (
+          <group key={cx} position={[cx, 0, 0]}>
+            <Box p={[0, 0.06, 0]} s={[0.15, 0.07, 0.11]} m={M.steelBlue} cast />
+            <Box p={[0, 0.098, 0]} s={[0.155, 0.01, 0.115]} m={M.rust} />
+            <mesh material={M.ore} position={[0, 0.11, 0]} castShadow>
+              <coneGeometry args={[0.06, 0.045, 5]} />
+            </mesh>
+            {[-0.045, 0.045].map((wx) => (
+              <mesh key={wx} material={M.black} position={[wx, 0.022, 0.045]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.02, 0.02, 0.1, 8]} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+        <Box p={[0, 0.045, 0]} s={[0.05, 0.01, 0.01]} m={M.black} />
+      </group>
+    </group>
+  );
+}
+
+// --- 8. Conveyors --------------------------------------------------------------------------------------------
+
+function Conveyor({
+  a,
+  b,
+  legs,
+  stones,
+  speed,
+  phase,
+}: {
+  a: V3;
+  b: V3;
+  /** Fractions 0..1 along the belt where a trestle stands. */
+  legs: number[];
+  stones: number;
+  speed: number;
+  phase: number;
+}) {
+  const refs = useRef<Array<THREE.Mesh | null>>([]);
+  const g = useMemo(() => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const dz = b[2] - a[2];
+    const len = Math.hypot(dx, dy, dz);
+    return {
+      len,
+      yaw: Math.atan2(-dz, dx),
+      pitch: Math.atan2(dy, Math.hypot(dx, dz)),
+      mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2] as V3,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Irregular stones: fixed per-stone size/spin.
+  const looks = useMemo(
+    () =>
+      Array.from({ length: stones }).map((_, i) => ({
+        s: 0.018 + ((i * 7) % 3) * 0.006,
+        rx: i * 1.3,
+        ry: i * 2.1,
+        side: ((i * 5) % 3) - 1,
+      })),
+    [stones],
+  );
+
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime() + phase;
+    for (let i = 0; i < stones; i++) {
+      const m = refs.current[i];
+      if (!m) continue;
+      const k = (t * speed + i / stones) % 1; // bottom → top, then loop
+      m.position.x = -g.len / 2 + k * g.len;
+    }
+  });
+
+  // Rollers along the frame.
+  const rollers = Math.floor(g.len / 0.12);
+
+  return (
+    <group>
+      <group position={g.mid} rotation={[0, g.yaw, 0]}>
+        <group rotation={[0, 0, g.pitch]}>
+          {/* Steel frame: belt + two side girders + rollers */}
+          <Box p={[0, 0, 0]} s={[g.len, 0.018, 0.1]} m={M.belt} cast />
+          <Box p={[0, 0.005, 0.058]} s={[g.len, 0.045, 0.014]} m={M.frame} />
+          <Box p={[0, 0.005, -0.058]} s={[g.len, 0.045, 0.014]} m={M.frame} />
+          {Array.from({ length: rollers }).map((_, i) => (
+            <Box key={i} p={[-g.len / 2 + (i + 0.5) * (g.len / rollers), -0.022, 0]} s={[0.02, 0.012, 0.1]} m={M.steel} />
+          ))}
+          {/* Head + tail drums */}
+          {[-g.len / 2, g.len / 2].map((x) => (
+            <mesh key={x} material={M.steel} position={[x, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.022, 0.022, 0.13, 10]} />
+            </mesh>
+          ))}
+          {looks.map((l, i) => (
+            <mesh
+              key={i}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              geometry={STONE_GEOM}
+              material={i % 3 === 0 ? M.ore : M.stone}
+              position={[0, 0.009 + l.s, l.side * 0.025]}
+              rotation={[l.rx, l.ry, 0]}
+              scale={l.s}
+            />
+          ))}
+        </group>
+      </group>
+      {/* Steel trestles (A-frames) down to whatever ground is under them */}
+      {legs.map((f) => {
+        const x = a[0] + (b[0] - a[0]) * f;
+        const y = a[1] + (b[1] - a[1]) * f - 0.03;
+        const z = a[2] + (b[2] - a[2]) * f;
+        const base = groundY(x, z);
+        // Spread the feet perpendicular to the belt's horizontal direction.
+        const px = -(b[2] - a[2]);
+        const pz = b[0] - a[0];
+        const pl = Math.hypot(px, pz) || 1;
+        const ox = (px / pl) * 0.075;
+        const oz = (pz / pl) * 0.075;
+        const mid = (base + y) / 2;
+        return (
+          <group key={f}>
+            <Rod from={[x - ox, base, z - oz]} to={[x - ox * 0.7, y, z - oz * 0.7]} w={0.018} m={M.frame} />
+            <Rod from={[x + ox, base, z + oz]} to={[x + ox * 0.7, y, z + oz * 0.7]} w={0.018} m={M.frame} />
+            <Rod from={[x - ox * 0.85, mid, z - oz * 0.85]} to={[x + ox * 0.85, mid, z + oz * 0.85]} w={0.01} m={M.frame} />
+            <Rod from={[x - ox, base, z - oz]} to={[x + ox * 0.85, mid, z + oz * 0.85]} w={0.008} m={M.frame} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}

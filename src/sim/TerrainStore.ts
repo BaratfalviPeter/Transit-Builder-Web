@@ -173,6 +173,7 @@ export class TerrainStore {
     heights[x][z] = next;
 
     // Water physics.
+    const before = cells[x][z];
     if (next < 0) {
       // Dug BELOW ground level -> a basin that fills with water.
       cells[x][z] = CellType.Water;
@@ -188,7 +189,11 @@ export class TerrainStore {
       cells[x][z] = CellType.Empty;
     }
 
-    this.commit({ cells, heights });
+    // A pure height change doesn't touch cell TYPES; only bump cellsVersion if
+    // the type actually changed (water appeared/disappeared, tree cleared), so
+    // overlay renderers don't rebuild on ordinary raise/lower.
+    const typeChanged = cells[x][z] !== before;
+    this.commit({ cells, heights }, typeChanged);
     return true;
   }
 
@@ -217,18 +222,24 @@ export class TerrainStore {
     const col = cells[x].slice();
     col[z] = type;
     cells[x] = col;
-    this.commit({ cells });
+    this.commit({ cells }, true); // a cell type changed
   }
 
-  /** Commit new cells/heights into a fresh map object and bump the version. */
-  private commit(partial: {
-    cells?: CellType[][];
-    heights?: number[][];
-  }): void {
+  /**
+   * Commit new cells/heights into a fresh map object. `version` always bumps
+   * (the terrain surface rebuilds on any edit). `cellsVersion` bumps only when
+   * a cell TYPE changed, so overlay renderers (roads/rail/industry/forest)
+   * skip their geometry rebuild on pure height edits.
+   */
+  private commit(
+    partial: { cells?: CellType[][]; heights?: number[][] },
+    typeChanged: boolean,
+  ): void {
     this.map = {
       ...this.map,
       ...partial,
       version: this.map.version + 1,
+      cellsVersion: this.map.cellsVersion + (typeChanged ? 1 : 0),
     };
   }
 

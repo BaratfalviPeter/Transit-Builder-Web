@@ -23,8 +23,15 @@ export function GridFloor({ cellSize, gridHalfExtent }: GridFloorProps) {
 
   return (
     <Grid
-      // Lift the lines just above the grass surface top to avoid z-fighting.
-      position={[0, FLAT_TOP * cellSize + 0.01 * cellSize, 0]}
+      // drei's <Grid> draws lines through the origin (0, ±cellSize, …), but a
+      // cell CENTER sits at (i-half)*cellSize — i.e. ON a line intersection.
+      // Shift the grid by half a cell in X/Z so each cell center lands in the
+      // MIDDLE of a grid square, matching where roads/buildings render.
+      position={[
+        cellSize / 2,
+        FLAT_TOP * cellSize + 0.01 * cellSize,
+        cellSize / 2,
+      ]}
       args={[size, size]}
       cellSize={cellSize}
       cellThickness={1}

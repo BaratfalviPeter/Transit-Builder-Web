@@ -13,7 +13,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { CellType, type TerrainMap } from '../sim';
+import { CellType, cornerHeightAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 export interface MapGridProps {
@@ -45,13 +45,15 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
     if (!mesh) return;
     const dummy = new THREE.Object3D();
     const height = style.scaleY * cellSize;
-    const grassTop = FLAT_TOP * cellSize;
     const foot = 0.9 * cellSize;
     for (let i = 0; i < coords.length; i++) {
       const [x, z] = coords[i];
+      // Rest the tree block on the cell's SURFACE top: grass level plus the
+      // cell's own corner height, so forests on a (flat) hill top are raised.
+      const surfaceTop = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize;
       dummy.position.set(
         (x - half) * cellSize,
-        grassTop + height / 2,
+        surfaceTop + height / 2,
         (z - half) * cellSize,
       );
       dummy.scale.set(foot, height, foot);
@@ -61,7 +63,7 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
     mesh.count = coords.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [coords, cellSize, half, style.scaleY]);
+  }, [coords, cellSize, half, style.scaleY, map]);
 
   if (coords.length === 0) return null;
 

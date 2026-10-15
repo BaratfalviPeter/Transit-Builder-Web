@@ -14,8 +14,17 @@
 
 import { Html } from '@react-three/drei';
 import { useMemo } from 'react';
-import { CellType, SPECIAL_BUILDINGS, type TerrainMap } from '../sim';
+import {
+  CellType,
+  cornerHeightAt,
+  SPECIAL_BUILDINGS,
+  type TerrainMap,
+} from '../sim';
+import { CELL_STYLE } from './terrainStyle';
 import './buildingIcons.css';
+
+/** Grass surface top, in cellSize units (icons float above the cell top). */
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export interface BuildingIconsProps {
   map: TerrainMap;
@@ -49,12 +58,13 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
     return out;
   }, [map]);
 
-  // Height of the icon above the ground, in world units.
-  const iconY = 1.6 * cellSize;
-
   return (
     <group>
-      {items.map(({ x, z, type }) => (
+      {items.map(({ x, z, type }) => {
+        // Float above the building, which rests on the cell's surface top
+        // (grass level + the cell's corner height, raised on hills).
+        const iconY = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize + 1.6 * cellSize;
+        return (
         <Html
           key={`${x},${z}`}
           position={[(x - half) * cellSize, iconY, (z - half) * cellSize]}
@@ -71,7 +81,8 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
             </span>
           </div>
         </Html>
-      ))}
+        );
+      })}
     </group>
   );
 }

@@ -2,8 +2,8 @@
  * Hud — top-left status overlay (money + counters) and the bottom hint.
  *
  * Reads discrete simulation snapshots (not per-frame state): the player's
- * money, the number of player-built industries ("Épületek"), and the number of
- * roads ("Lerakott utak").
+ * money, the number of auto-generated industries ("Épületek"), and the number
+ * of roads ("Lerakott utak").
  */
 
 import { useGameSnapshot, useIndustryCount, useRoadCount } from '../sim';
@@ -32,8 +32,8 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Válassz eszközt alul · Bal klikk: építés/törlés a kiválasztott eszközzel
-        · Bal húzás: pásztázás · Jobb húzás: forgatás · Görgő: zoom
+        Út ($10) építése / Törlés: bal klikk · Mozgás: WASD vagy nyilak · Bal
+        húzás: pásztázás · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>
   );

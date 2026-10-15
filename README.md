@@ -23,7 +23,8 @@ src/
   render/   # R3F komponensek
             #   GameCanvas    – gyökér jelenet, click -> aktív eszköz
             #   MapGrid       – sík terep-csempék (instancing, típusonként)
-            #   Hills         – lankás, trapéz alakú dombok (egyedi geometria)
+            #   Hills         – összefüggő, low-poly domb-felszín (hézagmentes rámpák)
+            #   Industries    – auto-generált fatelep/bánya épületek
             #   Roads         – utak (síkon, dombon megemelve)
             #   CityBuildings – a város auto-épületei (szint = magasság)
             #   GridFloor     – pick-sík a kattintáshoz
@@ -62,14 +63,17 @@ alapértelmezett):
 
 - **Kijelölés** – semleges egér.
 - **Út ($10)** – út építése üres (fű) cellára vagy domb tetejére.
-- **Favágó ($150)** / **Bánya ($200)** – ipari épület üres cellára.
-- **Törlés** (bulldózer) – utak és ipari épületek visszabontása üres talajjá;
-  dombokat/vizet/várost **nem** lehet kitörölni.
+- **Törlés** (bulldózer) – utak visszabontása üres talajjá; dombokat/vizet/
+  várost/ipart **nem** lehet kitörölni.
 
-Bal felül látszik a **pénz** ($1000-ról indul), az **épületek** és a **lerakott
-utak** száma. Minden építés levonja az eszköz árát (ha nincs rá fedezet, nem
-épül).
+> Az ipar (fatelep, bánya) **magától generálódik** a nyersanyagok mellett — a
+> játékos csak utakat épít.
 
+Bal felül látszik a **pénz** ($1000-ról indul), az **épületek** (ipar) és a
+**lerakott utak** száma. Minden útépítés levonja az árat (ha nincs rá fedezet,
+nem épül).
+
+- **Mozgás (pan)**: WASD vagy nyílbillentyűk (sima, folyamatos)
 - **Bal húzás**: pásztázás · **Jobb húzás**: forgatás · **Görgő**: zoom
 
 A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.
@@ -77,5 +81,9 @@ A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.
 ### Terep
 
 A 21×21-es rács procedurálisan generált: középen 5×5-ös városközpont, körülötte
-víz, erdő, érclelőhely és **lankás dombok** (OpenTTD-stílusú rézsútos rámpák).
+víz, erdő és **lankás dombok** (összefüggő, hézagmentes low-poly rámpa-felszín).
 Dombra épített út felveszi a domb magasságát.
+
+Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
+(LumberMill) erdővel szomszédos üres cellára, és 2–3 **bánya** (Mine) dombbal
+szomszédos üres cellára.

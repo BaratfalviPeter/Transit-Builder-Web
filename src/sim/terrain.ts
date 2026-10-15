@@ -19,14 +19,18 @@ export enum CellType {
   /** Gentle, ramp-like hill (OpenTTD-style slope). Buildable on top. */
   Hill = 'Hill',
   Forest = 'Forest',
-  /** Natural ore deposit (terrain feature). */
-  Mine = 'Mine',
   /** Player-built road. Buildable on Empty ground or on top of a Hill. */
   Road = 'Road',
-  /** Player-built lumberjack (industry). Buildable on Empty ground. */
-  Lumberjack = 'Lumberjack',
-  /** Player-built mine building (industry). Buildable on Empty ground. */
-  MineBuilding = 'MineBuilding',
+  /**
+   * Auto-generated lumber mill (fatelep). Spawns on Empty cells next to a
+   * Forest during map generation; the player cannot place these.
+   */
+  LumberMill = 'LumberMill',
+  /**
+   * Auto-generated mine (bánya). Spawns on Empty cells next to a Hill during
+   * map generation; the player cannot place these.
+   */
+  Mine = 'Mine',
 }
 
 /** Cell types that count as flat, buildable ground for roads. */
@@ -37,29 +41,20 @@ export function isFlatGround(cell: CellType): boolean {
 /**
  * Whether a road may be built on the cell currently of type `cell`.
  * Roads can be placed on Empty ground or on top of a Hill (where the road
- * takes the hill's elevation). Not on Water, Forest, Mine, CityCenter,
- * industries, or an existing Road.
+ * takes the hill's elevation). Not on Water, Forest, CityCenter, auto-spawned
+ * industry (LumberMill/Mine), or an existing Road.
  */
 export function canBuildRoad(cell: CellType): boolean {
   return cell === CellType.Empty || cell === CellType.Hill;
 }
 
-/** Whether a player industry (lumberjack/mine building) may be built here. */
-export function canBuildIndustry(cell: CellType): boolean {
-  return cell === CellType.Empty;
-}
-
 /**
  * Whether the bulldozer may clear this cell back to Empty.
- * Player-built things (Road, Lumberjack, MineBuilding) are removable; natural
- * terrain — Hills, Water, Forest, Mine, CityCenter — is not.
+ * Only player-built roads are removable; natural terrain (Hills, Water,
+ * Forest, CityCenter) and auto-generated industry (LumberMill, Mine) are not.
  */
 export function canBulldoze(cell: CellType): boolean {
-  return (
-    cell === CellType.Road ||
-    cell === CellType.Lumberjack ||
-    cell === CellType.MineBuilding
-  );
+  return cell === CellType.Road;
 }
 
 /** Full generated map: a size×size grid of cell types plus its parameters. */
@@ -179,6 +174,12 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     heights.push(hcol);
   }
 
+  // Auto-spawn industry next to natural resources (deterministic via `rng`):
+  //  - LumberMill on Empty cells adjacent to a Forest.
+  //  - Mine on Empty cells adjacent to a Hill.
+  spawnIndustry(cells, size, CellType.Forest, CellType.LumberMill, rng);
+  spawnIndustry(cells, size, CellType.Hill, CellType.Mine, rng);
+
   return { size, seed, cells, heights };
 
   function classifyCell(x: number, z: number): CellType {
@@ -200,9 +201,9 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
     const d = detail(x * freq * 2.1, z * freq * 2.1);
 
-    // High elevation => hills (with a sprinkling of ore mines in the peaks).
+    // High elevation => hills.
     if (e > 0.68) {
-      return d > 0.72 ? CellType.Mine : CellType.Hill;
+      return CellType.Hill;
     }
     // Low elevation + wet => water.
     if (e < 0.34 && m > 0.5) {
@@ -212,11 +213,61 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     if (m > 0.62 && d > 0.4) {
       return CellType.Forest;
     }
-    // Occasional lone mines on buildable ground (ore deposits).
-    if (d > 0.9) {
-      return CellType.Mine;
-    }
 
     return CellType.Empty;
+  }
+}
+
+/** 4-neighbour offsets (N/S/E/W). */
+const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/**
+ * Replace 2–3 random Empty cells that are adjacent to a `resource` cell with
+ * `industry`. Mutates `cells` in place. Deterministic given `rng`.
+ */
+function spawnIndustry(
+  cells: CellType[][],
+  size: number,
+  resource: CellType,
+  industry: CellType,
+  rng: () => number,
+): void {
+  // Collect all Empty cells with at least one orthogonal `resource` neighbour.
+  const candidates: Array<[number, number]> = [];
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      if (cells[x][z] !== CellType.Empty) continue;
+      const adjacent = NEIGHBORS.some(([dx, dz]) => {
+        const nx = x + dx;
+        const nz = z + dz;
+        return (
+          nx >= 0 &&
+          nz >= 0 &&
+          nx < size &&
+          nz < size &&
+          cells[nx][nz] === resource
+        );
+      });
+      if (adjacent) candidates.push([x, z]);
+    }
+  }
+
+  if (candidates.length === 0) return;
+
+  // Shuffle (Fisher–Yates with the deterministic rng) and take 2–3.
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  const target = 2 + Math.floor(rng() * 2); // 2 or 3
+  const count = Math.min(target, candidates.length);
+  for (let i = 0; i < count; i++) {
+    const [x, z] = candidates[i];
+    cells[x][z] = industry;
   }
 }

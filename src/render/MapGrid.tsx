@@ -32,6 +32,8 @@ const BASE_TILE_HEIGHT = 1;
 
 /** Types MapGrid does NOT draw as flat boxes (handled by dedicated meshes). */
 const SKIP_TYPES = new Set<CellType>([CellType.Hill, CellType.Road]);
+/** Industry types: drawn by Industries.tsx, but need a grass base beneath. */
+const INDUSTRY_TYPES = new Set<CellType>([CellType.LumberMill, CellType.Mine]);
 
 export function MapGrid({ map, cellSize }: MapGridProps) {
   // Bucket cell coordinates by type so each type becomes one InstancedMesh.
@@ -54,6 +56,11 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
         // road on a hill sits on the hill body instead.
         if (t === CellType.Road) {
           if (map.heights[x][z] === 0) push(CellType.Empty, x, z);
+          continue;
+        }
+        // Industries sit on grass: draw an Empty base, building drawn elsewhere.
+        if (INDUSTRY_TYPES.has(t)) {
+          push(CellType.Empty, x, z);
           continue;
         }
         if (SKIP_TYPES.has(t)) continue;

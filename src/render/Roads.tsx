@@ -20,6 +20,9 @@ export interface RoadsProps {
 }
 
 const ROAD_STYLE = CELL_STYLE[CellType.Road];
+// Flat grass tile top; the hill surface sits on this, so a road on a hill must
+// line up with FLAT_TOP + hillHeight (see Hills.tsx).
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export function Roads({ map, cellSize }: RoadsProps) {
   const ref = useRef<THREE.InstancedMesh>(null);
@@ -47,9 +50,9 @@ export function Roads({ map, cellSize }: RoadsProps) {
       const [x, z, h] = coords[i];
       const worldX = (x - half) * cellSize;
       const worldZ = (z - half) * cellSize;
-      // On a hill the road sits on the hill top (h * cellSize); on flat ground
-      // h = 0, so it rests just above the grass via the style offset.
-      const baseTop = h > 0 ? h * cellSize : 0;
+      // On a hill the road sits on the hill surface top (FLAT_TOP + h); on flat
+      // ground h = 0, so it rests just above the grass via the style offset.
+      const baseTop = h > 0 ? (FLAT_TOP + h) * cellSize : 0;
       const worldY = baseTop + thickness / 2 + ROAD_STYLE.offsetY * cellSize;
 
       dummy.position.set(worldX, worldY, worldZ);

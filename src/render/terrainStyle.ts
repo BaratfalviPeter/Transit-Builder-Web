@@ -27,10 +27,10 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   // Hill is drawn with a custom ramp geometry (see Hills.tsx); color only.
   [CellType.Hill]: { color: '#7d8a5c', scaleY: 1, offsetY: 0 },
   [CellType.Forest]: { color: '#2e6b32', scaleY: 1.5, offsetY: 0 },
-  [CellType.Mine]: { color: '#5a4a3a', scaleY: 1.2, offsetY: 0 },
   // Player-built road: flat, dark-grey tile resting on the ground.
   [CellType.Road]: { color: '#3a3d42', scaleY: 0.08, offsetY: 0.01 },
-  // Player industries: distinctive boxes.
-  [CellType.Lumberjack]: { color: '#8a5a2b', scaleY: 1.1, offsetY: 0 },
-  [CellType.MineBuilding]: { color: '#b0862c', scaleY: 1.1, offsetY: 0 },
+  // Auto-generated industries are drawn with custom meshes (Industries.tsx);
+  // these colors are the main building color.
+  [CellType.LumberMill]: { color: '#8a5a2b', scaleY: 1, offsetY: 0 },
+  [CellType.Mine]: { color: '#555a60', scaleY: 1, offsetY: 0 },
 };

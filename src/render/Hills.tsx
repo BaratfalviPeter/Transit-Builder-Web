@@ -1,79 +1,135 @@
 /**
- * Hills — renders the gentle, ramp-like hills (OpenTTD-style slopes).
+ * Hills — renders hills as ONE continuous, low-poly heightmap surface.
  *
- * Each Hill cell is drawn with a shared trapezoidal frustum geometry (see
- * hillGeometry.ts): a wide base on the ground and a smaller raised top with
- * sloped sides. All hills share one geometry/material and are drawn via a
- * single InstancedMesh (one draw call), consistent with the rest of the map.
+ * Previously each hill was an isolated inset frustum, which produced spiky,
+ * disconnected shapes with gaps. Instead we now build a single mesh over the
+ * whole grid using a corner-vertex heightmap:
  *
- * A cell is considered a hill if its stored height > 0, so a Road built on top
- * of a hill still shows the hill underneath (the road is drawn separately,
- * raised to the hill height).
+ *   - The mesh has (size+1)×(size+1) vertices, one per cell *corner*.
+ *   - A corner's height is the max height of the (up to 4) cells touching it.
+ *   - So a hill cell's interior corners are all raised (flat top), while a
+ *     corner shared with flat ground stays low — giving clean ramps that blend
+ *     seamlessly into neighbouring flat cells and into adjacent hills, with no
+ *     gaps or spikes.
+ *
+ * Only the hilly region is meshed (corners that are entirely at ground level
+ * and not touching any hill are skipped), so flat areas keep using the cheap
+ * box tiles from MapGrid. The surface base sits exactly on the flat-tile top so
+ * there's no seam.
  */
 
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import { CellType, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
-import { createHillGeometry } from './hillGeometry';
 
 export interface HillsProps {
   map: TerrainMap;
   cellSize: number;
 }
 
+// Flat tile top (grass surface) height, so the hill base lines up with it.
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
+
 export function Hills({ map, cellSize }: HillsProps) {
-  const ref = useRef<THREE.InstancedMesh>(null);
-  const half = (map.size - 1) / 2;
+  const geometry = useMemo(
+    () => buildHillSurface(map, cellSize),
+    [map, cellSize],
+  );
 
-  // Collect every cell that has elevation (hills, including those now carrying
-  // a road — the hill body is still drawn beneath the road).
-  const coords = useMemo(() => {
-    const out: Array<[number, number, number]> = [];
-    for (let x = 0; x < map.size; x++) {
-      for (let z = 0; z < map.size; z++) {
-        const h = map.heights[x][z];
-        if (h > 0) out.push([x, z, h]);
-      }
-    }
-    return out;
-  }, [map]);
-
-  // One hill geometry, sized to a unit base; instances just translate it.
-  // Height is baked in world units (max hill height); all hills share it.
-  const geometry = useMemo(() => {
-    const height = (coords[0]?.[2] ?? 0.9) * cellSize;
-    return createHillGeometry({ height, baseWidth: cellSize });
-  }, [coords, cellSize]);
-
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < coords.length; i++) {
-      const [x, z] = coords[i];
-      dummy.position.set((x - half) * cellSize, 0, (z - half) * cellSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-    mesh.count = coords.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [coords, cellSize, half]);
-
-  if (coords.length === 0) return null;
+  if (!geometry) return null;
 
   return (
-    <instancedMesh
-      ref={ref}
-      args={[geometry, undefined, coords.length]}
-      castShadow
-      receiveShadow
-    >
+    <mesh geometry={geometry} castShadow receiveShadow>
       <meshStandardMaterial
         color={CELL_STYLE[CellType.Hill].color}
-        roughness={0.9}
+        roughness={0.95}
+        flatShading
       />
-    </instancedMesh>
+    </mesh>
   );
+}
+
+/**
+ * Build the continuous hill surface. Returns null if there are no hills.
+ */
+function buildHillSurface(
+  map: TerrainMap,
+  cellSize: number,
+): THREE.BufferGeometry | null {
+  const { size, heights } = map;
+  const half = (size - 1) / 2;
+
+  // Height (world units) of a cell, 0 if out of bounds / not a hill.
+  const cellHeight = (x: number, z: number): number => {
+    if (x < 0 || z < 0 || x >= size || z >= size) return 0;
+    return heights[x][z];
+  };
+
+  // Corner (cx, cz) in [0, size], its height = max of the up-to-4 cells around
+  // it. Corner (cx, cz) touches cells (cx-1,cz-1), (cx,cz-1), (cx-1,cz), (cx,cz).
+  const cornerHeight = (cx: number, cz: number): number => {
+    return Math.max(
+      cellHeight(cx - 1, cz - 1),
+      cellHeight(cx, cz - 1),
+      cellHeight(cx - 1, cz),
+      cellHeight(cx, cz),
+    );
+  };
+
+  // World position of corner (cx, cz). Cell centers are at (i-half)*cellSize,
+  // so a cell spans [center - cellSize/2, center + cellSize/2]; corner cx is at
+  // the boundary = (cx - half - 0.5) * cellSize.
+  const base = FLAT_TOP * cellSize;
+  const cornerWorld = (cx: number, cz: number): THREE.Vector3 => {
+    const h = cornerHeight(cx, cz);
+    return new THREE.Vector3(
+      (cx - half - 0.5) * cellSize,
+      base + h * cellSize,
+      (cz - half - 0.5) * cellSize,
+    );
+  };
+
+  // Emit two triangles per cell that is a hill OR borders a hill, so the ramp
+  // skirts around the hill mass are included.
+  const touchesHill = (x: number, z: number): boolean => {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        if (cellHeight(x + dx, z + dz) > 0) return true;
+      }
+    }
+    return false;
+  };
+
+  const positions: number[] = [];
+  const addQuad = (
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    c: THREE.Vector3,
+    d: THREE.Vector3,
+  ) => {
+    positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    positions.push(a.x, a.y, a.z, c.x, c.y, c.z, d.x, d.y, d.z);
+  };
+
+  let any = false;
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      if (!touchesHill(x, z)) continue;
+      // Corners of this cell (CCW seen from above for upward normals).
+      const c00 = cornerWorld(x, z);
+      const c10 = cornerWorld(x + 1, z);
+      const c11 = cornerWorld(x + 1, z + 1);
+      const c01 = cornerWorld(x, z + 1);
+      addQuad(c00, c01, c11, c10);
+      any = true;
+    }
+  }
+
+  if (!any) return null;
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  return geom;
 }

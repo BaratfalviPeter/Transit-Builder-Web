@@ -435,7 +435,7 @@ function TallChimney({ phase }: { phase: number }) {
 // --- 5. Piping ---------------------------------------------------------------
 
 /** Straight pipe between two points along one axis. */
-function Pipe({
+export function Pipe({
   from,
   to,
   r = 0.05,
@@ -464,7 +464,7 @@ function Pipe({
  * 90° elbow (quarter torus). The torus' arc starts at (R,0,0) heading +Y and
  * ends at (0,R,0) heading −X; `rotation` orients it.
  */
-function Elbow({
+export function Elbow({
   p,
   rot,
   R = 0.09,

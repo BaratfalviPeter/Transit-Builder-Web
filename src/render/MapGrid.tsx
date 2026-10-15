@@ -1,25 +1,19 @@
 /**
- * MapGrid — renders a generated TerrainMap in 3D.
+ * MapGrid — forest decoration on top of the unified terrain surface.
  *
- * The map data comes from the pure-TS simulation (`generateTerrain`) and is
- * held in React state by the parent, so gameplay systems (pathfinding, traffic)
- * can read the same grid later.
+ * The ground itself (grass, hills, water, city, ramps) is now one continuous
+ * heightmap mesh (TerrainSurface). This component only adds the raised Forest
+ * blocks so forests keep their chunky low-poly tree look, drawn as a single
+ * InstancedMesh (one draw call). Forest cells are also colored green on the
+ * terrain surface beneath, so the base reads correctly.
  *
- * Rendering strategy: cells are grouped by CellType and drawn with one
- * InstancedMesh per type. All cells of a type share geometry/material and a
- * uniform vertical scale/offset (from CELL_STYLE), so a single instanced draw
- * call per type keeps the 21×21 (441-cell) grid cheap — consistent with the
- * project's "don't go through React/instance heavy things" principle.
- *
- * Grid -> world mapping: cell [x][z] is centered at
- *   worldX = (x - (size-1)/2) * cellSize
- *   worldZ = (z - (size-1)/2) * cellSize
- * i.e. the whole map is centered on the origin.
+ * Grid -> world mapping matches the rest of the map: cell [x][z] is centered at
+ * ((x-half)*cellSize, _, (z-half)*cellSize).
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { CellType, SPECIAL_BUILDINGS, type TerrainMap } from '../sim';
+import { CellType, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 export interface MapGridProps {
@@ -27,106 +21,49 @@ export interface MapGridProps {
   cellSize: number;
 }
 
-/** Base (unscaled) height of a tile cube, in cellSize units. */
-const BASE_TILE_HEIGHT = 1;
-
-/** Types MapGrid does NOT draw as flat boxes (handled by dedicated meshes). */
-const SKIP_TYPES = new Set<CellType>([CellType.Hill, CellType.Road]);
+/** Grass surface top (where forest blocks rest), in cellSize units. */
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export function MapGrid({ map, cellSize }: MapGridProps) {
-  // Bucket cell coordinates by type so each type becomes one InstancedMesh.
-  // Hills (custom ramp geometry) and Roads (may sit on hills) are drawn by
-  // their own components, so they're skipped here.
-  const buckets = useMemo(() => {
-    const byType = new Map<CellType, Array<[number, number]>>();
-    const push = (t: CellType, x: number, z: number) => {
-      let arr = byType.get(t);
-      if (!arr) {
-        arr = [];
-        byType.set(t, arr);
-      }
-      arr.push([x, z]);
-    };
-    for (let x = 0; x < map.size; x++) {
-      for (let z = 0; z < map.size; z++) {
-        const t = map.cells[x][z];
-        // A road on flat ground still needs a grass base tile beneath it; a
-        // road on a hill sits on the hill body instead.
-        if (t === CellType.Road) {
-          if (map.heights[x][z] === 0) push(CellType.Empty, x, z);
-          continue;
-        }
-        // Special buildings sit on grass: draw an Empty base; the building
-        // itself is drawn by Industries.tsx.
-        if (SPECIAL_BUILDINGS.has(t)) {
-          push(CellType.Empty, x, z);
-          continue;
-        }
-        if (SKIP_TYPES.has(t)) continue;
-        push(t, x, z);
-      }
-    }
-    return byType;
-  }, [map]);
-
+  const ref = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
 
-  return (
-    <group>
-      {Array.from(buckets.entries()).map(([type, coords]) => (
-        <TerrainInstances
-          key={type}
-          type={type}
-          coords={coords}
-          cellSize={cellSize}
-          half={half}
-        />
-      ))}
-    </group>
-  );
-}
+  const coords = useMemo(() => {
+    const out: Array<[number, number]> = [];
+    for (let x = 0; x < map.size; x++) {
+      for (let z = 0; z < map.size; z++) {
+        if (map.cells[x][z] === CellType.Forest) out.push([x, z]);
+      }
+    }
+    return out;
+  }, [map]);
 
-interface TerrainInstancesProps {
-  type: CellType;
-  coords: Array<[number, number]>;
-  cellSize: number;
-  half: number;
-}
+  const style = CELL_STYLE[CellType.Forest];
 
-function TerrainInstances({
-  type,
-  coords,
-  cellSize,
-  half,
-}: TerrainInstancesProps) {
-  const ref = useRef<THREE.InstancedMesh>(null);
-  const style = CELL_STYLE[type];
-
-  // Position every instance once (static terrain) after mount.
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
-
     const dummy = new THREE.Object3D();
-    const tileHeight = BASE_TILE_HEIGHT * cellSize;
-    const scaledHeight = tileHeight * style.scaleY;
-
+    const height = style.scaleY * cellSize;
+    const grassTop = FLAT_TOP * cellSize;
+    const foot = 0.9 * cellSize;
     for (let i = 0; i < coords.length; i++) {
       const [x, z] = coords[i];
-      const worldX = (x - half) * cellSize;
-      const worldZ = (z - half) * cellSize;
-      // Sit the tile on the floor: its center is half its (scaled) height up,
-      // plus any per-type vertical offset (e.g. water sinks).
-      const worldY = scaledHeight / 2 + style.offsetY * cellSize;
-
-      dummy.position.set(worldX, worldY, worldZ);
-      dummy.scale.set(cellSize, scaledHeight, cellSize);
+      dummy.position.set(
+        (x - half) * cellSize,
+        grassTop + height / 2,
+        (z - half) * cellSize,
+      );
+      dummy.scale.set(foot, height, foot);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
+    mesh.count = coords.length;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [coords, cellSize, half, style.scaleY, style.offsetY]);
+  }, [coords, cellSize, half, style.scaleY]);
+
+  if (coords.length === 0) return null;
 
   return (
     <instancedMesh
@@ -135,7 +72,6 @@ function TerrainInstances({
       castShadow
       receiveShadow
     >
-      {/* Unit box; per-instance matrix scales it to the right tile size. */}
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial color={style.color} roughness={0.85} />
     </instancedMesh>

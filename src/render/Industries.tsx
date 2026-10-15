@@ -3,7 +3,7 @@
  *
  * Two kinds, placed by the generator next to their resource:
  *   - LumberMill (fatelep): a brown sawmill building with a chimney.
- *   - Mine (bánya): a dark-grey quarry building with a conical rock/spoil pile.
+ *   - Mine (bánya): the detailed animated open-pit MineModel (3×3 lot).
  *
  * There are only a handful of industry cells, so each is a small group of
  * primitive meshes (no instancing needed). World mapping matches the rest of
@@ -19,6 +19,7 @@ import {
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
+import { MineModel } from './MineModel';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -57,7 +58,15 @@ export function Industries({ map, cellSize }: IndustriesProps) {
             // detailed LumberMillModel lands.
             return <LumberMill key={key} x={wx} y={wy} z={wz} cellSize={cellSize * 2.4} />;
           case CellType.Mine:
-            return <Mine key={key} x={wx} y={wy} z={wz} cellSize={cellSize * 2.4} />;
+            return (
+              <MineModel
+                key={key}
+                position={[wx, wy, wz]}
+                scale={cellSize}
+                rotationY={(((x * 5 + z * 11) % 4) * Math.PI) / 2}
+                phase={(x * 0.53 + z * 0.29) % 5}
+              />
+            );
           case CellType.PowerPlant:
             return (
               <PowerPlantModel
@@ -111,43 +120,6 @@ function LumberMill({
       <mesh position={[bodyW * 0.28, bodyH + roofH * 0.6, bodyW * 0.28]} castShadow>
         <boxGeometry args={[0.12 * s, 0.5 * s, 0.12 * s]} />
         <meshStandardMaterial color="#3d2a19" roughness={0.9} />
-      </mesh>
-    </group>
-  );
-}
-
-/** Dark-grey quarry building + a conical rock/spoil pile. */
-function Mine({
-  x,
-  y,
-  z,
-  cellSize,
-}: {
-  x: number;
-  y: number;
-  z: number;
-  cellSize: number;
-}) {
-  const s = cellSize;
-  const color = CELL_STYLE[CellType.Mine].color;
-  const bodyW = 0.6 * s;
-  const bodyH = 0.5 * s;
-  return (
-    <group position={[x, y, z]}>
-      {/* Quarry shed */}
-      <mesh position={[-0.14 * s, bodyH / 2, -0.14 * s]} castShadow receiveShadow>
-        <boxGeometry args={[bodyW, bodyH, bodyW]} />
-        <meshStandardMaterial color={color} roughness={0.9} />
-      </mesh>
-      {/* Spoil / rock pile */}
-      <mesh position={[0.22 * s, 0.28 * s, 0.22 * s]} castShadow>
-        <coneGeometry args={[0.34 * s, 0.56 * s, 7]} />
-        <meshStandardMaterial color="#6b7079" roughness={1} />
-      </mesh>
-      {/* Mine-head headframe (simple A-frame suggestion) */}
-      <mesh position={[-0.14 * s, bodyH + 0.18 * s, -0.14 * s]} castShadow>
-        <boxGeometry args={[0.1 * s, 0.4 * s, 0.1 * s]} />
-        <meshStandardMaterial color="#2f3238" roughness={0.9} />
       </mesh>
     </group>
   );

@@ -1,0 +1,43 @@
+/* Floating UI icon badge shown above special buildings. */
+.bicon {
+  /* Center the badge on its 3D anchor point (drei <Html center> helps too). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* ~3x the original badge size (was 30px / 16px font). */
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: rgba(18, 20, 28, 0.78);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  color: #ffe27a; /* warm yellow tint for the glyph */
+  font-size: 48px;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none; /* icons never intercept map clicks */
+  /* Subtle floating (bobbing) animation. */
+  animation: bicon-bob 2.4s ease-in-out infinite;
+}
+
+/* Larger badge variant (e.g. factories), to stand out more. */
+.bicon--lg {
+  width: 132px;
+  height: 132px;
+  font-size: 72px;
+}
+
+/* Slight glyph shadow so emojis read on bright terrain. */
+.bicon__glyph {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+@keyframes bicon-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}

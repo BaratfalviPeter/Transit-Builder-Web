@@ -14,5 +14,7 @@ export interface RenderConfig {
 
 export const DEFAULT_CONFIG: RenderConfig = {
   cellSize: 2,
-  gridHalfExtent: 25,
+  // Covers the full 61×61 play area (half-extent >= size/2) so the click/pick
+  // plane and reference grid span the whole map.
+  gridHalfExtent: 40,
 };

@@ -10,7 +10,7 @@
  * the map: cell [x][z] -> ((x-half)*cellSize, _, (z-half)*cellSize).
  */
 
-import { useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 import {
   CellType,
   cornerHeightAt,
@@ -19,6 +19,7 @@ import {
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
+import { PowerPlantGLTF } from './PowerPlantGLTF';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -144,9 +145,9 @@ function Mine({
 }
 
 /**
- * Power plant — the detailed, animated PowerPlantModel scaled to the cell. The
- * model is ~10 units across at scale 1; scale it so its footprint sits on the
- * cell while the towers/chimney rise above (like the reference art).
+ * Power plant — loads the uploaded .glb model, auto-fitted to the cell. While
+ * the model streams in, the procedural PowerPlantModel is shown as a Suspense
+ * fallback (and remains a drop-in replacement if the asset is ever missing).
  */
 function PowerPlant({
   x,
@@ -160,7 +161,11 @@ function PowerPlant({
   cellSize: number;
 }) {
   return (
-    <PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />
+    <Suspense
+      fallback={<PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />}
+    >
+      <PowerPlantGLTF position={[x, y, z]} />
+    </Suspense>
   );
 }
 

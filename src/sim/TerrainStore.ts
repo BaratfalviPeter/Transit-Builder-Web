@@ -11,7 +11,9 @@
 
 import {
   CellType,
+  canBuildIndustry,
   canBuildRoad,
+  canBulldoze,
   generateTerrain,
   type GenerateOptions,
   type TerrainMap,
@@ -23,6 +25,7 @@ export class TerrainStore {
   private map: TerrainMap;
   private readonly listeners = new Set<Listener>();
   private roadCount = 0;
+  private industryCount = 0;
 
   constructor(options: GenerateOptions = {}) {
     this.map = generateTerrain(options);
@@ -38,6 +41,11 @@ export class TerrainStore {
     return this.roadCount;
   }
 
+  /** Number of player-built industry cells (lumberjack + mine building). */
+  getIndustryCount(): number {
+    return this.industryCount;
+  }
+
   /** True if `(x, z)` is in bounds. */
   inBounds(x: number, z: number): boolean {
     return x >= 0 && z >= 0 && x < this.map.size && z < this.map.size;
@@ -50,17 +58,51 @@ export class TerrainStore {
   }
 
   /**
-   * Build a road on `(x, z)` if the rules allow it (only on Empty ground).
-   * Returns true if a road was placed, false otherwise (out of bounds, or the
-   * cell is Water/Mountain/Forest/Mine/CityCenter/already a Road).
+   * Build a road on `(x, z)` if the rules allow it (Empty ground or on top of
+   * a Hill). Returns true if a road was placed. The cell's height is preserved,
+   * so a road on a hill keeps the hill's elevation.
    */
   buildRoad(x: number, z: number): boolean {
     if (!this.inBounds(x, z)) return false;
-    const current = this.map.cells[x][z];
-    if (!canBuildRoad(current)) return false;
+    if (!canBuildRoad(this.map.cells[x][z])) return false;
 
     this.applyCell(x, z, CellType.Road);
     this.roadCount += 1;
+    this.emit();
+    return true;
+  }
+
+  /**
+   * Build a player industry (lumberjack or mine building) on Empty ground.
+   * `type` must be CellType.Lumberjack or CellType.MineBuilding.
+   */
+  buildIndustry(x: number, z: number, type: CellType): boolean {
+    if (!this.inBounds(x, z)) return false;
+    if (type !== CellType.Lumberjack && type !== CellType.MineBuilding) {
+      return false;
+    }
+    if (!canBuildIndustry(this.map.cells[x][z])) return false;
+
+    this.applyCell(x, z, type);
+    this.industryCount += 1;
+    this.emit();
+    return true;
+  }
+
+  /**
+   * Bulldoze `(x, z)` back to Empty if it holds a player-built thing (Road,
+   * Lumberjack, MineBuilding). Natural terrain (Hills, Water, Forest, Mine,
+   * CityCenter) cannot be bulldozed. Returns true if something was cleared.
+   */
+  bulldoze(x: number, z: number): boolean {
+    if (!this.inBounds(x, z)) return false;
+    const current = this.map.cells[x][z];
+    if (!canBulldoze(current)) return false;
+
+    if (current === CellType.Road) this.roadCount -= 1;
+    else this.industryCount -= 1;
+
+    this.applyCell(x, z, CellType.Empty);
     this.emit();
     return true;
   }
@@ -71,7 +113,10 @@ export class TerrainStore {
    */
   regenerate(options: GenerateOptions = {}): void {
     this.map = generateTerrain(options);
-    this.roadCount = this.countRoads();
+    this.roadCount = this.countType(CellType.Road);
+    this.industryCount =
+      this.countType(CellType.Lumberjack) +
+      this.countType(CellType.MineBuilding);
     this.emit();
   }
 
@@ -90,14 +135,16 @@ export class TerrainStore {
     const col = cells[x].slice();
     col[z] = type;
     cells[x] = col;
+    // `heights` is intentionally preserved (shared reference) so elevation
+    // survives type changes — a Road built on a Hill keeps the hill height.
     this.map = { ...this.map, cells };
   }
 
-  private countRoads(): number {
+  private countType(type: CellType): number {
     let n = 0;
     for (let x = 0; x < this.map.size; x++) {
       for (let z = 0; z < this.map.size; z++) {
-        if (this.map.cells[x][z] === CellType.Road) n++;
+        if (this.map.cells[x][z] === type) n++;
       }
     }
     return n;

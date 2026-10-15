@@ -1,21 +1,24 @@
-import { WorldProvider } from './sim/useWorld';
 import { TerrainProvider } from './sim/useTerrain';
+import { GameProvider } from './sim/useGameState';
 import { GameCanvas } from './render/GameCanvas';
 import { Hud } from './ui/Hud';
+import { Toolbar } from './ui/Toolbar';
 
 /**
- * App root. Providers own the single simulation instances; both the 3D canvas
- * and the DOM HUD read from them. The TerrainProvider generates the 21×21 map
- * once and is shared so the HUD can show the road count. The canvas fills the
- * viewport and the HUD overlays on top.
+ * App root. Providers own the single simulation instances, shared between the
+ * 3D canvas and the DOM overlays:
+ *   - TerrainProvider: the 21×21 map + roads/industries.
+ *   - GameProvider: the active build tool and the player's money.
+ * The canvas fills the viewport; the HUD and toolbar overlay on top.
  */
 export default function App() {
   return (
     <TerrainProvider options={{ size: 21 }}>
-      <WorldProvider>
+      <GameProvider startingMoney={1000}>
         <GameCanvas />
         <Hud />
-      </WorldProvider>
+        <Toolbar />
+      </GameProvider>
     </TerrainProvider>
   );
 }

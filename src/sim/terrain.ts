@@ -16,20 +16,50 @@ export enum CellType {
   Empty = 'Empty',
   CityCenter = 'CityCenter',
   Water = 'Water',
-  Mountain = 'Mountain',
+  /** Gentle, ramp-like hill (OpenTTD-style slope). Buildable on top. */
+  Hill = 'Hill',
   Forest = 'Forest',
+  /** Natural ore deposit (terrain feature). */
   Mine = 'Mine',
-  /** Player-built road. Only buildable on Empty cells. */
+  /** Player-built road. Buildable on Empty ground or on top of a Hill. */
   Road = 'Road',
+  /** Player-built lumberjack (industry). Buildable on Empty ground. */
+  Lumberjack = 'Lumberjack',
+  /** Player-built mine building (industry). Buildable on Empty ground. */
+  MineBuilding = 'MineBuilding',
+}
+
+/** Cell types that count as flat, buildable ground for roads. */
+export function isFlatGround(cell: CellType): boolean {
+  return cell === CellType.Empty;
 }
 
 /**
- * Whether a road may be built on the cell type currently in `cell`.
- * Rule: roads can only be placed on Empty ground — not on Water, Mountain,
- * Forest, Mine or CityCenter, and not on an existing Road.
+ * Whether a road may be built on the cell currently of type `cell`.
+ * Roads can be placed on Empty ground or on top of a Hill (where the road
+ * takes the hill's elevation). Not on Water, Forest, Mine, CityCenter,
+ * industries, or an existing Road.
  */
 export function canBuildRoad(cell: CellType): boolean {
+  return cell === CellType.Empty || cell === CellType.Hill;
+}
+
+/** Whether a player industry (lumberjack/mine building) may be built here. */
+export function canBuildIndustry(cell: CellType): boolean {
   return cell === CellType.Empty;
+}
+
+/**
+ * Whether the bulldozer may clear this cell back to Empty.
+ * Player-built things (Road, Lumberjack, MineBuilding) are removable; natural
+ * terrain — Hills, Water, Forest, Mine, CityCenter — is not.
+ */
+export function canBulldoze(cell: CellType): boolean {
+  return (
+    cell === CellType.Road ||
+    cell === CellType.Lumberjack ||
+    cell === CellType.MineBuilding
+  );
 }
 
 /** Full generated map: a size×size grid of cell types plus its parameters. */
@@ -38,7 +68,17 @@ export interface TerrainMap {
   readonly seed: number;
   /** Row-major grid: cells[x][z]. */
   readonly cells: CellType[][];
+  /**
+   * Row-major base elevation per cell, in cellSize units: heights[x][z].
+   * Hills have a positive height; everything else is 0. This layer is stable
+   * even when a cell's type changes (e.g. a Road built on a Hill keeps the
+   * hill's height), so roads can inherit and render on the slope.
+   */
+  readonly heights: number[][];
 }
+
+/** Elevation (in cellSize units) assigned to a Hill cell's flat top. */
+export const HILL_HEIGHT = 0.9;
 
 export interface GenerateOptions {
   /** Grid dimension (size × size). Default 21. */
@@ -126,15 +166,20 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   const freq = 0.35;
 
   const cells: CellType[][] = [];
+  const heights: number[][] = [];
   for (let x = 0; x < size; x++) {
     const col: CellType[] = [];
+    const hcol: number[] = [];
     for (let z = 0; z < size; z++) {
-      col.push(classifyCell(x, z));
+      const t = classifyCell(x, z);
+      col.push(t);
+      hcol.push(t === CellType.Hill ? HILL_HEIGHT : 0);
     }
     cells.push(col);
+    heights.push(hcol);
   }
 
-  return { size, seed, cells };
+  return { size, seed, cells, heights };
 
   function classifyCell(x: number, z: number): CellType {
     // 1) Central city square (fixed).
@@ -155,9 +200,9 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
     const d = detail(x * freq * 2.1, z * freq * 2.1);
 
-    // High elevation => mountains (with a sprinkling of mines in the peaks).
+    // High elevation => hills (with a sprinkling of ore mines in the peaks).
     if (e > 0.68) {
-      return d > 0.72 ? CellType.Mine : CellType.Mountain;
+      return d > 0.72 ? CellType.Mine : CellType.Hill;
     }
     // Low elevation + wet => water.
     if (e < 0.34 && m > 0.5) {

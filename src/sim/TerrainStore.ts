@@ -11,7 +11,7 @@
 
 import {
   CellType,
-  canBuildRoad,
+  canBuildRoadAt,
   canBulldoze,
   generateTerrain,
   SPECIAL_BUILDINGS,
@@ -63,13 +63,13 @@ export class TerrainStore {
   }
 
   /**
-   * Build a road on `(x, z)` if the rules allow it (Empty ground or on top of
-   * a Hill). Returns true if a road was placed. The cell's height is preserved,
-   * so a road on a hill keeps the hill's elevation.
+   * Build a road on `(x, z)` if the rules allow it: Empty ground, or a Hill
+   * cell whose slope is flat or a single straight ramp (OpenTTD-style — corner
+   * and peak cells are rejected). Returns true if a road was placed; the cell's
+   * height is preserved so a road on a hill keeps the hill's elevation.
    */
   buildRoad(x: number, z: number): boolean {
-    if (!this.inBounds(x, z)) return false;
-    if (!canBuildRoad(this.map.cells[x][z])) return false;
+    if (!canBuildRoadAt(this.map, x, z)) return false;
 
     this.applyCell(x, z, CellType.Road);
     this.roadCount += 1;

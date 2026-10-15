@@ -59,3 +59,11 @@ export function useRoadCount(): number {
     () => store.getRoadCount(),
   );
 }
+
+export function useIndustryCount(): number {
+  const store = useTerrainStore();
+  return useSyncExternalStore(
+    (onChange) => store.subscribe(onChange),
+    () => store.getIndustryCount(),
+  );
+}

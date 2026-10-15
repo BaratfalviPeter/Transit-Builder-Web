@@ -1,13 +1,14 @@
 /**
  * GameCanvas — the root R3F scene.
  *
- * Composes the camera rig, lighting, procedurally generated terrain, the
- * auto-growing city, and the click-to-build-roads interaction.
+ * Composes the camera rig, lighting, terrain (flat tiles + ramp-like hills),
+ * roads, player industries, the auto-growing city, and the tool-driven click
+ * interaction.
  *
- * The terrain lives in a shared `TerrainStore` (via TerrainProvider), so both
- * this canvas and the DOM HUD read the same grid. Clicking the floor converts
- * the hit point to a grid cell and asks the store to build a road there; the
- * store enforces the rule that roads may only replace Empty ground.
+ * Clicking the floor resolves the world point to a grid cell and dispatches on
+ * the active tool (from GameState): build a road / industry (deducting its
+ * cost if affordable) or bulldoze. The terrain and game state live in shared
+ * stores so the canvas, toolbar, and HUD all stay in sync.
  */
 
 import { Canvas } from '@react-three/fiber';
@@ -17,9 +18,17 @@ import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
+import { Hills } from './Hills';
+import { Roads } from './Roads';
 import { CityBuildings } from './CityBuildings';
-import { Buildings } from './Buildings';
-import { useCityDevelopment, useTerrainMap, useTerrainStore } from '../sim';
+import {
+  CellType,
+  TOOLS,
+  useCityDevelopment,
+  useGame,
+  useTerrainMap,
+  useTerrainStore,
+} from '../sim';
 
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
@@ -28,6 +37,7 @@ function Scene() {
   const { cellSize, gridHalfExtent } = DEFAULT_CONFIG;
 
   const terrain = useTerrainStore();
+  const game = useGame();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
 
@@ -36,14 +46,39 @@ function Scene() {
 
   const handleFloorClick = useCallback(
     (worldX: number, worldZ: number) => {
-      // World point -> terrain cell index. Terrain is centered on origin, so
-      // cell [x][z] sits at ((x-half)*cellSize, _, (z-half)*cellSize); invert
-      // that and round to the nearest cell.
+      // World point -> terrain cell index (grid is centered on origin).
       const x = Math.round(worldX / cellSize + half);
       const z = Math.round(worldZ / cellSize + half);
-      terrain.buildRoad(x, z);
+
+      const tool = TOOLS[game.getActiveTool()];
+
+      switch (tool.id) {
+        case 'select':
+          return; // no-op for now
+        case 'bulldoze':
+          terrain.bulldoze(x, z);
+          return;
+        case 'road': {
+          // Only charge if the build actually succeeds and we can afford it.
+          if (!terrain.inBounds(x, z)) return;
+          if (!game.canAfford(tool.cost)) return;
+          if (terrain.buildRoad(x, z)) game.spend(tool.cost);
+          return;
+        }
+        case 'lumberjack':
+        case 'mine': {
+          const type =
+            tool.id === 'lumberjack'
+              ? CellType.Lumberjack
+              : CellType.MineBuilding;
+          if (!terrain.inBounds(x, z)) return;
+          if (!game.canAfford(tool.cost)) return;
+          if (terrain.buildIndustry(x, z, type)) game.spend(tool.cost);
+          return;
+        }
+      }
     },
-    [terrain, cellSize, half],
+    [terrain, game, cellSize, half],
   );
 
   return (
@@ -61,20 +96,22 @@ function Scene() {
       />
       <Sky sunPosition={[30, 50, 20]} />
 
-      {/* Procedurally generated terrain + player-built roads. */}
+      {/* Flat terrain tiles + industries (hills & roads drawn separately). */}
       <MapGrid map={map} cellSize={cellSize} />
+      {/* Ramp-like hills (custom slope geometry). */}
+      <Hills map={map} cellSize={cellSize} />
+      {/* Roads: flat on ground, raised onto hills. */}
+      <Roads map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
-      {/* Faint reference grid + click/pick plane (click = build road). */}
+      {/* Click/pick plane for the active build tool. */}
       <GridFloor
         cellSize={cellSize}
         gridHalfExtent={gridHalfExtent}
         onFloorClick={handleFloorClick}
       />
-
-      <Buildings cellSize={cellSize} />
     </>
   );
 }

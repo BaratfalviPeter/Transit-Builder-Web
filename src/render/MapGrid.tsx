@@ -30,19 +30,34 @@ export interface MapGridProps {
 /** Base (unscaled) height of a tile cube, in cellSize units. */
 const BASE_TILE_HEIGHT = 1;
 
+/** Types MapGrid does NOT draw as flat boxes (handled by dedicated meshes). */
+const SKIP_TYPES = new Set<CellType>([CellType.Hill, CellType.Road]);
+
 export function MapGrid({ map, cellSize }: MapGridProps) {
   // Bucket cell coordinates by type so each type becomes one InstancedMesh.
+  // Hills (custom ramp geometry) and Roads (may sit on hills) are drawn by
+  // their own components, so they're skipped here.
   const buckets = useMemo(() => {
     const byType = new Map<CellType, Array<[number, number]>>();
+    const push = (t: CellType, x: number, z: number) => {
+      let arr = byType.get(t);
+      if (!arr) {
+        arr = [];
+        byType.set(t, arr);
+      }
+      arr.push([x, z]);
+    };
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
         const t = map.cells[x][z];
-        let arr = byType.get(t);
-        if (!arr) {
-          arr = [];
-          byType.set(t, arr);
+        // A road on flat ground still needs a grass base tile beneath it; a
+        // road on a hill sits on the hill body instead.
+        if (t === CellType.Road) {
+          if (map.heights[x][z] === 0) push(CellType.Empty, x, z);
+          continue;
         }
-        arr.push([x, z]);
+        if (SKIP_TYPES.has(t)) continue;
+        push(t, x, z);
       }
     }
     return byType;

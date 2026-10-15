@@ -1,24 +1,29 @@
 /**
- * Hud — React overlay UI (counters + hints).
+ * Hud — top-left status overlay (money + counters) and the bottom hint.
  *
- * Lives in the normal React DOM tree, layered above the canvas. It reads
- * discrete simulation snapshots (not per-frame state), so it only updates on
- * meaningful events: placing a house, or building a road.
+ * Reads discrete simulation snapshots (not per-frame state): the player's
+ * money, the number of player-built industries ("Épületek"), and the number of
+ * roads ("Lerakott utak").
  */
 
-import { useRoadCount, useWorldSnapshot } from '../sim';
+import { useGameSnapshot, useIndustryCount, useRoadCount } from '../sim';
 import './hud.css';
 
 export function Hud() {
-  const placements = useWorldSnapshot();
+  const { money } = useGameSnapshot();
+  const industryCount = useIndustryCount();
   const roadCount = useRoadCount();
 
   return (
     <div className="hud">
       <div className="hud__panel">
         <div className="hud__row">
+          <span className="hud__label">Pénz</span>
+          <span className="hud__value">${money}</span>
+        </div>
+        <div className="hud__row">
           <span className="hud__label">Épületek</span>
-          <span className="hud__value">{placements.length}</span>
+          <span className="hud__value">{industryCount}</span>
         </div>
         <div className="hud__row">
           <span className="hud__label">Lerakott utak</span>
@@ -27,8 +32,8 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Bal klikk a padlón: út építése üres (fű) cellára · Bal húzás: pásztázás ·
-        Jobb húzás: forgatás · Görgő: zoom
+        Válassz eszközt alul · Bal klikk: építés/törlés a kiválasztott eszközzel
+        · Bal húzás: pásztázás · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>
   );

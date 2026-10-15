@@ -21,16 +21,18 @@ src/
             #   CityDevelopment.ts  – auto-spawn / szintlépő város (tick)
             #   useCityDevelopment.ts – játékciklus (setInterval) + snapshot
   render/   # R3F komponensek
-            #   GameCanvas    – gyökér jelenet, click -> aktív eszköz
-            #   MapGrid       – sík terep-csempék (instancing, típusonként)
-            #   Hills         – összefüggő, low-poly domb-felszín (hézagmentes rámpák)
-            #   Industries    – auto-generált speciális épületek (fatelep/bánya/erőmű/gyár)
-            #   BuildingIcons – lebegő UI ikonok a speciális épületek fölött (drei Html)
-            #   Roads         – utak (síkon, dombon megemelve)
-            #   CityBuildings – a város auto-épületei (szint = magasság)
-            #   GridFloor     – pick-sík a kattintáshoz
-            #   CameraRig     – RTS kamera (drei MapControls)
-            #   hillGeometry.ts / terrainStyle.ts / config.ts
+            #   GameCanvas     – gyökér jelenet, click -> aktív eszköz
+            #   TerrainSurface – EGYETLEN összefüggő heightmap terep-mesh
+            #                    (fű+domb+rámpa+víz+város) + a kattintás-hitbox
+            #   MapGrid        – erdő-dekoráció (fa-blokkok) a felszínen
+            #   Industries     – auto-generált speciális épületek (fatelep/bánya/erőmű/gyár)
+            #   BuildingIcons  – lebegő UI ikonok a speciális épületek fölött (drei Html)
+            #   Roads          – utak (síkon, dombon megemelve)
+            #   CityBuildings  – a város auto-épületei (szint = magasság)
+            #   GridFloor      – vizuális referencia-rács (nem pick-sík)
+            #   usePointerBuild.ts – megosztott click+drag kezelők (stopPropagation)
+            #   CameraRig      – RTS kamera (drei MapControls)
+            #   terrainStyle.ts / config.ts
   ui/       # React overlay
             #   Hud      – pénz + épület/út számlálók + hint
             #   Toolbar  – alsó-középső építési menü
@@ -95,6 +97,13 @@ egy 2-es szintű magaslat éri el a korábbi 1-es szint magasságát. Dombra ép
 A várost **nem zárhatják körbe** a dombok: a központ körül **5 cellás védőzóna**
 teljesen hegymentes, és az **északi/déli** szélek mentén erősen csökkentett a
 domb-esély, így mindig marad legalább két szabad terjeszkedési folyosó.
+
+A teljes terep **egyetlen összefüggő heightmap-mesh** (`TerrainSurface`): a
+geometria a sarok-maximum magasságtérképből épül (fű, domb, rámpa, víz, város),
+cellánkénti lapos színekkel és low-poly árnyékolással. Mivel ez a tényleges
+felszín, a **kattintás-hitbox is ezen van** — a raycaster mindig a valódi
+felületet találja el (síkon és lejtőn is), nincs külön lapos pick-sík a dombok
+alatt. Az utak, épületek és ikonok külön rétegként kerülnek rá a felszínre.
 
 Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
 (LumberMill 🪓) erdő mellé, 2–3 **bánya** (Mine ⛏️) domb mellé, 2–3 **erőmű**

@@ -77,27 +77,34 @@ function cellHeightAt(map: TerrainMap, x: number, z: number): number {
 }
 
 /**
+ * Height of a grid CORNER (cx, cz), cx,cz in [0, size]. A corner's height is
+ * the max of the up-to-4 cells touching it — the corner-max heightmap that the
+ * terrain surface, hill roads, and slope rules all share. In cellSize units.
+ */
+export function cornerHeightAt(map: TerrainMap, cx: number, cz: number): number {
+  return Math.max(
+    cellHeightAt(map, cx - 1, cz - 1),
+    cellHeightAt(map, cx, cz - 1),
+    cellHeightAt(map, cx - 1, cz),
+    cellHeightAt(map, cx, cz),
+  );
+}
+
+/**
  * The four corner heights of cell (x, z), using the corner-max heightmap the
- * renderer uses: a corner's height is the max of the up-to-4 cells touching it.
- * Returned as [h00, h10, h11, h01] for corners (x,z),(x+1,z),(x+1,z+1),(x,z+1).
+ * renderer uses. Returned as [h00, h10, h11, h01] for corners
+ * (x,z),(x+1,z),(x+1,z+1),(x,z+1).
  */
 export function cellCornerHeights(
   map: TerrainMap,
   x: number,
   z: number,
 ): [number, number, number, number] {
-  const corner = (cx: number, cz: number): number =>
-    Math.max(
-      cellHeightAt(map, cx - 1, cz - 1),
-      cellHeightAt(map, cx, cz - 1),
-      cellHeightAt(map, cx - 1, cz),
-      cellHeightAt(map, cx, cz),
-    );
   return [
-    corner(x, z),
-    corner(x + 1, z),
-    corner(x + 1, z + 1),
-    corner(x, z + 1),
+    cornerHeightAt(map, x, z),
+    cornerHeightAt(map, x + 1, z),
+    cornerHeightAt(map, x + 1, z + 1),
+    cornerHeightAt(map, x, z + 1),
   ];
 }
 

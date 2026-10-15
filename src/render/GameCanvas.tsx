@@ -18,7 +18,7 @@ import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
-import { Hills } from './Hills';
+import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
 import { Industries } from './Industries';
 import { BuildingIcons } from './BuildingIcons';
@@ -113,11 +113,12 @@ function Scene() {
       />
       <Sky sunPosition={[30, 50, 20]} />
 
-      {/* Flat terrain tiles (hills, roads, industry drawn separately). */}
+      {/* ONE unified heightmap terrain mesh (grass + hills + ramps + water +
+          city). Carries the build handlers, so every click hits the real
+          surface under the cursor — exact picking on flat ground and slopes. */}
+      <TerrainSurface map={map} cellSize={cellSize} handlers={buildHandlers} />
+      {/* Forest decoration blocks on top of the surface. */}
       <MapGrid map={map} cellSize={cellSize} />
-      {/* Continuous low-poly hill surface. Carries the build handlers so clicks
-          hit the actual slope geometry (correct cell), not the plane below. */}
-      <Hills map={map} cellSize={cellSize} handlers={buildHandlers} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <Industries map={map} cellSize={cellSize} />
       {/* Floating UI icons above special buildings (for easy identification). */}
@@ -128,12 +129,8 @@ function Scene() {
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
-      {/* Flat-ground pick plane + reference grid (shares the build handlers). */}
-      <GridFloor
-        cellSize={cellSize}
-        gridHalfExtent={gridHalfExtent}
-        handlers={buildHandlers}
-      />
+      {/* Visual reference grid lines (picking is on the terrain surface). */}
+      <GridFloor cellSize={cellSize} gridHalfExtent={gridHalfExtent} />
     </>
   );
 }

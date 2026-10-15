@@ -22,16 +22,24 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { CellType, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface HillsProps {
   map: TerrainMap;
   cellSize: number;
+  /**
+   * Shared pointer handlers (click + drag build). Attaching them to the raised
+   * hill mesh means the raycaster hits the actual slope geometry, so builds on
+   * a hill use the correct cell (not the flat plane beneath it). The handlers
+   * call stopPropagation to prevent the click passing through to that plane.
+   */
+  handlers?: PointerBuildHandlers;
 }
 
 // Flat tile top (grass surface) height, so the hill base lines up with it.
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
-export function Hills({ map, cellSize }: HillsProps) {
+export function Hills({ map, cellSize, handlers }: HillsProps) {
   const geometry = useMemo(
     () => buildHillSurface(map, cellSize),
     [map, cellSize],
@@ -40,7 +48,7 @@ export function Hills({ map, cellSize }: HillsProps) {
   if (!geometry) return null;
 
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
+    <mesh geometry={geometry} castShadow receiveShadow {...handlers}>
       <meshStandardMaterial
         color={CELL_STYLE[CellType.Hill].color}
         roughness={0.95}

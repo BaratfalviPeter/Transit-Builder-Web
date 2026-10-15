@@ -23,6 +23,7 @@ import { Roads } from './Roads';
 import { Industries } from './Industries';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
+import { usePointerBuild } from './usePointerBuild';
 import {
   TOOLS,
   useCityDevelopment,
@@ -83,6 +84,10 @@ function Scene() {
     lastCell.current = null;
   }, []);
 
+  // Shared click + drag handlers, attached to BOTH the flat pick-plane and the
+  // raised hill mesh so each hit lands on the real geometry under the cursor.
+  const buildHandlers = usePointerBuild(handlePaint, handleDragChange);
+
   // Safety net: if the pointer is released anywhere (even off the pick plane),
   // clear the dedupe key so a stuck drag can't keep painting.
   useEffect(() => {
@@ -110,8 +115,9 @@ function Scene() {
 
       {/* Flat terrain tiles (hills, roads, industry drawn separately). */}
       <MapGrid map={map} cellSize={cellSize} />
-      {/* Continuous low-poly hill surface (gapless ramps). */}
-      <Hills map={map} cellSize={cellSize} />
+      {/* Continuous low-poly hill surface. Carries the build handlers so clicks
+          hit the actual slope geometry (correct cell), not the plane below. */}
+      <Hills map={map} cellSize={cellSize} handlers={buildHandlers} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <Industries map={map} cellSize={cellSize} />
       {/* Floating UI icons above special buildings (for easy identification). */}
@@ -122,12 +128,11 @@ function Scene() {
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
 
-      {/* Click + drag pick plane for the active build tool. */}
+      {/* Flat-ground pick plane + reference grid (shares the build handlers). */}
       <GridFloor
         cellSize={cellSize}
         gridHalfExtent={gridHalfExtent}
-        onPaint={handlePaint}
-        onDragChange={handleDragChange}
+        handlers={buildHandlers}
       />
     </>
   );

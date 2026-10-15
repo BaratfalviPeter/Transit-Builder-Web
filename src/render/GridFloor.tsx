@@ -1,63 +1,31 @@
 /**
- * GridFloor — a 3D grid floor on the X/Z plane plus an invisible pick plane.
+ * GridFloor — a visible reference grid plus an invisible pick plane for FLAT
+ * ground.
  *
  * - The visible grid lines are drawn with drei's <Grid> helper, scaled by
  *   `cellSize`.
- * - An invisible, pointer-enabled plane spans the whole grid and receives
- *   pointer events. It drives both single-click building and drag-to-build:
- *     - onPointerDown  => begin a build gesture at the hit cell
- *     - onPointerMove  => while dragging, continue building along the path
- *     - onPointerUp    => end the gesture
- *   The parent is notified via `onPaint(worldX, worldZ)` for each cell that
- *   should be acted on, and via `onDragChange` when the drag state flips.
+ * - An invisible, pointer-enabled plane at y≈0 spans the whole grid and
+ *   receives pointer events for building on flat terrain. Hills carry their own
+ *   pointer handlers on their raised mesh (see Hills.tsx), so clicks on a hill
+ *   hit the actual slope geometry rather than this plane beneath it.
  *
- * We only react to the primary (left) button; camera rotation/zoom use the
- * other buttons (see CameraRig).
+ * The shared build handlers (click + drag, with stopPropagation) come from
+ * `usePointerBuild` in the parent and are spread onto the plane here.
  */
 
 import { Grid } from '@react-three/drei';
-import { type ThreeEvent } from '@react-three/fiber';
-import { useRef } from 'react';
+import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface GridFloorProps {
   cellSize: number;
   gridHalfExtent: number;
-  /** Called for each cell to act on (world-space x,z of the pointer hit). */
-  onPaint?: (x: number, z: number) => void;
-  /** Called when a drag gesture starts (true) or ends (false). */
-  onDragChange?: (dragging: boolean) => void;
+  /** Shared pointer handlers (click + drag build) for the flat plane. */
+  handlers: PointerBuildHandlers;
 }
 
-export function GridFloor({
-  cellSize,
-  gridHalfExtent,
-  onPaint,
-  onDragChange,
-}: GridFloorProps) {
+export function GridFloor({ cellSize, gridHalfExtent, handlers }: GridFloorProps) {
   // Total world extent of the grid (full width/depth in meters).
   const size = gridHalfExtent * 2 * cellSize;
-
-  const dragging = useRef(false);
-
-  const handleDown = (e: ThreeEvent<PointerEvent>) => {
-    if (e.button !== 0) return; // left button only
-    e.stopPropagation();
-    dragging.current = true;
-    onDragChange?.(true);
-    onPaint?.(e.point.x, e.point.z); // paint the starting cell immediately
-  };
-
-  const handleMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!dragging.current) return;
-    e.stopPropagation();
-    onPaint?.(e.point.x, e.point.z);
-  };
-
-  const endDrag = () => {
-    if (!dragging.current) return;
-    dragging.current = false;
-    onDragChange?.(false);
-  };
 
   return (
     <group>
@@ -75,15 +43,8 @@ export function GridFloor({
         followCamera={false}
       />
 
-      {/* Invisible pick plane. Rotated to lie flat on X/Z. */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
-        onPointerDown={handleDown}
-        onPointerMove={handleMove}
-        onPointerUp={endDrag}
-        onPointerLeave={endDrag}
-      >
+      {/* Invisible pick plane for flat ground. Rotated to lie flat on X/Z. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} {...handlers}>
         <planeGeometry args={[size, size]} />
         <meshBasicMaterial visible={false} />
       </mesh>

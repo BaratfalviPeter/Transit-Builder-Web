@@ -21,6 +21,8 @@ export enum CellType {
   Forest = 'Forest',
   /** Player-built road. Buildable on Empty ground or on top of a Hill. */
   Road = 'Road',
+  /** Player-built rail. Same build rules as Road (Empty or Hill slope). */
+  Rail = 'Rail',
   /**
    * Auto-generated lumber mill (fatelep). Spawns on Empty cells next to a
    * Forest during map generation; the player cannot place these.
@@ -146,13 +148,22 @@ export function canBuildRoadAt(map: TerrainMap, x: number, z: number): boolean {
   return kind === 'flat' || kind === 'slopeX' || kind === 'slopeZ';
 }
 
+/** Rail follows the same placement rules as road (Empty/Hill, flat or ramp). */
+export function canBuildRailAt(map: TerrainMap, x: number, z: number): boolean {
+  return canBuildRoadAt(map, x, z);
+}
+
 /**
- * Whether the bulldozer may clear this cell back to Empty.
- * Only player-built roads are removable; natural terrain (Hills, Water,
- * Forest, CityCenter) and auto-generated industry (LumberMill, Mine) are not.
+ * Whether the bulldozer may clear this cell back to Empty. The player can
+ * remove their own roads and rails, plus natural forest (trees). Hills, water,
+ * city center and auto-generated industry are not bulldozable.
  */
 export function canBulldoze(cell: CellType): boolean {
-  return cell === CellType.Road;
+  return (
+    cell === CellType.Road ||
+    cell === CellType.Rail ||
+    cell === CellType.Forest
+  );
 }
 
 /** Full generated map: a size×size grid of cell types plus its parameters. */
@@ -165,9 +176,17 @@ export interface TerrainMap {
    * Row-major base elevation per cell, in cellSize units: heights[x][z].
    * Hills have a positive height; everything else is 0. This layer is stable
    * even when a cell's type changes (e.g. a Road built on a Hill keeps the
-   * hill's height), so roads can inherit and render on the slope.
+   * hill's height), so roads can inherit and render on the slope. Terraforming
+   * (raise/lower) edits these at runtime, and may introduce negative values
+   * (basins) which become Water.
    */
   readonly heights: number[][];
+  /**
+   * Bumped on every runtime edit (type or height). Lets memoized consumers
+   * (e.g. the terrain surface geometry) detect height changes, which don't
+   * alter `seed`/`size`.
+   */
+  readonly version: number;
 }
 
 /**
@@ -302,7 +321,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     heights.push(hcol);
   }
 
-  const base: TerrainMap = { size, seed, cells, heights };
+  const base: TerrainMap = { size, seed, cells, heights, version: 0 };
 
   /**
    * A cell can host a decoration/building only if its slope is a clean flat

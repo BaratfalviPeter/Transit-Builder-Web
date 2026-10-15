@@ -28,14 +28,17 @@ src/
             #   Industries     – auto-generált speciális épületek (fatelep/bánya/erőmű/gyár)
             #   BuildingIcons  – lebegő UI ikonok a speciális épületek fölött (drei Html)
             #   Roads          – utak (síkon, dombon megemelve)
+            #   Rails          – sínek (kavicságy + talpfák + sínszálak)
             #   CityBuildings  – a város auto-épületei (szint = magasság)
             #   GridFloor      – vizuális referencia-rács (nem pick-sík)
             #   usePointerBuild.ts – megosztott click+drag kezelők (stopPropagation)
             #   CameraRig      – RTS kamera (drei MapControls)
+            #   GameClock      – useFrame-alapú játékidő (a GameCanvas-ban)
             #   terrainStyle.ts / config.ts
   ui/       # React overlay
-            #   Hud      – pénz + épület/út számlálók + hint
-            #   Toolbar  – alsó-középső építési menü
+            #   Hud       – épület/út számlálók + vezérlés-hint
+            #   SidePanel – oldalsó fülek (Földmunka / Infrastruktúra / Pénzügyek)
+            #               + dátum és időkontroll (⏸ ▶ ⏩)
   App.tsx
   main.tsx
 public/
@@ -61,26 +64,33 @@ npm run preview    # buildelt verzió kiszolgálása
 
 ## Játékmenet / vezérlés
 
-Az alsó-középső **eszköztárból** választhatsz eszközt (az **Út** az
-alapértelmezett):
+A jobb oldali **panel** három füle:
 
-- **Kijelölés** – semleges egér.
-- **Út ($10)** – út építése üres (fű) cellára **vagy** domb tetejére/oldalára
-  (a dombon az út felveszi a lejtő dőlését és magasságát). **Húzva** is építhető:
-  tartsd nyomva a bal gombot és húzd végig a cellákon.
-- **Törlés** (bulldózer) – utak visszabontása üres talajjá; dombokat/vizet/
-  várost/ipart **nem** lehet kitörölni.
+- **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
+  ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl.
+- **Infrastruktúra (Transport):** **Út** ($10) és **Sín** ($20). Mindkettő üres
+  (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
+  magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
+- **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
-> Az ipar (fatelep, bánya, erőmű, gyár) **magától generálódik** a térképen
-> szétszórva, a várostól távol — a játékosnak **utakkal kell összekötnie**.
+A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:
+⏸ szünet · ▶ normál · ⏩ gyorsított. Normál tempónál 1 valós másodperc ≈ 1 nap.
 
-Bal felül látszik a **pénz** ($1000-ról indul), az **épületek** (ipar) és a
-**lerakott utak** száma. Minden útépítés levonja az árat (ha nincs rá fedezet,
-nem épül).
+> Az ipar (fatelep, bánya, erőmű, gyár) **magától generálódik** a nyersanyaga
+> közelében, szétszórva — a játékosnak kell összekötnie úttal/sínnel.
 
-- **Bal gomb**: építés / törlés (kattintás vagy húzás) — a kamerát **nem** mozgatja
-- **Mozgás (pan)**: WASD vagy nyílbillentyűk (sima, folyamatos)
-- **Jobb húzás**: forgatás · **Görgő / középső gomb**: zoom
+### Terraformálás és víz-fizika
+
+A **Süllyesztés** a talajszint (Y=0) alá ásott cellát **Water**-ré változtatja
+(medence). Ha egy cellát pont a talajszintre süllyesztenek vissza és **meglévő
+vízhez szomszédos**, a víz elönti azt is. Az **Emelés/Süllyesztés** pontosan
+frissíti az egységes terep-mesh magasságait (a mesh egy `version` számláló
+alapján épül újra).
+
+Vezérlés:
+- **Bal gomb**: építés / tereprendezés / törlés (kattintás vagy húzás)
+- **Mozgás (pan)**: WASD vagy nyílbillentyűk · **Jobb húzás**: forgatás ·
+  **Görgő / középső gomb**: zoom
 
 A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.
 

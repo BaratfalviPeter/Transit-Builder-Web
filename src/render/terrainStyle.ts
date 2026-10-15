@@ -29,6 +29,8 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   [CellType.Forest]: { color: '#2e6b32', scaleY: 1.5, offsetY: 0 },
   // Player-built road: flat, dark-grey tile resting on the ground.
   [CellType.Road]: { color: '#3a3d42', scaleY: 0.08, offsetY: 0.01 },
+  // Player-built rail: gravel bed colour (rails/sleepers drawn in Rails.tsx).
+  [CellType.Rail]: { color: '#6b6256', scaleY: 0.06, offsetY: 0.01 },
   // Auto-generated industries are drawn with custom meshes (Industries.tsx);
   // these colors are the main building color.
   [CellType.LumberMill]: { color: '#8a5a2b', scaleY: 1, offsetY: 0 },

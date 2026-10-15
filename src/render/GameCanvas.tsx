@@ -25,10 +25,14 @@ import { Industries } from './Industries';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
+import { TerraformSelection } from './TerraformSelection';
 import {
   TOOLS,
   useCityDevelopment,
   useGame,
+  useGameSnapshot,
+  useTerraformPlan,
+  useTerraformSnapshot,
   useTerrainMap,
   useTerrainStore,
   type TerrainMap,
@@ -84,8 +88,19 @@ function Scene() {
 
   const terrain = useTerrainStore();
   const game = useGame();
+  const { activeTool } = useGameSnapshot();
+  const plan = useTerraformPlan();
+  const planSnap = useTerraformSnapshot();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
+
+  // Leaving the raise/lower tools cancels an in-progress selection (but not a
+  // batch that's already building).
+  useEffect(() => {
+    if (activeTool !== 'raise' && activeTool !== 'lower') {
+      if (plan.getPhase() === 'selecting') plan.clear();
+    }
+  }, [activeTool, plan]);
 
   // Auto-spawning / growing city buildings, driven by the game-loop timer.
   const { buildings } = useCityDevelopment(map, TICK_MS);
@@ -123,21 +138,19 @@ function Scene() {
           if (terrain.buildRail(x, z)) game.spend(tool.cost);
           return;
         }
-        case 'raise': {
-          if (!terrain.inBounds(x, z)) return;
-          if (!game.canAfford(tool.cost)) return;
-          if (terrain.raise(x, z)) game.spend(tool.cost);
-          return;
-        }
+        case 'raise':
         case 'lower': {
-          if (!terrain.inBounds(x, z)) return;
-          if (!game.canAfford(tool.cost)) return;
-          if (terrain.lower(x, z)) game.spend(tool.cost);
+          // Terraforming is now batched: clicks/drag only SELECT cells (shown
+          // as a red grid). The actual edit happens on confirm (see SidePanel),
+          // in one batch — so painting is instant and the terrain only updates
+          // once. Only sculptable cells can be selected.
+          if (!terrain.canTerraform(x, z)) return;
+          plan.addCell(x, z, tool.id);
           return;
         }
       }
     },
-    [terrain, game, cellSize, half],
+    [terrain, game, plan, cellSize, half],
   );
 
   // Reset the dedupe key whenever a drag starts/ends so the first cell of the
@@ -196,6 +209,10 @@ function Scene() {
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />
+
+      {/* Pending terraform selection: red while selecting, yellow while the
+          short build timer runs. */}
+      <TerraformSelection plan={planSnap} map={map} cellSize={cellSize} />
 
       {/* Visual reference grid lines (picking is on the terrain surface). */}
       <GridFloor cellSize={cellSize} gridHalfExtent={gridHalfExtent} />

@@ -67,7 +67,12 @@ npm run preview    # buildelt verzió kiszolgálása
 A jobb oldali **panel** három füle:
 
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
-  ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl.
+  ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az
+  emelés/süllyesztés **kijelölős**: a kattintással/húzással kijelölt cellák
+  **piros** rácsot kapnak, majd az **Építés** gombra fizetsz és a cellák
+  **sárga** „under construction" jelet kapnak, végül egy rövid (valós idejű,
+  **nem** in-game) késleltetés után **egyszerre** megépülnek. (A batch-elés
+  miatt bármennyi cella is **egyetlen** gyors geometria-frissítés.)
 - **Infrastruktúra (Transport):** **Út** ($10) és **Sín** ($20). Mindkettő üres
   (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
   magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
@@ -83,9 +88,9 @@ A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:
 
 A **Süllyesztés** a talajszint (Y=0) alá ásott cellát **Water**-ré változtatja
 (medence). Ha egy cellát pont a talajszintre süllyesztenek vissza és **meglévő
-vízhez szomszédos**, a víz elönti azt is. Az **Emelés/Süllyesztés** pontosan
-frissíti az egységes terep-mesh magasságait (a mesh egy `version` számláló
-alapján épül újra).
+vízhez szomszédos**, a víz elönti azt is. A megerősített kijelölés **egyetlen
+batch**-ben, egy commit-tal frissíti az egységes terep-mesh magasságait — így
+akárhány cella is gyors; a mesh fix méretű bufferben, helyben patch-elődik.
 
 Vezérlés:
 - **Bal gomb**: építés / tereprendezés / törlés (kattintás vagy húzás)

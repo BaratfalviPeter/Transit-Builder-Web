@@ -72,11 +72,20 @@ export interface TerrainMap {
   readonly heights: number[][];
 }
 
-/** Elevation (in cellSize units) assigned to a Hill cell's flat top. */
-export const HILL_HEIGHT = 0.9;
+/**
+ * Height added per hill level, in cellSize units. Hills now stack in discrete
+ * levels (1, 2, …); a level-N hill's top is at N * HILL_STEP. This is half the
+ * previous single-step height (~0.9), so slopes are gentler — a level-2 hill
+ * reaches the old level-1 height. The render layer reads the resulting
+ * per-cell height directly, so ramps auto-adjust to this flatter scale.
+ */
+export const HILL_STEP = 0.45;
+
+/** Reference grid size the noise frequency was tuned for. */
+const REFERENCE_SIZE = 21;
 
 export interface GenerateOptions {
-  /** Grid dimension (size × size). Default 21. */
+  /** Grid dimension (size × size). Default 61 (large play area). */
   size?: number;
   /** Deterministic seed. Default: random. */
   seed?: number;
@@ -144,21 +153,22 @@ function makeValueNoise(rng: () => number, latticeSize: number) {
  * guaranteed buffer of Empty around the city so the town has room to grow.
  */
 export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
-  const size = options.size ?? 21;
+  const size = options.size ?? 61;
   const seed = options.seed ?? (Math.random() * 2 ** 32) >>> 0;
   const cityHalf = options.cityHalf ?? 2;
 
   const rng = mulberry32(seed);
 
-  // Two noise fields at different scales: one for the dominant biome mask,
-  // one finer field to break up large uniform blobs.
-  const elevation = makeValueNoise(rng, 8);
-  const moisture = makeValueNoise(rng, 8);
-  const detail = makeValueNoise(rng, 16);
+  // Noise fields. Larger lattices on a larger grid keep feature density sane.
+  const elevation = makeValueNoise(rng, 10);
+  const moisture = makeValueNoise(rng, 10);
+  const detail = makeValueNoise(rng, 20);
 
   const center = Math.floor(size / 2);
-  // How noise lattice coords map onto the grid (bigger => smaller features).
-  const freq = 0.35;
+  // Noise frequency is scaled to the reference grid so that biomes stay the
+  // same *relative* size as the map grows — i.e. bigger maps get larger,
+  // fewer blobs of hills/forest/water rather than fine-grained noise.
+  const freq = 0.35 * (REFERENCE_SIZE / size);
 
   const cells: CellType[][] = [];
   const heights: number[][] = [];
@@ -168,7 +178,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     for (let z = 0; z < size; z++) {
       const t = classifyCell(x, z);
       col.push(t);
-      hcol.push(t === CellType.Hill ? HILL_HEIGHT : 0);
+      hcol.push(t === CellType.Hill ? hillHeight(x, z) : 0);
     }
     cells.push(col);
     heights.push(hcol);
@@ -182,8 +192,24 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
 
   return { size, seed, cells, heights };
 
+  /** Discrete hill level (0 = flat, 1, 2, …) from the elevation field. */
+  function hillLevel(x: number, z: number): number {
+    const e = elevation(x * freq, z * freq);
+    // Rarer hills than before (threshold raised 0.68 -> 0.78) and stacked into
+    // levels, so most high ground is a gentle level-1 rise with occasional
+    // level-2 peaks.
+    if (e > 0.9) return 2;
+    if (e > 0.78) return 1;
+    return 0;
+  }
+
+  /** Per-cell hill height in cellSize units (level * step). */
+  function hillHeight(x: number, z: number): number {
+    return hillLevel(x, z) * HILL_STEP;
+  }
+
   function classifyCell(x: number, z: number): CellType {
-    // 1) Central city square (fixed).
+    // 1) Central city square (fixed) — stays at the exact map center.
     if (Math.abs(x - center) <= cityHalf && Math.abs(z - center) <= cityHalf) {
       return CellType.CityCenter;
     }
@@ -197,20 +223,20 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     }
 
     // 3) Noise-based biome classification.
-    const e = elevation(x * freq, z * freq);
     const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
     const d = detail(x * freq * 2.1, z * freq * 2.1);
 
-    // High elevation => hills.
-    if (e > 0.68) {
+    // High elevation => hills (rarer now; see hillLevel threshold).
+    if (hillLevel(x, z) > 0) {
       return CellType.Hill;
     }
-    // Low elevation + wet => water.
-    if (e < 0.34 && m > 0.5) {
+    // Low elevation + wet => water (kept uncommon).
+    const e = elevation(x * freq, z * freq);
+    if (e < 0.3 && m > 0.55) {
       return CellType.Water;
     }
     // Mid/high moisture => forest.
-    if (m > 0.62 && d > 0.4) {
+    if (m > 0.64 && d > 0.42) {
       return CellType.Forest;
     }
 

@@ -1,0 +1,89 @@
+.tfc {
+  position: absolute;
+  bottom: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+  padding: 12px 14px;
+  background: rgba(18, 20, 28, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  color: #e9ebf0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.tfc__info {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tfc__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tfc__cost {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffd34d;
+}
+
+.tfc__cost--no {
+  color: #e23c2f;
+}
+
+.tfc__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tfc__btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tfc__btn--cancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9ebf0;
+}
+
+.tfc__btn--cancel:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.tfc__btn--build {
+  background: rgba(66, 180, 90, 0.28);
+  border-color: rgba(66, 180, 90, 0.85);
+  color: #eafff0;
+}
+
+.tfc__btn--build:hover:not(:disabled) {
+  background: rgba(66, 180, 90, 0.42);
+}
+
+.tfc__btn--build:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tfc__building {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f2c438;
+  padding: 4px 0;
+}

@@ -24,8 +24,8 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Bal klikk/húzás: építés–tereprendezés a kiválasztott eszközzel · Mozgás:
-        WASD vagy nyilak · Jobb húzás: forgatás · Görgő: zoom
+        Út/sín: bal klikk–húzás · Földmunka: jelöld ki a cellákat (piros), majd
+        Építés · Mozgás: WASD/nyilak · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>
   );

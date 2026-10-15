@@ -114,12 +114,77 @@ export class TerrainStore {
 
   /** Raise `(x, z)` by one terraform step. Returns true if it changed. */
   raise(x: number, z: number): boolean {
-    return this.terraform(x, z, +HILL_STEP);
+    return this.terraformBatch([{ x, z, delta: +HILL_STEP }]);
   }
 
   /** Lower `(x, z)` by one terraform step. Returns true if it changed. */
   lower(x: number, z: number): boolean {
-    return this.terraform(x, z, -HILL_STEP);
+    return this.terraformBatch([{ x, z, delta: -HILL_STEP }]);
+  }
+
+  /** One terraform step (in cellSize units) up or down. */
+  terraformStep(): number {
+    return HILL_STEP;
+  }
+
+  /**
+   * Whether `(x, z)` can be sculpted: in bounds and not under the city, an
+   * industry, a road or a rail. Used to validate a selection before building.
+   */
+  canTerraform(x: number, z: number): boolean {
+    if (!this.inBounds(x, z)) return false;
+    const t = this.map.cells[x][z];
+    return (
+      t !== CellType.CityCenter &&
+      !SPECIAL_BUILDINGS.has(t) &&
+      t !== CellType.Road &&
+      t !== CellType.Rail
+    );
+  }
+
+  /**
+   * Apply many terraform edits in ONE commit (one geometry update, one emit) —
+   * used by the confirmed, batched terraforming flow so a whole selection is
+   * applied at once rather than cell-by-cell. Each edit raises/lowers a cell by
+   * `delta` (clamped). Water physics is applied per cell after all heights are
+   * set. Returns true if anything changed.
+   */
+  terraformBatch(edits: Array<{ x: number; z: number; delta: number }>): boolean {
+    const heights = this.map.heights.map((col) => col.slice());
+    const cells = this.map.cells.map((col) => col.slice());
+    let changed = false;
+    let typeChanged = false;
+
+    // 1) Apply all height deltas first (so adjacency/water sees final heights).
+    for (const { x, z, delta } of edits) {
+      if (!this.canTerraform(x, z)) continue;
+      const cur = heights[x][z];
+      const next = clamp(cur + delta, MIN_HEIGHT, MAX_HEIGHT);
+      if (next === cur) continue;
+      heights[x][z] = next;
+      changed = true;
+    }
+    if (!changed) return false;
+
+    // 2) Resolve cell types from the new heights (water physics).
+    for (const { x, z } of edits) {
+      if (!this.inBounds(x, z)) continue;
+      const h = heights[x][z];
+      const before = cells[x][z];
+      if (h < 0) {
+        cells[x][z] = CellType.Water;
+      } else if (h === 0 && this.adjacentToWaterIn(cells, x, z)) {
+        cells[x][z] = CellType.Water;
+      } else if (before === CellType.Water) {
+        cells[x][z] = CellType.Empty;
+      } else if (before === CellType.Forest) {
+        cells[x][z] = CellType.Empty;
+      }
+      if (cells[x][z] !== before) typeChanged = true;
+    }
+
+    this.commit({ cells, heights }, typeChanged);
+    return true;
   }
 
   /**
@@ -138,67 +203,8 @@ export class TerrainStore {
     return () => this.listeners.delete(listener);
   }
 
-  /**
-   * Terraform `(x, z)` by `delta` (±HILL_STEP), clamped to [MIN, MAX]. Updates
-   * the cell's height AND applies water physics:
-   *   - If the cell is lowered to ground level or below (height <= 0) it
-   *     becomes Water.
-   *   - Flood fill: any lowered-to-ground cell that is orthogonally adjacent to
-   *     existing Water also floods (becomes Water), cascading outward.
-   *   - Raising a Water cell back above ground turns it to Empty.
-   * Only player terrain is terraformable (not city/industry). Returns true if
-   * anything changed. Batches cell + height edits into one new map + one emit.
-   */
-  private terraform(x: number, z: number, delta: number): boolean {
-    if (!this.inBounds(x, z)) return false;
-    const t = this.map.cells[x][z];
-    // Don't let the player sculpt under the city or industry footprints.
-    if (
-      t === CellType.CityCenter ||
-      SPECIAL_BUILDINGS.has(t) ||
-      t === CellType.Road ||
-      t === CellType.Rail
-    ) {
-      return false;
-    }
-
-    const cur = this.map.heights[x][z];
-    const next = clamp(cur + delta, MIN_HEIGHT, MAX_HEIGHT);
-    if (next === cur) return false;
-
-    // Working copies (immutable update of the touched columns).
-    const heights = this.map.heights.map((col) => col.slice());
-    const cells = this.map.cells.map((col) => col.slice());
-
-    heights[x][z] = next;
-
-    // Water physics.
-    const before = cells[x][z];
-    if (next < 0) {
-      // Dug BELOW ground level -> a basin that fills with water.
-      cells[x][z] = CellType.Water;
-    } else if (next === 0 && this.adjacentToWater(cells, x, z)) {
-      // Lowered back to exactly ground level next to existing water -> the
-      // water pours in and floods this cell too.
-      cells[x][z] = CellType.Water;
-    } else if (cells[x][z] === CellType.Water) {
-      // Raised a former water cell back above ground -> dry land.
-      cells[x][z] = CellType.Empty;
-    } else if (cells[x][z] === CellType.Forest) {
-      // Terraforming clears trees off the sculpted cell.
-      cells[x][z] = CellType.Empty;
-    }
-
-    // A pure height change doesn't touch cell TYPES; only bump cellsVersion if
-    // the type actually changed (water appeared/disappeared, tree cleared), so
-    // overlay renderers don't rebuild on ordinary raise/lower.
-    const typeChanged = cells[x][z] !== before;
-    this.commit({ cells, heights }, typeChanged);
-    return true;
-  }
-
-  /** True if any orthogonal neighbour of (x,z) is Water. */
-  private adjacentToWater(cells: CellType[][], x: number, z: number): boolean {
+  /** True if any orthogonal neighbour of (x,z) is Water in `cells`. */
+  private adjacentToWaterIn(cells: CellType[][], x: number, z: number): boolean {
     const dirs = [
       [1, 0],
       [-1, 0],

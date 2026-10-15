@@ -71,8 +71,8 @@ alapértelmezett):
 - **Törlés** (bulldózer) – utak visszabontása üres talajjá; dombokat/vizet/
   várost/ipart **nem** lehet kitörölni.
 
-> Az ipar (fatelep, bánya, erőmű, gyár) **magától generálódik** a nyersanyagok
-> mellett — a játékos csak utakat épít.
+> Az ipar (fatelep, bánya, erőmű, gyár) **magától generálódik** a térképen
+> szétszórva, a várostól távol — a játékosnak **utakkal kell összekötnie**.
 
 Bal felül látszik a **pénz** ($1000-ról indul), az **épületek** (ipar) és a
 **lerakott utak** száma. Minden útépítés levonja az árat (ha nincs rá fedezet,
@@ -105,8 +105,11 @@ felszín, a **kattintás-hitbox is ezen van** — a raycaster mindig a valódi
 felületet találja el (síkon és lejtőn is), nincs külön lapos pick-sík a dombok
 alatt. Az utak, épületek és ikonok külön rétegként kerülnek rá a felszínre.
 
-Generáláskor **automatikus ipar** települ a nyersanyagok mellé: 2–3 **fatelep**
-(LumberMill 🪓) erdő mellé, 2–3 **bánya** (Mine ⛏️) domb mellé, 2–3 **erőmű**
-(PowerPlant ⚡) víz mellé, és 2–3 **gyár** (Factory ⚙️) a városközpont mellé.
-A speciális épületek fölött **lebegő UI ikon** jelenik meg (drei `<Html>`), finom
-bobbing animációval, a könnyű azonosításhoz.
+Generáláskor **automatikus ipar** jelenik meg a térképen **szétszórva**: 3-3
+**fatelep** (LumberMill 🪓), **bánya** (Mine ⛏️), **erőmű** (PowerPlant ⚡) és
+**gyár** (Factory ⚙️). Mivel ez egy logisztikai, útépítős játék, az ipar **nem
+a város mellé** kerül, hanem sík, üres terepre, a várostól legalább
+`INDUSTRY_CITY_GAP` cellára, és egymástól is legalább `INDUSTRY_MIN_SPACING`
+távolságra — így sosem tornyosul egymásra, és a játékosnak utakkal kell
+összekötnie őket. A speciális épületek fölött **lebegő UI ikon** jelenik meg
+(drei `<Html>`), finom bobbing animációval, a könnyű azonosításhoz.

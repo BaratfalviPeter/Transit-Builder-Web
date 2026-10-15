@@ -18,6 +18,7 @@ import {
   type TerrainMap,
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import { PowerPlantModel } from './PowerPlantModel';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -142,7 +143,11 @@ function Mine({
   );
 }
 
-/** Light-grey power plant with a cooling tower. */
+/**
+ * Power plant — the detailed, animated PowerPlantModel scaled to the cell. The
+ * model is ~10 units across at scale 1; scale it so its footprint sits on the
+ * cell while the towers/chimney rise above (like the reference art).
+ */
 function PowerPlant({
   x,
   y,
@@ -154,23 +159,8 @@ function PowerPlant({
   z: number;
   cellSize: number;
 }) {
-  const s = cellSize;
-  const color = CELL_STYLE[CellType.PowerPlant].color;
-  const bodyW = 0.65 * s;
-  const bodyH = 0.5 * s;
   return (
-    <group position={[x, y, z]}>
-      {/* Main hall */}
-      <mesh position={[-0.12 * s, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[bodyW, bodyH, 0.5 * s]} />
-        <meshStandardMaterial color={color} roughness={0.6} />
-      </mesh>
-      {/* Cooling tower (hyperboloid-ish via a slightly tapered cylinder) */}
-      <mesh position={[0.26 * s, 0.4 * s, 0.12 * s]} castShadow>
-        <cylinderGeometry args={[0.2 * s, 0.26 * s, 0.8 * s, 16]} />
-        <meshStandardMaterial color="#dfe3e8" roughness={0.7} />
-      </mesh>
-    </group>
+    <PowerPlantModel position={[x, y, z]} scale={cellSize * 0.16} />
   );
 }
 

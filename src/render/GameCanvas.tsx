@@ -13,7 +13,7 @@
 
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
-import { useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
@@ -31,6 +31,7 @@ import {
   useGame,
   useTerrainMap,
   useTerrainStore,
+  type TerrainMap,
 } from '../sim';
 
 /**
@@ -46,6 +47,34 @@ function GameClock() {
   });
   return null;
 }
+
+/**
+ * Overlay renderers (roads, rails, industry, forest, icons) depend on cell
+ * TYPES and (for slope conforming) heights, but NOT on ordinary terraforming.
+ * The terrain surface patches itself in place on height edits; to keep those
+ * edits snappy we stop the overlays from re-rendering/rebuilding their geometry
+ * unless `cellsVersion` (type changes) or `cellSize` actually changed.
+ *
+ * `map` identity changes on every edit (incl. pure height edits), so a default
+ * React.memo wouldn't help — this comparator keys on the content signature.
+ */
+function sameCells(
+  a: { map: TerrainMap; cellSize: number },
+  b: { map: TerrainMap; cellSize: number },
+): boolean {
+  return (
+    a.cellSize === b.cellSize &&
+    a.map.cellsVersion === b.map.cellsVersion &&
+    a.map.seed === b.map.seed &&
+    a.map.size === b.map.size
+  );
+}
+
+const MapGridM = memo(MapGrid, sameCells);
+const IndustriesM = memo(Industries, sameCells);
+const BuildingIconsM = memo(BuildingIcons, sameCells);
+const RoadsM = memo(Roads, sameCells);
+const RailsM = memo(Rails, sameCells);
 
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
@@ -151,16 +180,19 @@ function Scene() {
           city). Carries the build handlers, so every click hits the real
           surface under the cursor — exact picking on flat ground and slopes. */}
       <TerrainSurface map={map} cellSize={cellSize} handlers={buildHandlers} />
+      {/* Overlays below are memoized on cellsVersion, so a pure terraform
+          (height) edit doesn't rebuild their geometry — only the terrain
+          surface patches itself. They refresh when a cell TYPE changes. */}
       {/* Forest decoration blocks on top of the surface. */}
-      <MapGrid map={map} cellSize={cellSize} />
+      <MapGridM map={map} cellSize={cellSize} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
-      <Industries map={map} cellSize={cellSize} />
+      <IndustriesM map={map} cellSize={cellSize} />
       {/* Floating UI icons above special buildings (for easy identification). */}
-      <BuildingIcons map={map} cellSize={cellSize} />
+      <BuildingIconsM map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}
-      <Roads map={map} cellSize={cellSize} />
+      <RoadsM map={map} cellSize={cellSize} />
       {/* Rails: gravel bed + sleepers + metal rails, slope-aware. */}
-      <Rails map={map} cellSize={cellSize} />
+      <RailsM map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />

@@ -223,11 +223,16 @@ export interface TerrainMap {
    */
   readonly heights: number[][];
   /**
-   * Bumped on every runtime edit (type or height). Lets memoized consumers
-   * (e.g. the terrain surface geometry) detect height changes, which don't
-   * alter `seed`/`size`.
+   * Bumped on every runtime edit (type OR height). The terrain surface mesh
+   * keys on this, since both height and water-type changes alter it.
    */
   readonly version: number;
+  /**
+   * Bumped ONLY when a cell's TYPE changes (road/rail/industry/forest/water).
+   * Overlay renderers (roads, rails, industry, forest, icons) key on this so a
+   * pure height edit (terraform) does NOT force them to rebuild their geometry.
+   */
+  readonly cellsVersion: number;
 }
 
 /**
@@ -362,7 +367,14 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     heights.push(hcol);
   }
 
-  const base: TerrainMap = { size, seed, cells, heights, version: 0 };
+  const base: TerrainMap = {
+    size,
+    seed,
+    cells,
+    heights,
+    version: 0,
+    cellsVersion: 0,
+  };
 
   /**
    * A cell can host a decoration/building only if its slope is a clean flat

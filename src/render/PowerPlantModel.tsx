@@ -47,7 +47,7 @@ export interface PowerPlantModelProps {
 
 // --- Shared resources -------------------------------------------------------
 
-const BOX = new THREE.BoxGeometry(1, 1, 1);
+export const BOX = new THREE.BoxGeometry(1, 1, 1);
 
 const std = (
   color: string,
@@ -90,11 +90,18 @@ const M = {
   transformer: std('#8d939b', { roughness: 0.6, metalness: 0.3 }),
 };
 
+/**
+ * Cooling tower centers (x, z). Footing radius is 0.47, so both stay inside the
+ * slab curb (±1.44): A sits right behind the annex, B clear of the back edge.
+ */
+const TOWER_A: [number, number] = [-0.97, -0.38];
+const TOWER_B: [number, number] = [-0.2, -0.97];
+
 /** Base point-light intensity of the energy cell (pulses around this). */
 const CELL_LIGHT = 8;
 
 /** A box from the shared unit geometry, positioned/scaled in lot units. */
-function Box({
+export function Box({
   p,
   s,
   m,
@@ -129,8 +136,8 @@ export function PowerPlantModel({
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
       <Base />
 
-      <CoolingTower x={-0.95} z={-0.5} />
-      <CoolingTower x={-0.3} z={-1.05} />
+      <CoolingTower x={TOWER_A[0]} z={TOWER_A[1]} />
+      <CoolingTower x={TOWER_B[0]} z={TOWER_B[1]} />
 
       <MainHall phase={phase} />
       <Annex />
@@ -142,8 +149,8 @@ export function PowerPlantModel({
       <Props />
 
       {/* Steam / smoke plumes (lot units; tower rims at y 1.45). */}
-      <Steam origin={[-0.95, 1.45, -0.5]} count={6} rise={1.4} spread={0.32} size={0.17} phase={phase} />
-      <Steam origin={[-0.3, 1.45, -1.05]} count={6} rise={1.4} spread={0.32} size={0.17} phase={phase + 1.7} />
+      <Steam origin={[TOWER_A[0], 1.45, TOWER_A[1]]} count={6} rise={1.4} spread={0.32} size={0.17} phase={phase} />
+      <Steam origin={[TOWER_B[0], 1.45, TOWER_B[1]]} count={6} rise={1.4} spread={0.32} size={0.17} phase={phase + 1.7} />
       <Steam origin={[1.1, 2.3, -1.05]} count={5} rise={1.0} spread={0.2} size={0.1} phase={phase + 0.6} />
       <Steam origin={[1.075, 1.52, 0.675]} count={3} rise={0.6} spread={0.1} size={0.07} color="#5d6066" phase={phase + 2.3} />
     </group>
@@ -206,7 +213,7 @@ function MainHall({ phase }: { phase: number }) {
   const frontZ = D / 2 + 0.011;
   const sideX = W / 2 + 0.011;
   return (
-    <group position={[0.15, 0.1, -0.1]}>
+    <group position={[0.15, 0.1, 0.0]}>
       <Box p={[0, H / 2, 0]} s={[W, H, D]} m={M.hall} cast />
       <Box p={[0, H + 0.025, 0]} s={[W + 0.05, 0.05, D + 0.05]} m={M.hallDark} cast />
       {/* Bays on the front face */}
@@ -521,10 +528,10 @@ function Piping() {
       {/* Tower A -> main hall: grey + blue runs */}
       <Pipe from={[-0.8, 0.72, -0.2]} to={[-0.325, 0.72, -0.2]} r={0.055} m={M.pipeGrey} />
       <Pipe from={[-0.62, 0.42, -0.35]} to={[-0.325, 0.42, -0.35]} r={0.045} m={M.pipeBlue} />
-      {/* Tower B -> main hall back wall: rust run */}
-      <Pipe from={[0.0, 0.6, -0.87]} to={[0.0, 0.6, -0.575]} r={0.05} m={M.rust} />
+      {/* Main hall -> boiler house: short rust bridge between the two walls */}
+      <Pipe from={[0.6, 0.55, 0.42]} to={[0.77, 0.55, 0.42]} r={0.05} m={M.rust} />
       {/* Tower B -> chimney: long grey run on supports */}
-      <Pipe from={[0.08, 0.3, -1.05]} to={[0.89, 0.3, -1.05]} r={0.045} m={M.pipeGrey} />
+      <Pipe from={[0.12, 0.3, -1.05]} to={[0.89, 0.3, -1.05]} r={0.045} m={M.pipeGrey} />
       <Box p={[0.3, 0.2, -1.05]} s={[0.05, 0.2, 0.05]} m={M.frame} />
       <Box p={[0.6, 0.2, -1.05]} s={[0.05, 0.2, 0.05]} m={M.frame} />
     </group>
@@ -663,7 +670,7 @@ function Props() {
 
 // --- 8. Steam / smoke -----------------------------------------------------------
 
-function Steam({
+export function Steam({
   origin,
   count,
   rise,

@@ -105,11 +105,11 @@ felszín, a **kattintás-hitbox is ezen van** — a raycaster mindig a valódi
 felületet találja el (síkon és lejtőn is), nincs külön lapos pick-sík a dombok
 alatt. Az utak, épületek és ikonok külön rétegként kerülnek rá a felszínre.
 
-Generáláskor **automatikus ipar** jelenik meg a térképen **szétszórva**: 3-3
-**fatelep** (LumberMill 🪓), **bánya** (Mine ⛏️), **erőmű** (PowerPlant ⚡) és
-**gyár** (Factory ⚙️). Mivel ez egy logisztikai, útépítős játék, az ipar **nem
-a város mellé** kerül, hanem sík, üres terepre, a várostól legalább
+Generáláskor **automatikus ipar** jelenik meg: 3-3 **fatelep** (LumberMill 🪓),
+**bánya** (Mine ⛏️), **erőmű** (PowerPlant ⚡) és **gyár** (Factory ⚙️). Az ipar
+tematikusan a **nyersanyaga közelébe** kerül (fatelep az erdőhöz, bánya a
+dombhoz, erőmű a vízhez; a gyár bárhová), de **szétszórva**: a várostól legalább
 `INDUSTRY_CITY_GAP` cellára, és egymástól is legalább `INDUSTRY_MIN_SPACING`
-távolságra — így sosem tornyosul egymásra, és a játékosnak utakkal kell
-összekötnie őket. A speciális épületek fölött **lebegő UI ikon** jelenik meg
+távolságra — így sosem tornyosul egymásra vagy áll sorban, és a játékosnak
+utakkal kell összekötnie őket. A speciális épületek fölött **lebegő UI ikon** jelenik meg
 (drei `<Html>`), finom bobbing animációval, a könnyű azonosításhoz.

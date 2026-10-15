@@ -145,12 +145,53 @@ export function canBuildRoadAt(map: TerrainMap, x: number, z: number): boolean {
   // the foot of a corner ramp is still rejected. Flat, slopeX and slopeZ are
   // buildable; corners / peaks / multi-breaks are not.
   const kind = getSlopeKind(map, x, z);
-  return kind === 'flat' || kind === 'slopeX' || kind === 'slopeZ';
+  if (kind !== 'flat' && kind !== 'slopeX' && kind !== 'slopeZ') return false;
+  // Max-slope connectivity: the new cell may not connect to an adjacent
+  // road/rail that is more than one height level away.
+  return connectsWithinSlope(map, x, z, [CellType.Road]);
 }
 
 /** Rail follows the same placement rules as road (Empty/Hill, flat or ramp). */
 export function canBuildRailAt(map: TerrainMap, x: number, z: number): boolean {
-  return canBuildRoadAt(map, x, z);
+  if (x < 0 || z < 0 || x >= map.size || z >= map.size) return false;
+  if (!canBuildRoad(map.cells[x][z])) return false;
+  const kind = getSlopeKind(map, x, z);
+  if (kind !== 'flat' && kind !== 'slopeX' && kind !== 'slopeZ') return false;
+  return connectsWithinSlope(map, x, z, [CellType.Rail]);
+}
+
+/**
+ * Max-slope connectivity rule: a new track (road/rail) must not connect to an
+ * orthogonally-adjacent track of the same `trackTypes` whose height differs by
+ * more than one level (HILL_STEP). I.e. you can run a track up/down a single
+ * ramp step, but you cannot drop a track straight onto the top of a 2-high
+ * hill next to a ground-level track. Cells with no adjacent track of that type
+ * are always allowed (a fresh segment).
+ */
+function connectsWithinSlope(
+  map: TerrainMap,
+  x: number,
+  z: number,
+  trackTypes: CellType[],
+): boolean {
+  const h = cellHeightAt(map, x, z);
+  // Allow a sub-level of float slack so one HILL_STEP passes but two don't.
+  const maxDelta = HILL_STEP + 1e-6;
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (const [dx, dz] of dirs) {
+    const nx = x + dx;
+    const nz = z + dz;
+    if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) continue;
+    if (!trackTypes.includes(map.cells[nx][nz])) continue;
+    const nh = cellHeightAt(map, nx, nz);
+    if (Math.abs(h - nh) > maxDelta) return false; // too steep a connection
+  }
+  return true;
 }
 
 /**

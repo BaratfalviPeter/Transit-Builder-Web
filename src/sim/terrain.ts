@@ -413,23 +413,36 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   }
 }
 
-/** The industry types to scatter across the map (all auto-generated). */
-const INDUSTRY_TYPES: readonly CellType[] = [
-  CellType.LumberMill,
-  CellType.Mine,
-  CellType.PowerPlant,
-  CellType.Factory,
+/**
+ * How close (Chebyshev radius, in cells) an industry must be to its resource.
+ * A lumber mill wants trees nearby, a mine wants hills, a power plant wants
+ * water. The factory has no resource and may go anywhere.
+ */
+const RESOURCE_RADIUS = 2;
+
+interface IndustrySpec {
+  type: CellType;
+  /** Resource the industry wants nearby, or null (factory: anywhere). */
+  resource: CellType | null;
+}
+
+/** Placement order; resource-bound types first so they claim good spots. */
+const INDUSTRY_SPECS: readonly IndustrySpec[] = [
+  { type: CellType.LumberMill, resource: CellType.Forest },
+  { type: CellType.Mine, resource: CellType.Hill },
+  { type: CellType.PowerPlant, resource: CellType.Water },
+  { type: CellType.Factory, resource: null },
 ];
 
 /**
- * Scatter industry buildings across the map (logistics gameplay). Buildings go
- * on flat, empty ground, away from the city (>= INDUSTRY_CITY_GAP), and keep a
- * minimum distance from EVERY already-placed industry (INDUSTRY_MIN_SPACING) so
- * they stay spread out and never clump or stack. Deterministic given `rng`.
+ * Auto-place industry: thematically near its resource (lumber mill by forest,
+ * mine by hills, power plant by water) AND scattered — away from the city
+ * (>= INDUSTRY_CITY_GAP) and at least INDUSTRY_MIN_SPACING from every other
+ * placed industry, so nothing clumps, stacks, or lines up. Deterministic.
  *
- * We shuffle all eligible cells once, then greedily place buildings cycling
- * through the types, skipping any candidate too close to an existing one — this
- * naturally interleaves types across the whole map rather than clustering.
+ * Per type we gather eligible cells (flat, empty, far from city, and — unless
+ * it's the factory — within RESOURCE_RADIUS of the resource), shuffle them,
+ * then greedily place up to INDUSTRY_PER_TYPE respecting the global spacing.
  */
 function spawnScatteredIndustry(
   map: TerrainMap,
@@ -439,24 +452,6 @@ function spawnScatteredIndustry(
 ): void {
   const { size, cells } = map;
 
-  // Eligible cells: flat, empty, and a sensible distance from the city.
-  const candidates: Array<[number, number]> = [];
-  for (let x = 0; x < size; x++) {
-    for (let z = 0; z < size; z++) {
-      if (cells[x][z] !== CellType.Empty) continue;
-      if (!isFlat(x, z)) continue;
-      if (distFromCity(x, z) < INDUSTRY_CITY_GAP) continue;
-      candidates.push([x, z]);
-    }
-  }
-  if (candidates.length === 0) return;
-
-  // Deterministic Fisher–Yates shuffle.
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
-
   const placed: Array<[number, number]> = [];
   const farEnough = (x: number, z: number): boolean =>
     placed.every(
@@ -464,15 +459,46 @@ function spawnScatteredIndustry(
         Math.max(Math.abs(px - x), Math.abs(pz - z)) >= INDUSTRY_MIN_SPACING,
     );
 
-  const target = INDUSTRY_TYPES.length * INDUSTRY_PER_TYPE;
-  let placedCount = 0;
-  // Cycle through types so placements interleave (LumberMill, Mine, Power,
-  // Factory, LumberMill, …) and spread evenly across the shuffled candidates.
-  for (const [x, z] of candidates) {
-    if (placedCount >= target) break;
-    if (!farEnough(x, z)) continue;
-    cells[x][z] = INDUSTRY_TYPES[placedCount % INDUSTRY_TYPES.length];
-    placed.push([x, z]);
-    placedCount++;
+  // True if any cell within RESOURCE_RADIUS of (x,z) is of `resource` type.
+  const nearResource = (x: number, z: number, resource: CellType): boolean => {
+    for (let dx = -RESOURCE_RADIUS; dx <= RESOURCE_RADIUS; dx++) {
+      for (let dz = -RESOURCE_RADIUS; dz <= RESOURCE_RADIUS; dz++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+        if (cells[nx][nz] === resource) return true;
+      }
+    }
+    return false;
+  };
+
+  for (const { type, resource } of INDUSTRY_SPECS) {
+    // Gather eligible cells for this industry.
+    const candidates: Array<[number, number]> = [];
+    for (let x = 0; x < size; x++) {
+      for (let z = 0; z < size; z++) {
+        if (cells[x][z] !== CellType.Empty) continue;
+        if (!isFlat(x, z)) continue;
+        if (distFromCity(x, z) < INDUSTRY_CITY_GAP) continue;
+        if (resource !== null && !nearResource(x, z, resource)) continue;
+        candidates.push([x, z]);
+      }
+    }
+
+    // Deterministic Fisher–Yates shuffle.
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    // Greedily place up to N, honoring the global min spacing.
+    let n = 0;
+    for (const [x, z] of candidates) {
+      if (n >= INDUSTRY_PER_TYPE) break;
+      if (!farEnough(x, z)) continue;
+      cells[x][z] = type;
+      placed.push([x, z]);
+      n++;
+    }
   }
 }

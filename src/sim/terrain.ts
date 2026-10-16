@@ -60,6 +60,7 @@ export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
   CellType.PowerPlant,
   CellType.LumberMill,
   CellType.Mine,
+  CellType.Factory,
 ]);
 
 /**

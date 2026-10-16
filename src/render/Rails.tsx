@@ -274,9 +274,15 @@ function FlatRails({
   );
 }
 
-/** Conforming gravel bed for rail cells on a slope. */
+/**
+ * Rail cells on a slope: a conforming gravel bed PLUS sleepers and the two
+ * rails, all laid ON the incline. Every piece is an axis-aligned rectangle in
+ * the cell's (u, v) space, bilinearly lifted onto the cell's four corner
+ * heights and wound counter-clockwise seen from above (front-facing), so the
+ * track visibly climbs the ramp instead of only the gravel colour doing so.
+ */
 function SlopeRailBeds({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
-  const geometry = useMemo(() => {
+  const geoms = useMemo(() => {
     const { size, heights, cells } = map;
     const half = (size - 1) / 2;
     const cellHeight = (x: number, z: number): number =>
@@ -288,46 +294,95 @@ function SlopeRailBeds({ map, cellSize }: { map: TerrainMap; cellSize: number })
         cellHeight(cx - 1, cz),
         cellHeight(cx, cz),
       );
-    const flat = (x: number, z: number): boolean => {
-      const a = cornerHeight(x, z);
-      const b = cornerHeight(x + 1, z);
-      const c = cornerHeight(x + 1, z + 1);
-      const d = cornerHeight(x, z + 1);
-      return a === b && b === c && c === d;
-    };
-    const base = FLAT_TOP * cellSize + SURFACE_LIFT * cellSize;
-    const corner = (cx: number, cz: number): THREE.Vector3 =>
-      new THREE.Vector3(
-        (cx - half - 0.5) * cellSize,
-        base + cornerHeight(cx, cz) * cellSize,
-        (cz - half - 0.5) * cellSize,
-      );
-    const positions: number[] = [];
-    let any = false;
+    const isTrack = (x: number, z: number) =>
+      x >= 0 && z >= 0 && x < size && z < size &&
+      (cells[x][z] === CellType.Rail || cells[x][z] === CellType.Road);
+    const bed: number[] = [];
+    const ties: number[] = [];
+    const rails: number[] = [];
     for (let x = 0; x < size; x++) {
       for (let z = 0; z < size; z++) {
-        if (cells[x][z] !== CellType.Rail || flat(x, z)) continue;
-        const c00 = corner(x, z);
-        const c10 = corner(x + 1, z);
-        const c11 = corner(x + 1, z + 1);
-        const c01 = corner(x, z + 1);
-        positions.push(c00.x, c00.y, c00.z, c01.x, c01.y, c01.z, c11.x, c11.y, c11.z);
-        positions.push(c00.x, c00.y, c00.z, c11.x, c11.y, c11.z, c10.x, c10.y, c10.z);
-        any = true;
+        if (cells[x][z] !== CellType.Rail) continue;
+        const h00 = cornerHeight(x, z);
+        const h10 = cornerHeight(x + 1, z);
+        const h11 = cornerHeight(x + 1, z + 1);
+        const h01 = cornerHeight(x, z + 1);
+        if (h00 === h10 && h10 === h11 && h11 === h01) continue; // flat → FlatRails
+        const px = (x - half - 0.5) * cellSize;
+        const pz = (z - half - 0.5) * cellSize;
+        // Surface point at (u, v) ∈ [0,1]², lifted `lift` cell units.
+        const surf = (u: number, v: number, lift: number): [number, number, number] => {
+          const h = (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
+          return [px + u * cellSize, (FLAT_TOP + SURFACE_LIFT + h + lift) * cellSize, pz + v * cellSize];
+        };
+        // CCW-from-above rectangle (u0,v0)-(u1,v1), u0<u1, v0<v1.
+        const rect = (out: number[], u0: number, v0: number, u1: number, v1: number, lift: number) => {
+          const a = surf(u0, v0, lift);
+          const b = surf(u0, v1, lift);
+          const c = surf(u1, v1, lift);
+          const d = surf(u1, v0, lift);
+          out.push(...a, ...b, ...c, ...a, ...c, ...d);
+        };
+        rect(bed, 0, 0, 1, 1, 0);
+        // Track direction: along X if it connects east/west, else along Z.
+        const alongX = isTrack(x - 1, z) || isTrack(x + 1, z);
+        const g0 = 0.5 - RAIL_GAUGE;
+        const g1 = 0.5 + RAIL_GAUGE;
+        for (let t = SLEEPER_PITCH / 2; t < 1; t += SLEEPER_PITCH) {
+          const a0 = t - SLEEPER_HW;
+          const a1 = t + SLEEPER_HW;
+          const s0 = 0.5 - SLEEPER_HALF;
+          const s1 = 0.5 + SLEEPER_HALF;
+          if (alongX) rect(ties, a0, s0, a1, s1, 0.03);
+          else rect(ties, s0, a0, s1, a1, 0.03);
+        }
+        for (const g of [g0, g1]) {
+          if (alongX) rect(rails, 0, g - RAIL_HW, 1, g + RAIL_HW, 0.06);
+          else rect(rails, g - RAIL_HW, 0, g + RAIL_HW, 1, 0.06);
+        }
       }
     }
-    if (!any) return null;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geom.computeVertexNormals();
-    return geom;
+    const make = (arr: number[]) => {
+      if (!arr.length) return null;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      g.computeVertexNormals();
+      return g;
+    };
+    return { bed: make(bed), ties: make(ties), rails: make(rails) };
   }, [map, cellSize]);
 
-  if (!geometry) return null;
+  if (!geoms.bed) return null;
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial
-        ref={patchRef} color={GRAVEL_COLOR} roughness={1} />
-    </mesh>
+    <group>
+      <mesh geometry={geoms.bed} castShadow receiveShadow>
+        <meshStandardMaterial ref={patchRef} color={GRAVEL_COLOR} roughness={1} />
+      </mesh>
+      {geoms.ties && (
+        <mesh geometry={geoms.ties} castShadow>
+          <meshStandardMaterial
+            ref={patchRef}
+            color={SLEEPER_COLOR}
+            roughness={0.9}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
+        </mesh>
+      )}
+      {geoms.rails && (
+        <mesh geometry={geoms.rails} castShadow>
+          <meshStandardMaterial
+            ref={patchRef}
+            color={RAIL_COLOR}
+            metalness={0.6}
+            roughness={0.4}
+            polygonOffset
+            polygonOffsetFactor={-3}
+            polygonOffsetUnits={-3}
+          />
+        </mesh>
+      )}
+    </group>
   );
 }

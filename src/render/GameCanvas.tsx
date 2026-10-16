@@ -22,7 +22,6 @@ import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { Clouds } from './CloudLayer';
 import { Birds } from './Birds';
-import { Farms } from './Farms';
 import { Life } from './Life';
 import { Plinth } from './Plinth';
 import { TerrainSurface } from './TerrainSurface';
@@ -88,7 +87,6 @@ const BuildingIconsM = memo(BuildingIcons, sameCells);
 const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
 const BirdsM = memo(Birds, sameCells);
-const FarmsM = memo(Farms, sameCells);
 const LifeM = memo(Life, sameCells);
 
 /**
@@ -452,9 +450,7 @@ function Scene() {
       <TerrainSurface map={map} cellSize={cellSize} handlers={buildHandlers} />
       {/* Layered earth/rock base under the board (diorama look). */}
       <Plinth map={map} cellSize={cellSize} />
-      {/* Countryside: crop rows, fences, barns, windmills, grazing sheep. */}
-      <FarmsM map={map} cellSize={cellSize} />
-      {/* Cars, trains, boats and deer. */}
+      {/* Sailboats on the lakes. */}
       <LifeM map={map} cellSize={cellSize} />
       {/* Overlays below are memoized on cellsVersion, so a pure terraform
           (height) edit doesn't rebuild their geometry — only the terrain

@@ -54,7 +54,7 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
       b('dayCycle', 'Napszakváltás'),
       r('dayLength', 'Egy nap hossza (mp)', 60, 1800, 10),
       r('timeOfDay', 'Napszak (0 éjfél · 0.5 dél)', 0, 1, 0.005),
-      b('lifeVisible', 'Élet (autók, vonatok, hajók, állatok)'),
+      b('lifeVisible', 'Vitorlások a tavakon'),
     ],
   },
   {

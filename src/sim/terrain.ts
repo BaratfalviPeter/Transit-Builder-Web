@@ -248,6 +248,20 @@ export function canBulldoze(cell: CellType): boolean {
   );
 }
 
+/**
+ * Whether the bulldozer may clear the loose scenery (lone trees, bushes,
+ * rocks) on this cell. Only open ground carries such props — Empty grass and
+ * Hill/mountain cells. Buildings, city, industry lots and water: never.
+ */
+export function canClearProps(cell: CellType): boolean {
+  return cell === CellType.Empty || cell === CellType.Hill;
+}
+
+/** Key of a cell in `TerrainMap.cleared`. */
+export function cellKey(size: number, x: number, z: number): number {
+  return x * size + z;
+}
+
 /** Full generated map: a size×size grid of cell types plus its parameters. */
 export interface TerrainMap {
   readonly size: number;
@@ -263,6 +277,12 @@ export interface TerrainMap {
    * (basins) which become Water.
    */
   readonly heights: number[][];
+  /**
+   * Cells whose loose scenery (trees, bushes, rocks) the player bulldozed.
+   * The props are derived from the map at render time, so this set is what
+   * keeps a cleared cell clear. Keys: `cellKey(size, x, z)`.
+   */
+  readonly cleared?: ReadonlySet<number>;
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.
@@ -407,9 +427,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   const elevation = makeValueNoise(rng, 10);
   const moisture = makeValueNoise(rng, 10);
   const detail = makeValueNoise(rng, 20);
-  // Low-frequency massif field + a ridge field: a few big mountain ranges
-  // with sharper crests, on top of the old rolling hills.
-  const massif = makeValueNoise(rng, 7);
+  // Ridge noise roughens the peaks so they aren't perfect cones.
   const ridges = makeValueNoise(rng, 14);
 
   const center = Math.floor(size / 2);
@@ -422,6 +440,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   // Levels are smoothed so neighbouring cells differ by at most ONE level:
   // mountains become stepped, OpenTTD-style terraced cones that roads can
   // climb one level per cell (switchbacks), never sheer multi-level walls.
+  const peaks = placePeaks();
   const levels = computeLevels();
 
   // --- Pass 1: base terrain (hills, water, city, empty) + heights ---------
@@ -498,24 +517,65 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     return Math.max(Math.abs(x - center), Math.abs(z - center));
   }
 
-  /** Raw (unsmoothed) level: old rolling hills + big mountain massifs. */
+  /**
+   * A few isolated, steep, pointy mountains — scenery more than terrain to
+   * build on. Each is a (slightly elliptical, noise-roughened) cone with a
+   * short gentle foothill skirt; some get a smaller twin peak beside them.
+   */
+  function placePeaks(): Array<{ x: number; z: number; h: number; ang: number; stretch: number }> {
+    const out: Array<{ x: number; z: number; h: number; ang: number; stretch: number }> = [];
+    const edgeBand = Math.max(4, Math.floor(size * 0.14));
+    const want = 3 + Math.floor(rng() * 4); // 3–6 mountains
+    for (let tries = 0; tries < 400 && out.length < want; tries++) {
+      const x = 8 + Math.floor(rng() * (size - 16));
+      const z = edgeBand + Math.floor(rng() * (size - edgeBand * 2));
+      if (distFromCity(x, z) < CITY_BUFFER + 16) continue;
+      if (out.some((p) => Math.hypot(p.x - x, p.z - z) < 24)) continue;
+      const h = 9 + Math.floor(rng() * (MAX_GEN_LEVEL - 8));
+      out.push({ x, z, h, ang: rng() * Math.PI, stretch: 0.75 + rng() * 0.5 });
+      if (rng() < 0.4) {
+        const a = rng() * Math.PI * 2;
+        out.push({
+          x: Math.round(x + Math.cos(a) * 5),
+          z: Math.round(z + Math.sin(a) * 5),
+          h: Math.max(6, h - 3 - Math.floor(rng() * 3)),
+          ang: rng() * Math.PI,
+          stretch: 0.8 + rng() * 0.4,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Level contributed by the peaks at (x, z). */
+  function peakLevel(x: number, z: number): number {
+    let best = 0;
+    for (const p of peaks) {
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const ca = Math.cos(p.ang);
+      const sa = Math.sin(p.ang);
+      const u = (dx * ca + dz * sa) * p.stretch;
+      const v = (-dx * sa + dz * ca) / p.stretch;
+      const d = Math.hypot(u, v);
+      // Steep cone (1.35 levels/cell — ≤2 even diagonally, so the slope rule
+      // keeps the full height) down to level 3, then a short gentle skirt.
+      const d3 = (p.h - 3) / 1.35;
+      let lvl = d <= d3 ? p.h - d * 1.35 : 3 - (d - d3) * 0.7;
+      // Rough, rocky crests near the top.
+      if (d <= d3) lvl += (ridges(x * 0.35, z * 0.35) - 0.5) * 1.6;
+      best = Math.max(best, lvl);
+    }
+    return Math.max(0, Math.min(MAX_GEN_LEVEL, Math.floor(best)));
+  }
+
+  /** Raw (unsmoothed) level: old rolling hills + the isolated peaks. */
   function rawLevel(x: number, z: number): number {
     if (distFromCity(x, z) <= CITY_BUFFER) return 0;
-    let lvl = hillLevel(x, z);
-    // Mountains: a low-frequency massif mask, crests sharpened by ridge noise.
-    const m = massif(x * freq * 0.55 + 3.1, z * freq * 0.55 + 7.7);
-    const edgeBand = Math.max(4, Math.floor(size * 0.14));
-    const corridor = z < edgeBand || z >= size - edgeBand ? 0.12 : 0;
-    const t = (m - (0.6 + corridor)) / 0.4; // 0 at the foot, 1 at the core
-    if (t > 0) {
-      const r = ridges(x * freq * 1.6, z * freq * 1.6);
-      const ridge = 1 - Math.abs(2 * r - 1); // 1 on crest lines
-      const mtn = Math.floor(Math.pow(t, 0.75) * 11 + ridge * 4 * t);
-      lvl = Math.max(lvl, Math.min(MAX_GEN_LEVEL, mtn));
-    }
+    const lvl = Math.max(hillLevel(x, z), peakLevel(x, z));
     // Keep a soft ramp-up away from the city so it is never walled in.
     const dc = distFromCity(x, z) - CITY_BUFFER;
-    return Math.min(lvl, Math.max(0, Math.floor(dc / 2)));
+    return Math.min(lvl, Math.max(0, Math.floor(dc)));
   }
 
   /**

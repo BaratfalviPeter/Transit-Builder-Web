@@ -18,7 +18,6 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CellType, HILL_STEP, type TerrainMap } from '../sim';
-import { farmCrop } from './farmland';
 import { surfaceYAt } from './TerrainSurface';
 import { useVisualKeys } from './visualSettings';
 import { patchCloudShadows } from './cloudShadows';
@@ -201,11 +200,6 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
     typeAt(x + 1, z) === CellType.Forest ||
     typeAt(x, z - 1) === CellType.Forest ||
     typeAt(x, z + 1) === CellType.Forest;
-  const besideFarm = (x: number, z: number) =>
-    (x > 0 && farmCrop(map, x - 1, z) !== null) ||
-    (x + 1 < map.size && farmCrop(map, x + 1, z) !== null) ||
-    (z > 0 && farmCrop(map, x, z - 1) !== null) ||
-    (z + 1 < map.size && farmCrop(map, x, z + 1) !== null);
   const forestEdge = (x: number, z: number) =>
     typeAt(x - 1, z) !== CellType.Forest ||
     typeAt(x + 1, z) !== CellType.Forest ||
@@ -232,8 +226,11 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
     (hash01(x, z, seed + 201 + k * 2) - 0.5) * spread,
   ];
 
+  const cleared = map.cleared;
   for (let x = 0; x < map.size; x++) {
     for (let z = 0; z < map.size; z++) {
+      // The player bulldozed this cell's scenery: keep it clear.
+      if (cleared?.has(x * map.size + z)) continue;
       const t = map.cells[x][z];
       if (t === CellType.Forest) {
         // Forest cells are now ¼ of the old area, so 1–2 trees each (≈1.5× the
@@ -248,7 +245,6 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
           addTree(x, z, k, slots[k][0] + ju, slots[k][1] + jv, s, pickSpecies(hash01(x, z, seed + 320 + k), edge));
         }
       } else if (t === CellType.Empty) {
-        if (farmCrop(map, x, z) !== null) continue; // fields: no props
         const r = hash01(x, z, seed + 3);
         // Ragged forest fringe: grass right next to a forest often gets a
         // (mixed-species) tree, so forests fade out instead of ending in a
@@ -256,15 +252,6 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
         if (besideForest(x, z) && hash01(x, z, seed + 12) < 0.32) {
           const [u, v] = spot(x, z, 0, 0.5);
           addTree(x, z, 0, u, v, 0.7 + hash01(x, z, seed + 13) * 0.5, pickSpecies(hash01(x, z, seed + 14), true));
-          continue;
-        }
-        // Hedgerows: bushes along the field edges.
-        if (besideFarm(x, z) && hash01(x, z, seed + 15) < 0.22) {
-          const nb = 1 + Math.floor(hash01(x, z, seed + 16) * 2);
-          for (let k = 0; k < nb; k++) {
-            const [u, v] = spot(x, z, k + 5, 0.6);
-            addTree(x, z, k + 5, u, v, 0.55 + hash01(x, z, seed + 17 + k) * 0.35, Sp.Bush);
-          }
           continue;
         }
         if (r < GRASS_TREE_CHANCE) {

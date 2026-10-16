@@ -365,7 +365,7 @@ function buildHillRoadMarkings(
   };
 
   const positions: number[] = [];
-  const DASH_W = 0.06;
+  const DASH_W = 0.11; // full width, same as the flat-road dashes (2 × 0.055)
   let any = false;
 
   for (let x = 0; x < size; x++) {
@@ -398,8 +398,11 @@ function buildHillRoadMarkings(
         // Quad corners in (u,v): long axis = dominant, width = DASH_W.
         const w0 = 0.5 - DASH_W / 2;
         const w1 = 0.5 + DASH_W / 2;
+        // Both orders wind counter-clockwise seen from ABOVE (normal up), so
+        // the dashes are front faces. (The X order used to be clockwise →
+        // back-face culled on the GPU → invisible on X-running ramps.)
         const quad = alongX
-          ? [surf(a0, w0), surf(a1, w0), surf(a1, w1), surf(a0, w1)]
+          ? [surf(a0, w0), surf(a0, w1), surf(a1, w1), surf(a1, w0)]
           : [surf(w0, a0), surf(w0, a1), surf(w1, a1), surf(w1, a0)];
         const [q0, q1, q2, q3] = quad;
         positions.push(...q0, ...q1, ...q2, ...q0, ...q2, ...q3);

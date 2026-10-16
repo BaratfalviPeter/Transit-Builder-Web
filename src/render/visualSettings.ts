@@ -42,7 +42,7 @@ export const VISUAL_DEFAULTS = {
   timeOfDay: 0.45,
 
   // --- Life ---
-  /** Cars, trains, boats, deer. */
+  /** Sailboats on the lakes. */
   lifeVisible: true,
   /** Tone-mapping exposure (overall brightness). */
   exposure: 1,

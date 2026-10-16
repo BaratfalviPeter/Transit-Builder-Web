@@ -15,6 +15,8 @@ import {
   canBuildRailAt,
   canBuildRoadAt,
   canBulldoze,
+  canClearProps,
+  cellKey,
   generateTerrain,
   HILL_STEP,
   SPECIAL_BUILDINGS,
@@ -105,12 +107,32 @@ export class TerrainStore {
   bulldoze(x: number, z: number): boolean {
     if (!this.inBounds(x, z)) return false;
     const current = this.map.cells[x][z];
-    if (!canBulldoze(current)) return false;
+    const key = cellKey(this.map.size, x, z);
+    const cleared = this.map.cleared ?? new Set<number>();
 
-    if (current === CellType.Road) this.roadCount -= 1;
-    this.applyCell(x, z, CellType.Empty);
-    this.emit();
-    return true;
+    if (canBulldoze(current)) {
+      // Road / rail / forest → bare ground, and mark it cleared so no fringe
+      // tree or rock pops back onto the freshly cleared cell.
+      if (current === CellType.Road) this.roadCount -= 1;
+      const next = new Set(cleared);
+      next.add(key);
+      this.map = { ...this.map, cleared: next };
+      // A road/rail on a raised cell goes back to hillside, not flat grass.
+      const raised = (current === CellType.Road || current === CellType.Rail) && this.map.heights[x][z] > 0;
+      this.applyCell(x, z, raised ? CellType.Hill : CellType.Empty);
+      this.emit();
+      return true;
+    }
+    if (canClearProps(current) && !cleared.has(key)) {
+      // Lone trees / bushes / rocks on grass or mountainside.
+      const next = new Set(cleared);
+      next.add(key);
+      this.commit({ cleared: next }, true);
+      this.emit();
+      return true;
+    }
+    // Buildings, city, industry lots and water are not bulldozable.
+    return false;
   }
 
   /** Raise `(x, z)` by one terraform step. Returns true if it changed. */
@@ -240,7 +262,7 @@ export class TerrainStore {
    * skip their geometry rebuild on pure height edits.
    */
   private commit(
-    partial: { cells?: CellType[][]; heights?: number[][] },
+    partial: { cells?: CellType[][]; heights?: number[][]; cleared?: ReadonlySet<number> },
     typeChanged: boolean,
   ): void {
     this.map = {

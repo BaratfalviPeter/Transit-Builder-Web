@@ -55,7 +55,7 @@ export const SPECIAL_BUILDINGS: ReadonlySet<CellType> = new Set([
   CellType.Factory,
 ]);
 
-/** Industries that occupy a 3×3 footprint (center ± 1 cell). */
+/** Industries that occupy a large INDUSTRY_LOT_SIZE² footprint (6×6). */
 export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
   CellType.PowerPlant,
   CellType.LumberMill,
@@ -63,12 +63,48 @@ export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
   CellType.Factory,
 ]);
 
+/** Edge length (in cells) of a large industry's square lot. */
+export const INDUSTRY_LOT_SIZE = 6;
+
 /**
- * Footprint radius of an industry in cells: 1 for the large 3×3 industries
- * (center ± 1), 0 for single-cell buildings.
+ * Footprint of an industry as offsets from its anchor cell: the lot covers
+ * anchor + [lo, hi] on both axes. A 6×6 lot has no single centre cell, so the
+ * anchor (the cell holding the industry type) is the top-left of the middle
+ * four: offsets −2…+3. Its true centre is half a cell past the anchor in X/Z.
+ * Small industries are a single cell (0…0).
  */
-export function industryFootprintRadius(type: CellType): number {
-  return LARGE_INDUSTRY.has(type) ? 1 : 0;
+export function industryFootprint(type: CellType): { lo: number; hi: number } {
+  if (!LARGE_INDUSTRY.has(type)) return { lo: 0, hi: 0 };
+  const lo = -Math.floor((INDUSTRY_LOT_SIZE - 1) / 2);
+  return { lo, hi: lo + INDUSTRY_LOT_SIZE - 1 };
+}
+
+/**
+ * Offset (in cells) from a large industry's anchor cell to the centre of its
+ * lot — 0.5 for an even lot size, 0 for odd.
+ */
+export const INDUSTRY_CENTER_OFFSET = INDUSTRY_LOT_SIZE % 2 === 0 ? 0.5 : 0;
+
+/** Model scale factor: models are built for a 3×3 lot. */
+export const INDUSTRY_MODEL_SCALE = INDUSTRY_LOT_SIZE / 3;
+
+/**
+ * If (x, z) is part of a large industry's lot, return that industry's anchor
+ * cell, else null.
+ */
+export function industryAnchorOf(map: TerrainMap, x: number, z: number): [number, number] | null {
+  const t = map.cells[x][z];
+  if (LARGE_INDUSTRY.has(t)) return [x, z];
+  if (t !== CellType.IndustryLot) return null;
+  const lo = -Math.floor((INDUSTRY_LOT_SIZE - 1) / 2);
+  const hi = lo + INDUSTRY_LOT_SIZE - 1;
+  // anchor + lo <= x <= anchor + hi  ⇔  x − hi <= anchor <= x − lo
+  for (let ax = x - hi; ax <= x - lo; ax++)
+    for (let az = z - hi; az <= z - lo; az++) {
+      if (ax < 0 || az < 0 || ax >= map.size || az >= map.size) continue;
+      if (LARGE_INDUSTRY.has(map.cells[ax][az])) return [ax, az];
+    }
+  return null;
 }
 
 /** Cell types that count as flat, buildable ground for roads. */
@@ -345,7 +381,7 @@ const CITY_BUFFER = 5 * GRID_SCALE;
  *  - INDUSTRY_PER_TYPE: how many of each industry type to try to place.
  */
 const INDUSTRY_CITY_GAP = 8 * GRID_SCALE;
-const INDUSTRY_MIN_SPACING = 6 * GRID_SCALE;
+const INDUSTRY_MIN_SPACING = 7 * GRID_SCALE; // > lot size, so lots never touch
 const INDUSTRY_PER_TYPE = 3;
 
 export interface GenerateOptions {
@@ -807,14 +843,14 @@ function spawnScatteredIndustry(
   };
 
   /**
-   * Whether the whole footprint (center ± r) is free, flat, level ground:
-   * every cell in bounds, Empty, flat (all corners equal) and at the same
-   * corner height as the center — so a 3×3 industry sits on a level lot.
+   * Whether the whole footprint (anchor + [lo, hi]) is free, flat, level
+   * ground: every cell in bounds, Empty, flat (all corners equal) and at the
+   * same corner height as the anchor — so a big industry sits on a level lot.
    */
-  const footprintFree = (x: number, z: number, r: number): boolean => {
+  const footprintFree = (x: number, z: number, lo: number, hi: number): boolean => {
     const level = cornerHeightAt(map, x, z);
-    for (let dx = -r; dx <= r; dx++) {
-      for (let dz = -r; dz <= r; dz++) {
+    for (let dx = lo; dx <= hi; dx++) {
+      for (let dz = lo; dz <= hi; dz++) {
         const nx = x + dx;
         const nz = z + dz;
         if (nx < 0 || nz < 0 || nx >= size || nz >= size) return false;
@@ -827,14 +863,15 @@ function spawnScatteredIndustry(
   };
 
   for (const { type, resource } of INDUSTRY_SPECS) {
-    const r = industryFootprintRadius(type);
+    const { lo, hi } = industryFootprint(type);
+    const r = Math.max(-lo, hi); // reach of the lot from its anchor
 
     // Gather eligible center cells for this industry.
     const candidates: Array<[number, number]> = [];
     for (let x = 0; x < size; x++) {
       for (let z = 0; z < size; z++) {
         if (distFromCity(x, z) < INDUSTRY_CITY_GAP + r) continue;
-        if (!footprintFree(x, z, r)) continue;
+        if (!footprintFree(x, z, lo, hi)) continue;
         // The resource must be near the lot's edge, not just its center.
         if (resource !== null && !nearResource(x, z, resource, RESOURCE_RADIUS + r)) {
           continue;
@@ -855,10 +892,10 @@ function spawnScatteredIndustry(
     for (const [x, z] of candidates) {
       if (n >= INDUSTRY_PER_TYPE) break;
       if (!farEnough(x, z)) continue;
-      if (!footprintFree(x, z, r)) continue; // re-check after earlier placements
+      if (!footprintFree(x, z, lo, hi)) continue; // re-check after earlier placements
       // Mark the surrounding footprint as occupied, the center as the industry.
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dz = -r; dz <= r; dz++) {
+      for (let dx = lo; dx <= hi; dx++) {
+        for (let dz = lo; dz <= hi; dz++) {
           cells[x + dx][z + dz] = CellType.IndustryLot;
         }
       }

@@ -13,6 +13,9 @@
 import { useMemo } from 'react';
 import {
   CellType,
+  INDUSTRY_CENTER_OFFSET,
+  INDUSTRY_MODEL_SCALE,
+  LARGE_INDUSTRY,
   cornerHeightAt,
   SPECIAL_BUILDINGS,
   type TerrainMap,
@@ -48,8 +51,13 @@ export function Industries({ map, cellSize }: IndustriesProps) {
   return (
     <group>
       {items.map(({ x, z, type }) => {
-        const wx = (x - half) * cellSize;
-        const wz = (z - half) * cellSize;
+        // Large industries sit at the CENTRE of their 6×6 lot (half a cell past
+        // the anchor cell) and are scaled up from their 3×3 design size.
+        const big = LARGE_INDUSTRY.has(type);
+        const off = big ? INDUSTRY_CENTER_OFFSET : 0;
+        const wx = (x - half + off) * cellSize;
+        const wz = (z - half + off) * cellSize;
+        const ms = cellSize * (big ? INDUSTRY_MODEL_SCALE : 1);
         // Buildings spawn on flat cells, so the cell's uniform corner height is
         // its surface top; raise the building onto it (hill-top buildings too).
         const wy = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize;
@@ -60,7 +68,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
               <LumberMillModel
                 key={key}
                 position={[wx, wy, wz]}
-                scale={cellSize}
+                scale={ms}
                 rotationY={(((x * 3 + z * 7) % 4) * Math.PI) / 2}
                 phase={(x * 0.41 + z * 0.23) % 5}
               />
@@ -70,7 +78,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
               <MineModel
                 key={key}
                 position={[wx, wy, wz]}
-                scale={cellSize}
+                scale={ms}
                 rotationY={(((x * 5 + z * 11) % 4) * Math.PI) / 2}
                 phase={(x * 0.53 + z * 0.29) % 5}
               />
@@ -80,7 +88,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
               <PowerPlantModel
                 key={key}
                 position={[wx, wy, wz]}
-                scale={cellSize}
+                scale={ms}
                 rotationY={(((x * 7 + z * 13) % 4) * Math.PI) / 2}
                 phase={(x * 0.37 + z * 0.61) % 5}
               />
@@ -90,7 +98,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
               <FactoryModel
                 key={key}
                 position={[wx, wy, wz]}
-                scale={cellSize}
+                scale={ms}
                 rotationY={(((x * 11 + z * 5) % 4) * Math.PI) / 2}
                 phase={(x * 0.31 + z * 0.47) % 5}
               />

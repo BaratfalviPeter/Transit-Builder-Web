@@ -11,7 +11,7 @@ import { patchCloudShadows } from './cloudShadows';
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 /** Matches TerrainSurface's FLOOR_DROP (the terrain block's bottom). */
-const FLOOR_DROP = 1.5;
+const FLOOR_DROP = 3.2;
 
 /** [thickness, inset, colour] in cell units, top → bottom. */
 const LAYERS: Array<[number, number, string]> = [

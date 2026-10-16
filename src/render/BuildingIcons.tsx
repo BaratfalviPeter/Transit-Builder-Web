@@ -17,6 +17,8 @@ import { useMemo } from 'react';
 import {
   CellType,
   cornerHeightAt,
+  INDUSTRY_CENTER_OFFSET,
+  INDUSTRY_MODEL_SCALE,
   LARGE_INDUSTRY,
   SPECIAL_BUILDINGS,
   type TerrainMap,
@@ -64,11 +66,12 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
       {items.map(({ x, z, type }) => {
         // Float above the building, which rests on the cell's surface top
         // (grass level + the cell's corner height, raised on hills).
-        const iconY = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize + (LARGE_INDUSTRY.has(map.cells[x][z]) ? 3.2 : 1.6) * cellSize;
+        const big = LARGE_INDUSTRY.has(map.cells[x][z]);
+        const iconY = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize + (big ? 3.2 * INDUSTRY_MODEL_SCALE : 1.6) * cellSize;
         return (
         <Html
           key={`${x},${z}`}
-          position={[(x - half) * cellSize, iconY, (z - half) * cellSize]}
+          position={[(x - half + (big ? INDUSTRY_CENTER_OFFSET : 0)) * cellSize, iconY, (z - half + (big ? INDUSTRY_CENTER_OFFSET : 0)) * cellSize]}
           center
           distanceFactor={16}
           zIndexRange={[10, 0]}

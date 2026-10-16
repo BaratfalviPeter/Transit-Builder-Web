@@ -168,13 +168,15 @@ function FlatRoads({
         let span = ang1 - ang0;
         if (span > Math.PI) span -= Math.PI * 2;
         if (span < -Math.PI) span += Math.PI * 2;
-        // Space dashes by arc-length so they match the straight rhythm; longer
-        // dashes along the arc read as a smooth curve, not tiny fragments.
+        // Space dashes by arc-length so they match the straight rhythm (gap =
+        // half the dash). Each dash is oriented along the arc's TANGENT (yaw =
+        // a, not a+90°) so the segments flow around the curve instead of
+        // sticking out across it.
         const arcLen = Math.abs(span) * R; // ≈ 0.785
         const N = Math.max(2, Math.round(arcLen / PITCH));
         for (let i = 0; i < N; i++) {
           const a = ang0 + (span * (i + 0.5)) / N;
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, DASH);
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a, DASH);
         }
       } else {
         // T-junction (3) or crossroad (4): a dashed line toward each arm, same

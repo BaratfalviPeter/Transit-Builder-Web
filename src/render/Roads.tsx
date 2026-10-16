@@ -105,34 +105,84 @@ function FlatRoads({
   const markRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
 
-  // Per-cell surface top + a flat dash plan, computed once per road set.
+  // Per-cell AUTO-TILED marking plan. We classify each road cell by its 4-
+  // neighbour mask and emit the matching dash set, so the white line reads as a
+  // real road network: straight runs get a centred dashed line, corners bend
+  // through a quarter-arc of dashes, T/cross junctions send a line to every
+  // arm, and dead-ends/lone tiles get a short stub. Each dash is a positioned,
+  // rotated box (ox/oz in cell units, yaw radians, len in cell units).
   const marks = useMemo(() => {
-    const out: Array<{ x: number; z: number; dir: 'x' | 'z'; frac: number; surfaceTop: number }> = [];
-    const DASHES = 3; // dashes along a full edge→centre arm
+    const out: Array<{ x: number; z: number; ox: number; oz: number; yaw: number; len: number; surfaceTop: number }> = [];
     for (const [x, z] of coords) {
       const cornerH = cellCornerHeights(map, x, z)[0];
       const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
+      const push = (ox: number, oz: number, yaw: number, len: number) =>
+        out.push({ x, z, ox, oz, yaw, len, surfaceTop });
+
       const n = connects(map, x, z, 0, -1);
       const s = connects(map, x, z, 0, 1);
       const e = connects(map, x, z, 1, 0);
       const w = connects(map, x, z, -1, 0);
-      const arms: Array<['x' | 'z', number]> = [];
-      // Each arm: dashes from the cell centre out toward that neighbour.
-      if (n) arms.push(['z', -1]);
-      if (s) arms.push(['z', 1]);
-      if (e) arms.push(['x', 1]);
-      if (w) arms.push(['x', -1]);
-      if (arms.length === 0) {
-        out.push({ x, z, dir: 'x', frac: 0, surfaceTop }); // lone tile: centre dot
-        continue;
-      }
-      for (const [dir, sign] of arms) {
-        for (let i = 0; i < DASHES; i++) {
-          // Positions 0 (centre) .. ~0.45 (near the edge), skipping the very
-          // centre on straight runs so the dashes read as one continuous line.
-          const frac = sign * ((i + 0.5) / DASHES) * 0.5;
-          out.push({ x, z, dir, frac, surfaceTop });
+      const count = (n ? 1 : 0) + (s ? 1 : 0) + (e ? 1 : 0) + (w ? 1 : 0);
+
+      // A straight dash "arm" from the centre out toward one side (3 dashes).
+      const arm = (dirX: number, dirZ: number) => {
+        const yaw = dirX !== 0 ? 0 : Math.PI / 2;
+        for (let i = 0; i < 3; i++) {
+          const t = ((i + 0.5) / 3) * 0.5; // 0.08..0.42 from centre
+          push(dirX * t, dirZ * t, yaw, 0.17);
         }
+      };
+
+      if (count === 0) {
+        push(0, 0, 0, 0.14); // lone tile: a centre dot
+      } else if (count === 1) {
+        // Dead end: arm toward the single neighbour (so the line reaches in).
+        if (n) arm(0, -1);
+        else if (s) arm(0, 1);
+        else if (e) arm(1, 0);
+        else arm(-1, 0);
+      } else if (count === 2 && ((n && s) || (e && w))) {
+        // Straight: one continuous dashed line across the whole cell.
+        const yaw = n && s ? Math.PI / 2 : 0;
+        for (let i = 0; i < 5; i++) {
+          const t = (i - 2) * 0.2; // -0.4..0.4
+          push(n && s ? 0 : t, n && s ? t : 0, yaw, 0.17);
+        }
+      } else if (count === 2) {
+        // Corner: a quarter-arc of small dashes between the two arms. The two
+        // connected sides define the bend; dashes follow a 90° arc of radius
+        // ~0.3 centred on the inner corner.
+        const dx = e ? 1 : w ? -1 : 0;
+        const dz = s ? 1 : n ? -1 : 0;
+        // Pick the two connected directions.
+        const dirs: Array<[number, number]> = [];
+        if (n) dirs.push([0, -1]);
+        if (s) dirs.push([0, 1]);
+        if (e) dirs.push([1, 0]);
+        if (w) dirs.push([-1, 0]);
+        const [a0, a1] = dirs;
+        const R = 0.3;
+        // Arc centre = opposite quadrant corner of the cell.
+        const cxArc = -dx * R;
+        const czArc = -dz * R;
+        const ang0 = Math.atan2(a0[1] * 0.5 - czArc, a0[0] * 0.5 - cxArc);
+        let ang1 = Math.atan2(a1[1] * 0.5 - czArc, a1[0] * 0.5 - cxArc);
+        if (ang1 - ang0 > Math.PI) ang1 -= Math.PI * 2;
+        if (ang0 - ang1 > Math.PI) ang1 += Math.PI * 2;
+        const N = 5;
+        for (let i = 0; i < N; i++) {
+          const a = ang0 + ((ang1 - ang0) * (i + 0.5)) / N;
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, 0.15);
+        }
+      } else {
+        // T-junction (3) or crossroad (4): a short dash toward each arm, with a
+        // small centre square so the arms visually meet.
+        push(0, 0, 0, 0.1);
+        if (n) { push(0, -0.3, Math.PI / 2, 0.17); push(0, -0.44, Math.PI / 2, 0.12); }
+        if (s) { push(0, 0.3, Math.PI / 2, 0.17); push(0, 0.44, Math.PI / 2, 0.12); }
+        if (e) { push(0.3, 0, 0, 0.17); push(0.44, 0, 0, 0.12); }
+        if (w) { push(-0.3, 0, 0, 0.17); push(-0.44, 0, 0, 0.12); }
       }
     }
     return out;
@@ -165,22 +215,19 @@ function FlatRoads({
     if (mk) {
       const dummy = new THREE.Object3D();
       const topLift = ROAD_STYLE.scaleY * cellSize + (SURFACE_LIFT + MARK_LIFT) * cellSize;
-      const dashLen = 0.16 * cellSize;
       const dashW = 0.06 * cellSize;
       for (let i = 0; i < marks.length; i++) {
         const m = marks[i];
         const cx = (m.x - half) * cellSize;
         const cz = (m.z - half) * cellSize;
-        const along = m.frac * cellSize;
         dummy.position.set(
-          cx + (m.dir === 'x' ? along : 0),
+          cx + m.ox * cellSize,
           m.surfaceTop + topLift,
-          cz + (m.dir === 'z' ? along : 0),
+          cz + m.oz * cellSize,
         );
-        // Long axis points along the arm direction.
-        if (m.dir === 'x') dummy.scale.set(dashLen, 0.02 * cellSize, dashW);
-        else dummy.scale.set(dashW, 0.02 * cellSize, dashLen);
-        dummy.rotation.set(0, 0, 0);
+        // Dash is long along local X; yaw (around Y) points it along the arm.
+        dummy.scale.set(m.len * cellSize, 0.02 * cellSize, dashW);
+        dummy.rotation.set(0, m.yaw, 0);
         dummy.updateMatrix();
         mk.setMatrixAt(i, dummy.matrix);
       }

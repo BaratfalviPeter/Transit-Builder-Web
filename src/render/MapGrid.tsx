@@ -51,16 +51,65 @@ const VISUAL_KEYS = [
 // Shared geometries / materials (module level: created once).
 const TRUNK_GEOM = new THREE.CylinderGeometry(0.04, 0.055, 1, 6);
 TRUNK_GEOM.translate(0, 0.5, 0); // base at y = 0
-const TIER_GEOMS = TIERS.map(([r, h]) => {
-  const g = new THREE.ConeGeometry(r, h, 7);
-  g.translate(0, h / 2, 0); // base at y = 0
-  return g;
-});
+
+/**
+ * ONE merged crown geometry: the 3 stacked cones fused into a single buffer so
+ * the whole foliage of every tree is drawn by a single InstancedMesh (trees =
+ * 2 draw calls total: trunks + crowns).
+ *
+ * The per-tier "sun-catching tip" lightening can't come from a separate
+ * InstancedMesh colour any more, so we bake it into the merged geometry as a
+ * vertex-colour brightness that the per-instance colour is multiplied by. A
+ * tiny yaw per tier keeps the chunky, layered silhouette.
+ */
+function buildCrownGeom(tipLight: number): THREE.BufferGeometry {
+  // Expand each cone to non-indexed first, so the merged sizes are exact.
+  const parts: THREE.BufferGeometry[] = TIERS.map(([r, h, baseY], ti) => {
+    const base = new THREE.ConeGeometry(r, h, 7);
+    base.translate(0, h / 2 + baseY, 0);
+    base.rotateY(ti * 0.45);
+    const g = base.toNonIndexed();
+    base.dispose();
+    // Bake the tier brightness into vertex colours (instance colour × this).
+    const mul = 1 + ti * tipLight;
+    const n = g.getAttribute('position').count;
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(mul), 3));
+    return g;
+  });
+
+  const total = parts.reduce((s, g) => s + g.getAttribute('position').count, 0);
+  const pos = new Float32Array(total * 3);
+  const nor = new Float32Array(total * 3);
+  const col = new Float32Array(total * 3);
+  let o = 0;
+  for (const g of parts) {
+    const p = g.getAttribute('position').array as ArrayLike<number>;
+    const nn = g.getAttribute('normal').array as ArrayLike<number>;
+    const cc = g.getAttribute('color').array as ArrayLike<number>;
+    pos.set(p, o);
+    nor.set(nn, o);
+    col.set(cc, o);
+    o += p.length;
+    g.dispose();
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  merged.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return merged;
+}
+
 const ROCK_GEOM = new THREE.DodecahedronGeometry(1, 0);
 ROCK_GEOM.translate(0, 0.35, 0); // sink a bit into the ground
 
 const TRUNK_MAT = new THREE.MeshStandardMaterial({ color: '#6b4a2b', roughness: 0.9, flatShading: true });
-const LEAF_MAT = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85, flatShading: true });
+// vertexColors: the baked per-tier brightness; instance colours multiply it.
+const LEAF_MAT = new THREE.MeshStandardMaterial({
+  color: '#ffffff',
+  roughness: 0.85,
+  flatShading: true,
+  vertexColors: true,
+});
 const ROCK_MAT = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true });
 
 function hash01(a: number, b: number, salt: number): number {
@@ -175,11 +224,15 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
   const { trees, rocks } = useMemo(() => scatter(map, cellSize), [map, cellSize]);
 
   const trunkRef = useRef<THREE.InstancedMesh>(null);
-  const tierRefs = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const crownRef = useRef<THREE.InstancedMesh>(null);
   const rockRef = useRef<THREE.InstancedMesh>(null);
 
   const vis = useVisualKeys(VISUAL_KEYS);
   const visSig = VISUAL_KEYS.map((k) => vis[k]).join('|');
+
+  // The baked tier brightness lives in the crown geometry, so it only needs
+  // rebuilding when treeTipLight changes (not on every colour tweak).
+  const crownGeom = useMemo(() => buildCrownGeom(vis.treeTipLight), [vis.treeTipLight]);
 
   useLayoutEffect(() => {
     const greens = [vis.tree1, vis.tree2, vis.tree3, vis.tree4, vis.tree5].map((c) => new THREE.Color(c));
@@ -198,23 +251,21 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
       trunk.instanceMatrix.needsUpdate = true;
       trunk.computeBoundingSphere();
     }
-    TIERS.forEach(([, , baseY], ti) => {
-      const mesh = tierRefs.current[ti];
-      if (!mesh) return;
-      const c = new THREE.Color();
+    // One crown per tree (all 3 tiers baked into crownGeom).
+    const crown = crownRef.current;
+    if (crown) {
       trees.forEach((t, i) => {
-        d.position.set(t.x, t.y + baseY * t.s, t.z);
-        d.rotation.set(0, t.rot + ti * 0.45, 0);
+        d.position.set(t.x, t.y, t.z);
+        d.rotation.set(0, t.rot, 0);
         d.scale.setScalar(t.s);
         d.updateMatrix();
-        mesh.setMatrixAt(i, d.matrix);
-        // Upper tiers a touch lighter (sun-catching tips).
-        mesh.setColorAt(i, c.copy(greens[t.color]).multiplyScalar(1 + ti * vis.treeTipLight));
+        crown.setMatrixAt(i, d.matrix);
+        crown.setColorAt(i, greens[t.color]);
       });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.computeBoundingSphere();
-    });
+      crown.instanceMatrix.needsUpdate = true;
+      if (crown.instanceColor) crown.instanceColor.needsUpdate = true;
+      crown.computeBoundingSphere();
+    }
     const rock = rockRef.current;
     if (rock) {
       rocks.forEach((r, i) => {
@@ -235,25 +286,23 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
   return (
     <group>
       {trees.length > 0 && (
-        // key on count: InstancedMesh capacity is fixed at creation.
-        <group key={`t${trees.length}`}>
+        // key on count + crown geometry: InstancedMesh capacity + the crown
+        // buffer are fixed at creation, so rebuild if either changes.
+        <group key={`t${trees.length}:${vis.treeTipLight}`}>
+          {/* 1 — all trunks */}
           <instancedMesh
             ref={trunkRef}
             args={[TRUNK_GEOM, TRUNK_MAT, trees.length]}
             castShadow
             receiveShadow
           />
-          {TIER_GEOMS.map((g, ti) => (
-            <instancedMesh
-              key={ti}
-              ref={(el) => {
-                tierRefs.current[ti] = el;
-              }}
-              args={[g, LEAF_MAT, trees.length]}
-              castShadow
-              receiveShadow
-            />
-          ))}
+          {/* 2 — all crowns (3 tiers merged into one geometry) */}
+          <instancedMesh
+            ref={crownRef}
+            args={[crownGeom, LEAF_MAT, trees.length]}
+            castShadow
+            receiveShadow
+          />
         </group>
       )}
       {rocks.length > 0 && (

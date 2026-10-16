@@ -45,6 +45,7 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
       r('sunElevation', 'Magasság (°)', 5, 90, 1),
       r('shadowBias', 'Árnyék bias', -0.005, 0.005, 0.0001),
       r('shadowNormalBias', 'Árnyék normal bias', 0, 0.3, 0.005),
+      b('liveShadows', 'Élő árnyék (felhő/madár)'),
     ],
   },
   {

@@ -28,6 +28,7 @@ import {
   useVisualKeys,
   type VisualSettings,
 } from './visualSettings';
+import { patchCloudShadows } from './cloudShadows';
 import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface TerrainSurfaceProps {
@@ -218,7 +219,14 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
 
   return (
     <mesh ref={meshRef} receiveShadow castShadow {...handlers}>
-      <meshStandardMaterial vertexColors flatShading roughness={terrainRoughness} />
+      <meshStandardMaterial
+        ref={(m) => {
+          if (m) patchCloudShadows(m);
+        }}
+        vertexColors
+        flatShading
+        roughness={terrainRoughness}
+      />
     </mesh>
   );
 }

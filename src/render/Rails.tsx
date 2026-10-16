@@ -16,6 +16,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import { patchRef } from './cloudShadows';
 
 export interface RailsProps {
   map: TerrainMap;
@@ -147,6 +148,7 @@ function FlatRails({
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial
+        ref={patchRef}
           color={GRAVEL_COLOR}
           roughness={1}
           polygonOffset
@@ -160,7 +162,8 @@ function FlatRails({
         castShadow
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color={SLEEPER_COLOR} roughness={0.9} />
+        <meshStandardMaterial
+        ref={patchRef} color={SLEEPER_COLOR} roughness={0.9} />
       </instancedMesh>
       <instancedMesh
         ref={railRef}
@@ -168,7 +171,8 @@ function FlatRails({
         castShadow
       >
         <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color={RAIL_COLOR} metalness={0.6} roughness={0.4} />
+        <meshStandardMaterial
+        ref={patchRef} color={RAIL_COLOR} metalness={0.6} roughness={0.4} />
       </instancedMesh>
     </group>
   );
@@ -226,7 +230,8 @@ function SlopeRailBeds({ map, cellSize }: { map: TerrainMap; cellSize: number })
   if (!geometry) return null;
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial color={GRAVEL_COLOR} roughness={1} />
+      <meshStandardMaterial
+        ref={patchRef} color={GRAVEL_COLOR} roughness={1} />
     </mesh>
   );
 }

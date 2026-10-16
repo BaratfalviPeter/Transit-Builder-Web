@@ -6,7 +6,7 @@
  * hologram is red (blocked / not enough money), plus the cancel hint.
  */
 
-import { CellType, HEADING_LABELS, TOOLS, useGameSnapshot, usePathPlanSnapshot } from '../sim';
+import { CellType, TOOLS, useGameSnapshot, usePathPlanSnapshot } from '../sim';
 import './pathPlanInfo.css';
 
 export function PathPlanInfo() {
@@ -32,12 +32,6 @@ export function PathPlanInfo() {
         <span className="ppi__cost">${cost}</span>
       </div>
       <div className="ppi__status">{status}</div>
-      {snap.type === CellType.Rail && (
-        <div className="ppi__hint">
-          Indulási irány: <b>{snap.startHeading === null ? 'auto' : HEADING_LABELS[snap.startHeading]}</b> · R / Shift+R:
-          forgatás
-        </div>
-      )}
       <div className="ppi__hint">Jobb klikk / Esc: mégse</div>
     </div>
   );

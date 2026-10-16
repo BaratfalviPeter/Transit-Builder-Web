@@ -84,7 +84,7 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
   },
   {
     title: 'Utak',
-    ctls: [r('roadCornerAngle', 'Kanyarvonal szöge (°)', 20, 140, 1)],
+    ctls: [r('roadCornerAngle', 'Kanyar vonalak forgatása (°)', -90, 90, 1)],
   },
   {
     title: 'Fák és sziklák',

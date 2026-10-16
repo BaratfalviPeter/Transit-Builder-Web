@@ -100,6 +100,40 @@ export class TerrainStore {
   }
 
   /**
+   * Build a whole planned route of `type` (Road or Rail) in ONE commit + ONE
+   * emit, so the overlays rebuild once instead of once per cell. Cells that
+   * already hold `type` are skipped (joined, not rebuilt). Each new cell is
+   * checked against the build rules as the route grows, so the result is the
+   * same as building it cell by cell. Returns the number of cells placed.
+   */
+  buildPath(path: ReadonlyArray<{ x: number; z: number }>, type: CellType.Road | CellType.Rail): number {
+    const canBuild = type === CellType.Road ? canBuildRoadAt : canBuildRailAt;
+    let cells: CellType[][] | null = null;
+    const touched = new Set<number>();
+    let placed = 0;
+    for (const { x, z } of path) {
+      if (!this.inBounds(x, z)) continue;
+      const cur = (cells ?? this.map.cells)[x][z];
+      if (cur === type) continue;
+      // Rules see the cells placed so far (slope-connectivity checks).
+      const view = cells ? { ...this.map, cells } : this.map;
+      if (!canBuild(view, x, z)) continue;
+      if (!cells) cells = this.map.cells.slice();
+      if (!touched.has(x)) {
+        cells[x] = cells[x].slice();
+        touched.add(x);
+      }
+      cells[x][z] = type;
+      placed++;
+    }
+    if (!cells || placed === 0) return 0;
+    if (type === CellType.Road) this.roadCount += placed;
+    this.commit({ cells }, true);
+    this.emit();
+    return placed;
+  }
+
+  /**
    * Bulldoze `(x, z)` back to Empty if it holds something removable (road,
    * rail, or forest). Hills, water, city and industry are not bulldozable.
    * Returns true if something was cleared.

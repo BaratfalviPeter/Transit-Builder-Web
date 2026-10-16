@@ -2,6 +2,8 @@ import { TerrainProvider } from './sim/useTerrain';
 import { DEFAULT_MAP_SIZE } from './sim/terrain';
 import { GameProvider } from './sim/useGameState';
 import { TerraformPlanProvider } from './sim/useTerraformPlan';
+import { PathPlanProvider } from './sim/usePathPlan';
+import { PathPlanInfo } from './ui/PathPlanInfo';
 import { GameCanvas } from './render/GameCanvas';
 import { Hud } from './ui/Hud';
 import { SidePanel } from './ui/SidePanel';
@@ -15,6 +17,8 @@ import { VisualTuner } from './ui/VisualTuner';
  *   - GameProvider: active tool, money/economy, and the in-game clock.
  *   - TerraformPlanProvider: the pending (select -> confirm -> build) terraform
  *     selection shared by the canvas grids and the confirm panel.
+ *   - PathPlanProvider: the two-click (A → B) road/rail route planner shared
+ *     by the canvas (input + hologram) and the cost/hint overlay.
  * The canvas fills the viewport; the HUD, SidePanel and confirm panel overlay.
  */
 export default function App() {
@@ -22,11 +26,14 @@ export default function App() {
     <TerrainProvider options={{ size: DEFAULT_MAP_SIZE }}>
       <GameProvider startingMoney={1000}>
         <TerraformPlanProvider>
-          <GameCanvas />
-          <Hud />
-          <SidePanel />
-          <TerraformConfirm />
-          <VisualTuner />
+          <PathPlanProvider>
+            <GameCanvas />
+            <Hud />
+            <SidePanel />
+            <TerraformConfirm />
+            <PathPlanInfo />
+            <VisualTuner />
+          </PathPlanProvider>
         </TerraformPlanProvider>
       </GameProvider>
     </TerrainProvider>

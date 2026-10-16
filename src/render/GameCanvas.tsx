@@ -15,7 +15,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { sunPosition, useVisual, useVisualKeys } from './visualSettings';
 import { applyNight, setSkyClock, setSunDir, skyAt, type Sky } from './dayNight';
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
@@ -32,9 +32,13 @@ import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
 import { TerraformSelection } from './TerraformSelection';
+import { PathPreview } from './PathPreview';
 import {
   CellType,
+  isTrackPassable,
   TOOLS,
+  usePathPlan,
+  usePathPlanSnapshot,
   useCityDevelopment,
   useGame,
   useGameSnapshot,
@@ -233,6 +237,11 @@ function ShadowController({
   return null;
 }
 
+/** Track type a tool plans with the two-click planner (null = not a track tool). */
+function trackOf(id: string): CellType.Road | CellType.Rail | null {
+  return id === 'road' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
+}
+
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
 
@@ -241,9 +250,11 @@ function Scene() {
 
   const terrain = useTerrainStore();
   const game = useGame();
-  const { activeTool } = useGameSnapshot();
+  const { activeTool, money } = useGameSnapshot();
   const plan = useTerraformPlan();
   const planSnap = useTerraformSnapshot();
+  const pathPlan = usePathPlan();
+  const pathSnap = usePathPlanSnapshot();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
 
@@ -261,140 +272,133 @@ function Scene() {
   // Remember the last cell acted on during a drag so we don't re-process the
   // same cell many times as the pointer wiggles within it.
   const lastCell = useRef<string | null>(null);
-  // Road/rail drag state. A gesture builds ONE straight line:
-  //   - `start`  : the cell where the drag began (locks the perpendicular axis),
-  //   - `axis`   : locked to 'x' or 'z' on the first move off the start cell,
-  //   - `anchor` : the furthest cell built so far along the line; steps must be
-  //                its direct neighbour on `axis` (no gaps, no diagonals).
-  // To turn, the player releases and starts a new drag. This kills the ugly
-  // zig-zag staircases that free snaking produced.
-  const lineStart = useRef<{ x: number; z: number } | null>(null);
-  const lineAxis = useRef<'x' | 'z' | null>(null);
-  // Cells built THIS gesture, in order from the start. Dragging back over the
-  // previous cell pops the tip (undo): we only ever bulldoze + refund cells we
-  // placed in this same drag, never pre-existing road.
-  const lineBuilt = useRef<Array<{ x: number; z: number; placed: boolean; cost: number }>>([]);
 
+  /** World point -> terrain cell index (grid is centered on origin). */
+  const cellOf = useCallback(
+    (worldX: number, worldZ: number) => ({
+      x: Math.round(worldX / cellSize + half),
+      z: Math.round(worldZ / cellSize + half),
+    }),
+    [cellSize, half],
+  );
+
+  // Drag-painting tools (bulldoze, terraform selection). Road and rail use the
+  // two-click A→B planner below instead.
   const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
-      // World point -> terrain cell index (grid is centered on origin).
-      let x = Math.round(worldX / cellSize + half);
-      let z = Math.round(worldZ / cellSize + half);
-
+      const { x, z } = cellOf(worldX, worldZ);
       const tool = TOOLS[game.getActiveTool()];
-      const isLine = tool.id === 'road' || tool.id === 'rail';
-
-      // Axis-locked straight-line build for road + rail, with drag-back undo.
-      const buildLine = (
-        build: (x: number, z: number) => boolean,
-        type: CellType,
-      ): void => {
-        const stack = lineBuilt.current;
-
-        // First paint of a gesture: this cell is the line's start.
-        if (!lineStart.current) {
-          lineStart.current = { x, z };
-          lastCell.current = `${x},${z}`;
-          if (!terrain.inBounds(x, z)) return;
-          const fresh = terrain.cellAt(x, z) !== type; // was it empty/not ours?
-          const placed = fresh && game.canAfford(tool.cost) && build(x, z);
-          if (placed) game.spend(tool.cost);
-          // Record the tip whether or not we placed, so retreat logic has an
-          // anchor; `placed` tells undo whether to bulldoze + refund.
-          stack.push({ x, z, placed, cost: tool.cost });
-          return;
-        }
-        const start = lineStart.current;
-
-        // Lock the axis on the first cell that differs from the start.
-        if (!lineAxis.current && !(x === start.x && z === start.z)) {
-          lineAxis.current = Math.abs(x - start.x) >= Math.abs(z - start.z) ? 'x' : 'z';
-        }
-        // Constrain the cursor to the locked line (project onto the row/col),
-        // so diagonal wiggle keeps extending straight instead of stalling.
-        if (lineAxis.current === 'x') z = start.z;
-        else if (lineAxis.current === 'z') x = start.x;
-
-        const key = `${x},${z}`;
-        if (key === lastCell.current) return;
-        lastCell.current = key;
-        if (!terrain.inBounds(x, z)) return;
-
-        const tip = stack[stack.length - 1];
-
-        // DRAG BACK (undo): cursor landed on the cell just before the tip. Pop
-        // the tip — bulldoze + refund it, but only if WE placed it this drag.
-        if (stack.length >= 2) {
-          const prev = stack[stack.length - 2];
-          if (prev.x === x && prev.z === z) {
-            if (tip.placed && terrain.bulldoze(tip.x, tip.z)) game.earn(tip.cost);
-            stack.pop();
-            // If we backed onto the start cell, unlock the axis so the player
-            // can re-extend in a fresh direction without releasing.
-            if (stack.length === 1) lineAxis.current = null;
-            return;
-          }
-        }
-
-        // EXTEND: must be the tip's direct neighbour on the locked axis.
-        if (Math.abs(tip.x - x) + Math.abs(tip.z - z) !== 1) return;
-        const fresh = terrain.cellAt(x, z) !== type;
-        const placed = fresh && game.canAfford(tool.cost) && build(x, z);
-        if (placed) game.spend(tool.cost);
-        // Only advance the tip if the cell is now ours (placed, or already was
-        // a road/rail we ran into) — otherwise a blocked step must not advance.
-        if (placed || terrain.cellAt(x, z) === type) {
-          stack.push({ x, z, placed, cost: tool.cost });
-        }
-      };
-
-      if (!isLine) {
-        const key = `${x},${z}`;
-        if (key === lastCell.current) return;
-        lastCell.current = key;
-      }
+      const key = `${x},${z}`;
+      if (key === lastCell.current) return;
+      lastCell.current = key;
 
       switch (tool.id) {
-        case 'select':
-          return; // no-op
         case 'bulldoze':
           terrain.bulldoze(x, z);
           return;
-        case 'road':
-          buildLine((cx, cz) => terrain.buildRoad(cx, cz), CellType.Road);
-          return;
-        case 'rail':
-          buildLine((cx, cz) => terrain.buildRail(cx, cz), CellType.Rail);
-          return;
         case 'raise':
         case 'lower': {
-          // Terraforming is now batched: clicks/drag only SELECT cells (shown
-          // as a red grid). The actual edit happens on confirm (see SidePanel),
-          // in one batch — so painting is instant and the terrain only updates
-          // once. Only sculptable cells can be selected.
+          // Terraforming is batched: clicks/drag only SELECT cells (shown as a
+          // red grid). The actual edit happens on confirm (see SidePanel), in
+          // one batch. Only sculptable cells can be selected.
           if (!terrain.canTerraform(x, z)) return;
           plan.addCell(x, z, tool.id);
           return;
         }
+        default:
+          return; // select: no-op; road/rail: click mode
       }
     },
-    [terrain, game, plan, cellSize, half],
+    [terrain, game, plan, cellOf],
   );
 
-  // Reset drag state whenever a drag starts/ends. On start we seed the line
-  // start/anchor from the first painted cell (done in the effect below via the
-  // first handlePaint call), so here we just clear everything.
-  const handleDragChange = useCallback((dragging: boolean) => {
+  const handleDragChange = useCallback(() => {
     lastCell.current = null;
-    lineAxis.current = null;
-    lineStart.current = null;
-    lineBuilt.current = [];
-    void dragging;
   }, []);
 
-  // Shared click + drag handlers, attached to BOTH the flat pick-plane and the
-  // raised hill mesh so each hit lands on the real geometry under the cursor.
-  const buildHandlers = usePointerBuild(handlePaint, handleDragChange);
+  // ---- Two-click (Point A → Point B) road/rail planner -------------------
+  //   idle          --click valid cell-->  selecting_end (A = startNode)
+  //   selecting_end --hover-->             A* preview (green / red hologram)
+  //   selecting_end --click-->             build previewPath, pay, -> idle
+  //   selecting_end --right-click / Esc--> cancel, -> idle
+  const clickMode = useMemo(
+    () => ({
+      active: () => trackOf(game.getActiveTool()) !== null,
+      onHover: (wx: number, wz: number) => {
+        if (pathPlan.getSnapshot().pathbuildingState !== 'selecting_end') return;
+        const c = cellOf(wx, wz);
+        if (!terrain.inBounds(c.x, c.z)) return;
+        pathPlan.preview(terrain.getMap(), c);
+      },
+      onClick: (wx: number, wz: number) => {
+        const tool = TOOLS[game.getActiveTool()];
+        const type = trackOf(tool.id);
+        if (type === null) return;
+        const c = cellOf(wx, wz);
+        if (!terrain.inBounds(c.x, c.z)) return;
+        const m = terrain.getMap();
+        const snap = pathPlan.getSnapshot();
+
+        if (snap.pathbuildingState === 'idle') {
+          // Point A: must be a cell the track can use.
+          if (isTrackPassable(m, c.x, c.z, type)) pathPlan.begin(m, c, type);
+          return;
+        }
+
+        // Point B: make sure the route ends exactly at the clicked cell.
+        pathPlan.preview(m, c);
+        const p = pathPlan.getSnapshot();
+        const cost = p.newCells * tool.cost;
+        // Red hologram = refuse (blocked route or not enough money).
+        if (p.blocked || p.previewPath.length === 0 || !game.canAfford(cost)) return;
+        const placed = terrain.buildPath(p.previewPath, type);
+        game.spend(placed * tool.cost);
+        pathPlan.clear();
+      },
+    }),
+    [game, terrain, pathPlan, cellOf],
+  );
+
+  // Switching tool (or road <-> rail) drops an unfinished plan.
+  useEffect(() => {
+    const s = pathPlan.getSnapshot();
+    if (s.pathbuildingState !== 'idle' && trackOf(activeTool) !== s.type) pathPlan.clear();
+  }, [activeTool, pathPlan]);
+
+  // The map changed while planning (another build, city growth): re-route.
+  useEffect(() => {
+    pathPlan.refresh(terrain.getMap());
+  }, [map.cellsVersion, map.version, terrain, pathPlan]);
+
+  // Cancel: Escape, or a right CLICK (press + release without dragging — a
+  // right DRAG still orbits the camera).
+  useEffect(() => {
+    let rightDown: { x: number; y: number } | null = null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') pathPlan.clear();
+    };
+    const onDown = (e: PointerEvent) => {
+      if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.button !== 2 || !rightDown) return;
+      const moved = Math.hypot(e.clientX - rightDown.x, e.clientY - rightDown.y);
+      rightDown = null;
+      if (moved < 6) pathPlan.clear();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+    };
+  }, [pathPlan]);
+
+  // Shared click + drag handlers, attached to the terrain surface so each hit
+  // lands on the real geometry under the cursor.
+  const buildHandlers = usePointerBuild(handlePaint, handleDragChange, clickMode);
 
   // Safety net: if the pointer is released anywhere (even off the pick plane),
   // clear the dedupe key so a stuck drag can't keep painting.
@@ -476,6 +480,20 @@ function Scene() {
       {/* Pending terraform selection: red while selecting, yellow while the
           short build timer runs. */}
       <TerraformSelection plan={planSnap} map={map} cellSize={cellSize} />
+
+      {/* Two-click road/rail planner: green hologram of the A* route, red if
+          blocked or unaffordable. */}
+      {pathSnap.pathbuildingState === 'selecting_end' && (
+        <PathPreview
+          path={pathSnap.previewPath}
+          red={
+            pathSnap.blocked ||
+            money < pathSnap.newCells * TOOLS[pathSnap.type === CellType.Rail ? 'rail' : 'road'].cost
+          }
+          map={map}
+          cellSize={cellSize}
+        />
+      )}
 
       {/* Visual reference grid lines (picking is on the terrain surface). */}
       <GridFloor cellSize={cellSize} gridHalfExtent={map.size / 2} />

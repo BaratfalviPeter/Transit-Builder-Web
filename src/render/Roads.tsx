@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
+import { CellType, cellCornerHeights, railBitsAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -84,13 +84,16 @@ const GAP = DASH / 2; // gap = half the dash length (airy)
 const PITCH = DASH + GAP; // 0.255
 const DASH_W = 0.055; // half-width of a dash/line ribbon
 
-/** Does cell (x,z) connect to a road-like cell (road/rail) one step away? */
+/**
+ * Does cell (x,z) connect to a road one step away? (Rails no longer count:
+ * they connect through their own track pieces; a road meets a rail only at a
+ * level crossing, which is itself a Road cell.)
+ */
 function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number): boolean {
   const nx = x + dx;
   const nz = z + dz;
   if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) return false;
-  const t = map.cells[nx][nz];
-  return t === CellType.Road || t === CellType.Rail;
+  return map.cells[nx][nz] === CellType.Road;
 }
 
 /**
@@ -141,6 +144,8 @@ function FlatRoads({
     const M: number[] = []; // marking (white) triangles
 
     for (const [x, z] of coords) {
+      // Level crossing: no lane markings across the tracks.
+      if (railBitsAt(map, x, z)) continue;
       const cornerH = cellCornerHeights(map, x, z)[0];
       const topY = (FLAT_TOP + cornerH) * cellSize + MARK_Y * cellSize;
       // Cell centre in world space; local offsets are in cell units × cellSize.
@@ -361,7 +366,7 @@ function buildHillRoadMarkings(
   const isRoadLike = (x: number, z: number): boolean => {
     if (x < 0 || z < 0 || x >= size || z >= size) return false;
     const t = cells[x][z];
-    return t === CellType.Road || t === CellType.Rail;
+    return t === CellType.Road;
   };
 
   const positions: number[] = [];

@@ -27,7 +27,7 @@ export function PathPlanInfo() {
     <div className={`ppi ${snap.blocked || poor ? 'ppi--red' : ''}`}>
       <div className="ppi__row">
         <span className="ppi__title">
-          {tool.label} · {snap.newCells} új cella
+          {tool.label} · {snap.newCells} {snap.type === CellType.Rail ? 'új sínelem' : 'új cella'}
         </span>
         <span className="ppi__cost">${cost}</span>
       </div>

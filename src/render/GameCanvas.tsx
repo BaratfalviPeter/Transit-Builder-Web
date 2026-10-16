@@ -35,7 +35,7 @@ import { TerraformSelection } from './TerraformSelection';
 import { PathPreview } from './PathPreview';
 import {
   CellType,
-  isTrackPassable,
+  canStartRoute,
   TOOLS,
   usePathPlan,
   usePathPlanSnapshot,
@@ -341,7 +341,7 @@ function Scene() {
 
         if (snap.pathbuildingState === 'idle') {
           // Point A: must be a cell the track can use.
-          if (isTrackPassable(m, c.x, c.z, type)) pathPlan.begin(m, c, type);
+          if (canStartRoute(m, c, type)) pathPlan.begin(m, c, type);
           return;
         }
 
@@ -351,7 +351,12 @@ function Scene() {
         const cost = p.newCells * tool.cost;
         // Red hologram = refuse (blocked route or not enough money).
         if (p.blocked || p.previewPath.length === 0 || !game.canAfford(cost)) return;
-        const placed = terrain.buildPath(p.previewPath, type);
+        const placed =
+          type === CellType.Rail
+            ? terrain.buildRailRoute(
+                p.previewPath.filter((st) => st.piece !== undefined) as Array<{ x: number; z: number; piece: number }>,
+              )
+            : terrain.buildPath(p.previewPath);
         game.spend(placed * tool.cost);
         pathPlan.clear();
       },
@@ -492,6 +497,8 @@ function Scene() {
           }
           map={map}
           cellSize={cellSize}
+          rail={pathSnap.type === CellType.Rail}
+          start={pathSnap.startNode}
         />
       )}
 

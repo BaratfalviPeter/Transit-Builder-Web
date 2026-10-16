@@ -11,6 +11,7 @@
 
 import {
   CellType,
+  MAX_GEN_LEVEL,
   canBuildRailAt,
   canBuildRoadAt,
   canBulldoze,
@@ -25,8 +26,8 @@ type Listener = () => void;
 
 /** Lowest a cell may be dug (in cellSize units) — one step below ground. */
 const MIN_HEIGHT = -HILL_STEP;
-/** Highest a cell may be raised. */
-const MAX_HEIGHT = 3 * HILL_STEP;
+/** Highest a cell may be raised (one step above the tallest generated peak). */
+const MAX_HEIGHT = (MAX_GEN_LEVEL + 1) * HILL_STEP;
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;

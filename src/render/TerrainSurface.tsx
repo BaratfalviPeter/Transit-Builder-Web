@@ -21,7 +21,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
-import { CellType, cornerHeightAt, type TerrainMap } from '../sim';
+import { CellType, HILL_STEP, cornerHeightAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import {
   getVisual,
@@ -30,6 +30,7 @@ import {
   type VisualSettings,
 } from './visualSettings';
 import { patchCloudShadows } from './cloudShadows';
+import { CROP_GROUND, farmCrop, type Crop } from './farmland';
 import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface TerrainSurfaceProps {
@@ -82,10 +83,23 @@ function hash01(a: number, b: number, salt: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/** "Crumpled" grass: plain Empty ground that is NOT a farm field (fields stay flat). */
 function isGrass(map: TerrainMap, x: number, z: number): boolean {
   return (
-    x >= 0 && z >= 0 && x < map.size && z < map.size && map.cells[x][z] === CellType.Empty
+    x >= 0 &&
+    z >= 0 &&
+    x < map.size &&
+    z < map.size &&
+    map.cells[x][z] === CellType.Empty &&
+    farmCrop(map, x, z) === null
   );
+}
+
+/** Is a direct (4-)neighbour of (x, z) water? (beach detection) */
+function besideWater(map: TerrainMap, x: number, z: number): boolean {
+  const w = (a: number, b: number) =>
+    a >= 0 && b >= 0 && a < map.size && b < map.size && map.cells[a][b] === CellType.Water;
+  return w(x - 1, z) || w(x + 1, z) || w(x, z - 1) || w(x, z + 1);
 }
 
 /**
@@ -128,13 +142,17 @@ const PAL = {
   forest: new THREE.Color(),
   water: new THREE.Color(),
   city: new THREE.Color(),
+  sand: new THREE.Color(),
+  rock: new THREE.Color(),
+  snow: new THREE.Color(),
+  crops: {} as Record<Crop, THREE.Color>,
   wobble: 0.06,
 };
 /** Signature of the palette-relevant settings (to detect real changes). */
 function paletteSig(v: VisualSettings): string {
   return [
     v.grass1, v.grass2, v.grass3, v.grass4, v.hill1, v.hill2, v.hill3,
-    v.forestFloor, v.water, v.cliff, v.city, v.grassWobble,
+    v.forestFloor, v.water, v.cliff, v.city, v.grassWobble, v.sand, v.mountainRock, v.snow,
   ].join('|');
 }
 function refreshPalette(v: VisualSettings): void {
@@ -143,23 +161,65 @@ function refreshPalette(v: VisualSettings): void {
   PAL.forest.set(v.forestFloor);
   PAL.water.set(v.water);
   PAL.city.set(v.city);
+  PAL.sand.set(v.sand);
+  PAL.rock.set(v.mountainRock);
+  PAL.snow.set(v.snow);
+  for (const [k, c] of Object.entries(CROP_GROUND)) PAL.crops[k as Crop] = new THREE.Color(c);
   SIDE_COLOR.set(v.cliff);
   PAL.wobble = v.grassWobble;
 }
 refreshPalette(getVisual());
 
-/** Top colour of one top triangle (i = 0..3) of cell (x, z). */
+const TMP_MIX = new THREE.Color();
+
+/**
+ * Top colour of one top triangle (i = 0..3) of cell (x, z). Besides the base
+ * palettes this paints the landscape zones:
+ *   - farm fields: their crop's ground colour (flat, rows drawn by Farms),
+ *   - beaches: grass right beside water turns to sand,
+ *   - mountains: by height level — grassy foothills, rocky flanks on slopes,
+ *     bare rock higher up, and snow caps on the highest peaks.
+ */
 function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.Color): THREE.Color {
   const type = map.cells[x][z];
+  const wob = 1 - PAL.wobble / 2 + hash01(x * 4 + i, z, map.seed + 31) * PAL.wobble;
+  if (type === CellType.Empty) {
+    const crop = farmCrop(map, x, z);
+    if (crop) return out.copy(PAL.crops[crop]).multiplyScalar(wob);
+    if (besideWater(map, x, z) && cornerHeightAt(map, x, z) === 0)
+      return out.copy(PAL.sand).multiplyScalar(wob);
+  }
+  if (type === CellType.Hill) {
+    const lvl = map.heights[x][z] / HILL_STEP;
+    const c0 = cornerHeightAt(map, x, z);
+    const c1 = cornerHeightAt(map, x + 1, z);
+    const c2 = cornerHeightAt(map, x + 1, z + 1);
+    const c3 = cornerHeightAt(map, x, z + 1);
+    const sloped = !(c0 === c1 && c1 === c2 && c2 === c3);
+    const grass = PAL.hill[Math.floor(hash01(x, z, map.seed + 17) * PAL.hill.length)];
+    // 0 = grassy, 1 = bare rock: rock creeps in with height, more on slopes.
+    // Steep flanks (2-level drop across the cell) are bare rock.
+    const drop = Math.max(c0, c1, c2, c3) - Math.min(c0, c1, c2, c3);
+    const steep = drop > HILL_STEP * 1.5;
+    const rockiness = Math.min(
+      1,
+      Math.max(0, (lvl - 3) / 4 + (sloped ? 0.3 : 0) + (steep ? 0.45 : 0)),
+    );
+    out.copy(grass).lerp(PAL.rock, rockiness);
+    // Snow caps only on the real peaks (flat tops fully, slopes speckled).
+    if (lvl >= 10 || (lvl >= 9 && !steep)) {
+      const snowK = steep ? 0.5 + hash01(x, z, map.seed + 41) * 0.3 : 0.9;
+      out.lerp(TMP_MIX.copy(PAL.snow), snowK);
+    }
+    return out.multiplyScalar(wob);
+  }
   let palette: THREE.Color[] | null = null;
   if (type === CellType.Empty || type === CellType.IndustryLot) palette = PAL.grass;
-  else if (type === CellType.Hill) palette = PAL.hill;
   if (!palette) return out.copy(surfaceColor(type));
   const pick = Math.floor(hash01(x, z, map.seed + 17) * palette.length);
   out.copy(palette[pick]);
   // Small per-facet brightness wobble for an organic, hand-painted feel.
-  const k = 1 - PAL.wobble / 2 + hash01(x * 4 + i, z, map.seed + 31) * PAL.wobble;
-  return out.multiplyScalar(k);
+  return out.multiplyScalar(wob);
 }
 
 function surfaceColor(type: CellType): THREE.Color {

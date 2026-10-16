@@ -43,9 +43,72 @@ const WATER_LEVEL = FLAT_TOP - WATER_SINK;
 const FLOOR_DROP = 1.5;
 
 const SIDE_COLOR = new THREE.Color('#4a4034'); // earthy side-wall tone
+const TMP_COLOR = new THREE.Color();
 
-/** Vertices emitted per cell: 1 top quad + 4 side walls, each 6 verts. */
-const VERTS_PER_CELL = 30;
+/** Vertices emitted per cell: top (4 triangles = 12) + 4 side walls × 6. */
+const VERTS_PER_CELL = 36;
+
+// --- "Crumpled paper" grass ------------------------------------------------
+//
+// Each top is split into 4 triangles around a centre vertex. On plain grass
+// (Empty) cells the centre is nudged up/down by a deterministic hash, and grass
+// corners shared ONLY by grass cells get a smaller jitter too — so the meadow
+// reads as gently crumpled low-poly paper. Corners touching anything else
+// (roads, rails, buildings, industry lots, water, hills, map border) stay
+// exact, so every overlay that rests on cornerHeightAt still sits flush.
+// Non-grass cells put the centre on the original quad's diagonal, so their
+// surface is exactly the same plane(s) as before.
+
+/** Max centre displacement of a grass cell (cellSize units). */
+const GRASS_CENTER_AMP = 0.07;
+/** Max displacement of an all-grass corner (cellSize units). */
+const GRASS_CORNER_AMP = 0.04;
+
+/** Deterministic 0..1 hash of an integer pair + salt. */
+function hash01(a: number, b: number, salt: number): number {
+  let h = (a * 374761393 + b * 668265263 + salt * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+function isGrass(map: TerrainMap, x: number, z: number): boolean {
+  return (
+    x >= 0 && z >= 0 && x < map.size && z < map.size && map.cells[x][z] === CellType.Empty
+  );
+}
+
+/** Jitter of corner (cx, cz) — only if all four cells around it are grass. */
+function cornerJitter(map: TerrainMap, cx: number, cz: number): number {
+  if (
+    !isGrass(map, cx - 1, cz - 1) ||
+    !isGrass(map, cx, cz - 1) ||
+    !isGrass(map, cx - 1, cz) ||
+    !isGrass(map, cx, cz)
+  )
+    return 0;
+  return (hash01(cx, cz, map.seed) * 2 - 1) * GRASS_CORNER_AMP;
+}
+
+/** Grass shade palette (light ↔ dark), picked per cell. */
+const GRASS_SHADES = ['#78a05f', '#6b9455', '#86ab66', '#5f8a4d'].map(
+  (c) => new THREE.Color(c),
+);
+const HILL_SHADES = ['#7d8a5c', '#748255', '#879463'].map((c) => new THREE.Color(c));
+
+/** Top colour of one top triangle (i = 0..3) of cell (x, z). */
+function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.Color): THREE.Color {
+  const type = map.cells[x][z];
+  let palette: THREE.Color[] | null = null;
+  if (type === CellType.Empty || type === CellType.IndustryLot) palette = GRASS_SHADES;
+  else if (type === CellType.Hill) palette = HILL_SHADES;
+  if (!palette) return out.copy(surfaceColor(type));
+  const pick = Math.floor(hash01(x, z, map.seed + 17) * palette.length);
+  out.copy(palette[pick]);
+  // Small per-facet brightness wobble for an organic, hand-painted feel.
+  const k = 0.94 + hash01(x * 4 + i, z, map.seed + 31) * 0.12;
+  return out.multiplyScalar(k);
+}
 
 function surfaceColor(type: CellType): THREE.Color {
   switch (type) {
@@ -133,9 +196,9 @@ function writeCell(
   // back up to the common water level — no holes). Non-water uses the real
   // corner-max heightmap.
   const y = (cx: number, cz: number) =>
-    isWater ? WATER_LEVEL * cellSize : cornerY(map, cx, cz, cellSize);
-
-  const top = surfaceColor(map.cells[x][z]);
+    isWater
+      ? WATER_LEVEL * cellSize
+      : cornerY(map, cx, cz, cellSize) + cornerJitter(map, cx, cz) * cellSize;
 
   // 4 top corners.
   const x0 = wx(x);
@@ -159,13 +222,36 @@ function writeCell(
     col[co++] = c.b;
   };
 
-  // --- Top quad (CCW from above): (x0,z0)->(x0,z1)->(x1,z1)->(x1,z0) ---
-  put(x0, y00, z0, top);
-  put(x0, y01, z1, top);
-  put(x1, y11, z1, top);
-  put(x0, y00, z0, top);
-  put(x1, y11, z1, top);
-  put(x1, y10, z0, top);
+  // --- Top: 4 triangles around a centre vertex (CCW from above) ---
+  // Centre on the (x0,z0)-(x1,z1) diagonal keeps non-grass tops identical to
+  // the old 2-triangle split; grass gets a hashed bump for the crumpled look.
+  const cxW = (x0 + x1) / 2;
+  const czW = (z0 + z1) / 2;
+  let cy = (y00 + y11) / 2;
+  if (isGrass(map, x, z)) {
+    cy += (hash01(x, z, map.seed + 101) * 2 - 1) * GRASS_CENTER_AMP * cellSize;
+  }
+  const tc = TMP_COLOR;
+  // -X side: (x0,z0) -> (x0,z1)
+  topColor(map, x, z, 0, tc);
+  put(x0, y00, z0, tc);
+  put(x0, y01, z1, tc);
+  put(cxW, cy, czW, tc);
+  // +Z side: (x0,z1) -> (x1,z1)
+  topColor(map, x, z, 1, tc);
+  put(x0, y01, z1, tc);
+  put(x1, y11, z1, tc);
+  put(cxW, cy, czW, tc);
+  // +X side: (x1,z1) -> (x1,z0)
+  topColor(map, x, z, 2, tc);
+  put(x1, y11, z1, tc);
+  put(x1, y10, z0, tc);
+  put(cxW, cy, czW, tc);
+  // -Z side: (x1,z0) -> (x0,z0)
+  topColor(map, x, z, 3, tc);
+  put(x1, y10, z0, tc);
+  put(x0, y00, z0, tc);
+  put(cxW, cy, czW, tc);
 
   // --- 4 side walls, each from the top edge down to the floor ---
   // Wall helper writes 2 triangles (6 verts). Winding doesn't matter visually

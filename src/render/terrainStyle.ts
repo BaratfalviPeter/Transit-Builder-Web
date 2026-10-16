@@ -26,7 +26,7 @@ export const CELL_STYLE: Record<CellType, CellStyle> = {
   [CellType.Water]: { color: '#5e9fc2', scaleY: 0.12, offsetY: -0.2 },
   // Hill is drawn with a custom ramp geometry (see Hills.tsx); color only.
   [CellType.Hill]: { color: '#8b9a52', scaleY: 1, offsetY: 0 },
-  [CellType.Forest]: { color: '#3f6a33', scaleY: 1.5, offsetY: 0 },
+  [CellType.Forest]: { color: '#5f7f3b', scaleY: 1.5, offsetY: 0 },
   // Player-built road: flat, dark-grey tile resting on the ground.
   [CellType.Road]: { color: '#3a3d42', scaleY: 0.08, offsetY: 0.01 },
   // Player-built rail: gravel bed colour (rails/sleepers drawn in Rails.tsx).

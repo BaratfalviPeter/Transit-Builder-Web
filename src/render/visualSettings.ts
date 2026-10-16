@@ -81,6 +81,11 @@ export const VISUAL_DEFAULTS = {
   cloudShadows: true,
   /** Darkness of the (shader-projected) cloud shadows, 0..1. */
   cloudShadowStrength: 0.45,
+  /**
+   * Road corner centre-line bend angle (degrees). 90 = a full rounded quarter
+   * turn; smaller = tighter/sharper corner, larger = wider sweep.
+   */
+  roadCornerAngle: 90,
 
   // --- Birds ---
   birdsVisible: true,

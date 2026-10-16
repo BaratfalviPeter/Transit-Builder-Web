@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
+import { useVisualKeys } from './visualSettings';
 
 export interface RoadsProps {
   map: TerrainMap;
@@ -109,12 +110,16 @@ function FlatRoads({
   const markRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
 
+  // Tunable corner "angle": how far the centre-line bends at a corner. 90° =
+  // full rounded quarter turn; lower = tighter/sharper; higher = wider sweep.
+  const { roadCornerAngle } = useVisualKeys(['roadCornerAngle'] as const);
+
   // Per-cell AUTO-TILED marking plan. We classify each road cell by its 4-
   // neighbour mask and emit the matching dash set, so the white line reads as a
   // real road network: straight runs get a centred dashed line, corners bend
-  // through a quarter-arc of dashes, T/cross junctions send a line to every
-  // arm, and dead-ends/lone tiles get a short stub. Each dash is a positioned,
-  // rotated box (ox/oz in cell units, yaw radians, len in cell units).
+  // through an arc of dashes, T/cross junctions send a line to every arm, and
+  // dead-ends/lone tiles get a short stub. Each dash is a positioned, rotated
+  // box (ox/oz in cell units, yaw radians, len in cell units).
   const marks = useMemo(() => {
     const out: Array<{ x: number; z: number; ox: number; oz: number; yaw: number; len: number; surfaceTop: number }> = [];
     for (const [x, z] of coords) {
@@ -172,12 +177,19 @@ function FlatRoads({
         let span = ang1 - ang0;
         if (span > Math.PI) span -= Math.PI * 2;
         if (span < -Math.PI) span += Math.PI * 2; // the 90° (short) way
-        const arcLen = Math.abs(span) * R; // ≈ 0.785
+        // Scale the swept angle by the tuner (default 90° = full span). The arc
+        // stays centred on the touch points' midpoint, so it still flows out of
+        // both straights but bends more (steeper) or less (shallower).
+        const mid = (ang0 + ang1) / 2;
+        const scale = roadCornerAngle / 90;
+        const sweptSpan = span * scale;
+        const sAng0 = mid - sweptSpan / 2;
+        const arcLen = Math.abs(sweptSpan) * R;
         // One dash at each end sits ON the touch point so it meets the
         // straight's dashes; the rest fill the arc at the shared PITCH.
         const N = Math.max(2, Math.round(arcLen / PITCH) + 1);
         for (let i = 0; i < N; i++) {
-          const a = ang0 + (span * i) / (N - 1); // include both endpoints
+          const a = sAng0 + (sweptSpan * i) / (N - 1); // include both endpoints
           // Tangent direction = a ± 90°; dash long axis follows it.
           push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, DASH);
         }
@@ -198,7 +210,7 @@ function FlatRoads({
       }
     }
     return out;
-  }, [coords, map, cellSize]);
+  }, [coords, map, cellSize, roadCornerAngle]);
 
   useLayoutEffect(() => {
     const mesh = ref.current;
@@ -337,7 +349,10 @@ function buildHillRoadMarkings(
       cellHeight(cx - 1, cz),
       cellHeight(cx, cz),
     );
-  const base = FLAT_TOP * cellSize + (SURFACE_LIFT + 0.015) * cellSize;
+  // Lift the centre-line clearly above the sloped asphalt. On a tilt a tiny
+  // offset loses to the surface at grazing angles, so we raise it more than the
+  // flat-road markings and also keep polygonOffset on the material.
+  const base = FLAT_TOP * cellSize + (SURFACE_LIFT + 0.05) * cellSize;
 
   const isRoadLike = (x: number, z: number): boolean => {
     if (x < 0 || z < 0 || x >= size || z >= size) return false;

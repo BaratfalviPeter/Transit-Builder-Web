@@ -18,7 +18,7 @@ export function PathPlanInfo() {
   const cost = snap.newCells * tool.cost;
   const poor = money < cost;
   const status = snap.blocked
-    ? 'Akadály – ide nem vezethető'
+    ? snap.rail?.reason ?? 'Akadály – ide nem vezethető'
     : poor
       ? 'Nincs elég pénz'
       : 'Kattints a célpontra az építéshez';
@@ -27,7 +27,7 @@ export function PathPlanInfo() {
     <div className={`ppi ${snap.blocked || poor ? 'ppi--red' : ''}`}>
       <div className="ppi__row">
         <span className="ppi__title">
-          {tool.label} · {snap.newCells} {snap.type === CellType.Rail ? 'új sínelem' : 'új cella'}
+          {tool.label} · {snap.newCells} {snap.type === CellType.Rail ? 'cella hosszú' : 'új cella'}
         </span>
         <span className="ppi__cost">${cost}</span>
       </div>

@@ -320,12 +320,10 @@ export interface TerrainMap {
    */
   readonly cleared?: ReadonlySet<number>;
   /**
-   * Rail track pieces per cell (see `railPieces.ts`): a 6-bit mask of the
-   * straight / curve pieces laid in the cell, index `cellKey(size, x, z)`.
-   * Rail cells (and Road cells with a level crossing) carry non-zero bits.
-   * Copy-on-write like the other layers; undefined = no rails anywhere.
+   * The rail network as smooth centre-lines (see `railNet.ts`). Cells under a
+   * track are CellType.Rail (or Road at a level crossing). Undefined = none.
    */
-  readonly rails?: Uint8Array;
+  readonly railNet?: import('./railNet').RailNet;
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.

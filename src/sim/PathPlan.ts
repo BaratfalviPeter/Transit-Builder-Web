@@ -4,38 +4,32 @@
  * Pure TypeScript, observable (same pattern as TerraformPlan):
  *   - `pathbuildingState`: 'idle' (waiting for the first click) or
  *     'selecting_end' (A is fixed, the route follows the cursor);
- *   - `startNode`: the A cell;
- *   - `previewPath`: the current A* route from A to the hovered cell — drawn
- *     as the green (or red, if `blocked`) hologram.
+ *   - `startNode`: the A cell (`startPt`: the exact clicked point);
+ *   - `previewPath`: ROAD route cells from A to the hovered cell;
+ *   - `rail`: RAIL plan — a smooth centre-line (railRoute.ts).
+ * Both are drawn as the green (or red, if `blocked`) hologram.
  *
- * The store only holds state; pathfinding runs in `PathPlan.preview` via
- * `findTrackPath`, and the actual building is done by the canvas (TerrainStore
- * + GameState).
+ * Points are grid coordinates (cell centre = integer). The building itself is
+ * done by the canvas (TerrainStore + GameState).
  */
 
 import { cellsToBuild, findTrackPath, isTrackPassable, type GridCell, type TrackType } from './pathfind';
-import { canHostRail } from './railPieces';
-import { findRailPath } from './railPath';
+import { canRailCell, EMPTY_NET, snapToNet } from './railNet';
+import { planRail, type RailPlan } from './railRoute';
 import { CellType, type TerrainMap } from './terrain';
 
-/** A route cell; rail routes also carry the track piece laid in it. */
-export interface PlanStep extends GridCell {
-  piece?: number;
-  isNew?: boolean;
+export type PlanStep = GridCell;
+export interface GridPoint {
+  x: number;
+  z: number;
 }
 
-/** Can a route of `type` start on this cell? */
-export function canStartRoute(map: TerrainMap, c: GridCell, type: TrackType): boolean {
-  return type === CellType.Rail ? canHostRail(map, c.x, c.z) : isTrackPassable(map, c.x, c.z, type);
-}
-
-function route(map: TerrainMap, start: GridCell, goal: GridCell, type: TrackType) {
-  if (type === CellType.Rail) {
-    const { steps, blocked } = findRailPath(map, start, goal);
-    return { path: steps as PlanStep[], blocked, newCells: steps.filter((s) => s.isNew).length };
-  }
-  const { path, blocked } = findTrackPath(map, start, goal, type);
-  return { path: path as PlanStep[], blocked, newCells: cellsToBuild(map, path, type).length };
+/** Can a route of `type` start at this point? */
+export function canStartRoute(map: TerrainMap, p: GridPoint, type: TrackType): boolean {
+  const c = { x: Math.round(p.x), z: Math.round(p.z) };
+  if (c.x < 0 || c.z < 0 || c.x >= map.size || c.z >= map.size) return false;
+  if (type === CellType.Rail) return !!snapToNet(map.railNet ?? EMPTY_NET, p.x, p.z) || canRailCell(map, c.x, c.z);
+  return isTrackPassable(map, c.x, c.z, type);
 }
 
 export type PathBuildingState = 'idle' | 'selecting_end';
@@ -43,12 +37,15 @@ export type PathBuildingState = 'idle' | 'selecting_end';
 export interface PathPlanSnapshot {
   pathbuildingState: PathBuildingState;
   startNode: GridCell | null;
+  startPt: GridPoint | null;
   previewPath: PlanStep[];
+  /** Rail plan (rail tool only). */
+  rail: RailPlan | null;
   /** Track type being planned. */
   type: TrackType;
-  /** Goal not reachable — the preview is only the possible part (red). */
+  /** Goal not reachable / not buildable — red hologram, click refused. */
   blocked: boolean;
-  /** NEW cells (road) / pieces (rail) the route would build; existing track is free. */
+  /** Cost units: new road cells, or rail length in cells. */
   newCells: number;
 }
 
@@ -57,7 +54,9 @@ type Listener = () => void;
 const IDLE: PathPlanSnapshot = {
   pathbuildingState: 'idle',
   startNode: null,
+  startPt: null,
   previewPath: [],
+  rail: null,
   type: CellType.Road,
   blocked: false,
   newCells: 0,
@@ -66,60 +65,69 @@ const IDLE: PathPlanSnapshot = {
 export class PathPlan {
   private snap: PathPlanSnapshot = IDLE;
   private readonly listeners = new Set<Listener>();
-  /** Last hovered goal, to skip recomputing A* while inside the same cell. */
+  /** Last hovered goal key, to skip recomputing while the cursor stays put. */
   private lastGoal: string | null = null;
-  private goalCell: GridCell | null = null;
+  private goalPt: GridPoint | null = null;
 
   getSnapshot(): PathPlanSnapshot {
     return this.snap;
   }
 
   /** First click: fix A and enter 'selecting_end'. */
-  begin(map: TerrainMap, start: GridCell, type: TrackType): void {
+  begin(map: TerrainMap, start: GridPoint, type: TrackType): void {
+    const cell = { x: Math.round(start.x), z: Math.round(start.z) };
     this.snap = {
+      ...IDLE,
       pathbuildingState: 'selecting_end',
-      startNode: { ...start },
-      previewPath: type === CellType.Rail ? [] : [{ ...start }],
+      startNode: cell,
+      startPt: { ...start },
+      previewPath: type === CellType.Rail ? [] : [cell],
       type,
-      blocked: false,
-          newCells: type === CellType.Rail || map.cells[start.x][start.z] === type ? 0 : 1,
+      newCells: type === CellType.Rail || map.cells[cell.x][cell.z] === type ? 0 : 1,
     };
-    this.lastGoal = `${start.x},${start.z}`;
-    this.goalCell = { ...start };
+    this.lastGoal = null;
+    this.goalPt = { ...start };
     this.emit();
   }
 
-  /** Hover: recompute the A* route to `goal` (no-op if the cell is unchanged). */
-  preview(map: TerrainMap, goal: GridCell, force = false): void {
+  /** Hover: recompute the route to `goal` (no-op if it hasn't moved enough). */
+  preview(map: TerrainMap, goal: GridPoint, force = false): void {
     const s = this.snap;
-    if (s.pathbuildingState !== 'selecting_end' || !s.startNode) return;
-    const key = `${goal.x},${goal.z}`;
+    if (s.pathbuildingState !== 'selecting_end' || !s.startNode || !s.startPt) return;
+    // Rail re-plans every half cell (finer snapping onto tracks); road per cell.
+    const q = s.type === CellType.Rail ? 2 : 1;
+    const key = `${Math.round(goal.x * q)},${Math.round(goal.z * q)}`;
     if (!force && key === this.lastGoal) return;
     this.lastGoal = key;
-    this.goalCell = { ...goal };
-    const { path, blocked, newCells } = route(map, s.startNode, goal, s.type);
-    this.snap = { ...s, previewPath: path, blocked, newCells };
+    this.goalPt = { ...goal };
+    if (s.type === CellType.Rail) {
+      const rail = planRail(map, s.startPt, goal);
+      this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
+    } else {
+      const gc = { x: Math.round(goal.x), z: Math.round(goal.z) };
+      const { path, blocked } = findTrackPath(map, s.startNode, gc, s.type);
+      this.snap = { ...s, previewPath: path, blocked, newCells: cellsToBuild(map, path, s.type).length };
+    }
     this.emit();
   }
 
   /** The map changed under an active plan: re-route to the same goal. */
   refresh(map: TerrainMap): void {
     const s = this.snap;
-    if (s.pathbuildingState !== 'selecting_end' || !s.startNode) return;
-    const st = s.startNode;
-    // The start cell itself may have become unusable (e.g. the city grew).
-    if (!canStartRoute(map, st, s.type)) {
+    if (s.pathbuildingState !== 'selecting_end' || !s.startPt) return;
+    // The start itself may have become unusable (e.g. the city grew).
+    if (!canStartRoute(map, s.startPt, s.type)) {
       this.clear();
       return;
     }
-    this.preview(map, this.goalCell ?? st, true);
+    this.preview(map, this.goalPt ?? s.startPt, true);
   }
 
   /** Cancel / finish: back to 'idle', hologram gone. */
   clear(): void {
     if (this.snap.pathbuildingState === 'idle') return;
     this.lastGoal = null;
-    this.goalCell = null;
+    this.goalPt = null;
     this.snap = { ...IDLE, type: this.snap.type };
     this.emit();
   }

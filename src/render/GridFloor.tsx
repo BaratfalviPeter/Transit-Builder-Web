@@ -34,11 +34,11 @@ export function GridFloor({ cellSize, gridHalfExtent }: GridFloorProps) {
       ]}
       args={[size, size]}
       cellSize={cellSize}
-      cellThickness={1}
-      cellColor="#5a5a6e"
+      cellThickness={0.6}
+      cellColor="#6c8a3a"
       sectionSize={cellSize * 5}
-      sectionThickness={1.3}
-      sectionColor="#8a8aa0"
+      sectionThickness={0.9}
+      sectionColor="#62803a"
       infiniteGrid={false}
       fadeDistance={size * 1.5}
       fadeStrength={1}

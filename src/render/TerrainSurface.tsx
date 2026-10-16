@@ -42,7 +42,7 @@ const WATER_LEVEL = FLAT_TOP - WATER_SINK;
 /** How far below the grass base the solid block's floor sits (cellSize units). */
 const FLOOR_DROP = 1.5;
 
-const SIDE_COLOR = new THREE.Color('#4a4034'); // earthy side-wall tone
+const SIDE_COLOR = new THREE.Color('#7a5536'); // warm brown earth (diorama cliff)
 const TMP_COLOR = new THREE.Color();
 
 /** Vertices emitted per cell: top (4 triangles = 12) + 4 side walls × 6. */
@@ -91,10 +91,11 @@ function cornerJitter(map: TerrainMap, cx: number, cz: number): number {
 }
 
 /** Grass shade palette (light ↔ dark), picked per cell. */
-const GRASS_SHADES = ['#78a05f', '#6b9455', '#86ab66', '#5f8a4d'].map(
+// Warm, slightly olive meadow greens (close together, so no checkerboard).
+const GRASS_SHADES = ['#7e9a45', '#76923f', '#86a24b', '#7a9642'].map(
   (c) => new THREE.Color(c),
 );
-const HILL_SHADES = ['#7d8a5c', '#748255', '#879463'].map((c) => new THREE.Color(c));
+const HILL_SHADES = ['#8b9a52', '#83924b', '#93a259'].map((c) => new THREE.Color(c));
 
 /** Top colour of one top triangle (i = 0..3) of cell (x, z). */
 function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.Color): THREE.Color {
@@ -106,7 +107,7 @@ function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.C
   const pick = Math.floor(hash01(x, z, map.seed + 17) * palette.length);
   out.copy(palette[pick]);
   // Small per-facet brightness wobble for an organic, hand-painted feel.
-  const k = 0.94 + hash01(x * 4 + i, z, map.seed + 31) * 0.12;
+  const k = 0.97 + hash01(x * 4 + i, z, map.seed + 31) * 0.06;
   return out.multiplyScalar(k);
 }
 

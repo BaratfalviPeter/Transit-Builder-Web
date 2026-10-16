@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { CellType, cellCornerHeights, railBitsAt, type TerrainMap } from '../sim';
+import { CellType, cellCornerHeights, hasRailAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -145,7 +145,7 @@ function FlatRoads({
 
     for (const [x, z] of coords) {
       // Level crossing: no lane markings across the tracks.
-      if (railBitsAt(map, x, z)) continue;
+      if (hasRailAt(map, x, z)) continue;
       const cornerH = cellCornerHeights(map, x, z)[0];
       const topY = (FLAT_TOP + cornerH) * cellSize + MARK_Y * cellSize;
       // Cell centre in world space; local offsets are in cell units × cellSize.

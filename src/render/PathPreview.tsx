@@ -19,13 +19,12 @@ import * as THREE from 'three';
 import {
   cellCornerHeights,
   CellType,
-  railBitsAt,
   type GridCell,
   type PlanStep,
   type TerrainMap,
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
-import { groundAt, pieceCenterline, sweepBar, toGeometry, type P2 } from './railGeometry';
+import { groundAtGrid, sampleTrack, sweepBar, toGeometry } from './railGeometry';
 
 export const HOLO_GREEN = '#3ccf6a';
 export const HOLO_RED = '#e5483b';
@@ -42,8 +41,9 @@ export interface PathPreviewProps {
   red: boolean;
   map: TerrainMap;
   cellSize: number;
-  /** Rail route: draw the track-shaped hologram along the pieces. */
+  /** Rail route: draw the track-shaped hologram along this centre-line. */
   rail?: boolean;
+  railPts?: number[];
   /** Point A (always marked, even before the route has any piece). */
   start?: GridCell | null;
 }
@@ -74,7 +74,7 @@ function useHolo(red: boolean) {
 
 const BEACON_GEO = new THREE.CylinderGeometry(0.16, 0.16, 1.4, 10);
 /** Beacon pillars on the given cells. */
-function Beacons({ cells, map, cellSize, mat }: { cells: GridCell[]; map: TerrainMap; cellSize: number; mat: THREE.Material }) {
+function Beacons({ cells, map, cellSize, mat }: { cells: Array<{ x: number; z: number }>; map: TerrainMap; cellSize: number; mat: THREE.Material }) {
   const half = (map.size - 1) / 2;
   return (
     <>
@@ -83,7 +83,7 @@ function Beacons({ cells, map, cellSize, mat }: { cells: GridCell[]; map: Terrai
           key={i}
           geometry={BEACON_GEO}
           material={mat}
-          position={[(c.x - half) * cellSize, (groundAt(map, c.x, c.z, 0, 0) + 0.8) * cellSize, (c.z - half) * cellSize]}
+          position={[(c.x - half) * cellSize, (groundAtGrid(map, c.x, c.z) + 0.8) * cellSize, (c.z - half) * cellSize]}
           scale={cellSize}
           raycast={() => null}
           renderOrder={11}
@@ -94,40 +94,43 @@ function Beacons({ cells, map, cellSize, mat }: { cells: GridCell[]; map: Terrai
 }
 
 /**
- * Rail hologram: a translucent track bed + bright centre line swept along
- * each planned piece, using the same smoothed centre-lines as the real track
- * (tangents blend with the existing network it joins).
+ * Rail hologram: a translucent track bed + bright centre line swept along the
+ * planned centre-line (same sampling/grade smoothing as the real track).
  */
-function RailHologram({ path, red, map, cellSize, start }: PathPreviewProps) {
+function RailHologram({ railPts, red, map, cellSize }: PathPreviewProps) {
   const mats = useHolo(red);
   const half = (map.size - 1) / 2;
   const geo = useMemo(() => {
-    // Existing pieces ∪ planned pieces, so joints are shaped as built.
-    const extra = new Map<number, number>();
-    for (const s of path) if (s.piece !== undefined) extra.set(s.x * map.size + s.z, (extra.get(s.x * map.size + s.z) ?? 0) | (1 << s.piece));
-    const bitsAt = (x: number, z: number) => railBitsAt(map, x, z) | (extra.get(x * map.size + z) ?? 0);
     const bed: number[] = [];
     const line: number[] = [];
-    for (const s of path) {
-      if (s.piece === undefined) continue;
-      const pts = pieceCenterline(bitsAt, s.x, s.z, s.piece);
-      const dense: P2[] = pts.length === 2 ? [0, 0.25, 0.5, 0.75, 1].map((t) => [pts[0][0] + (pts[1][0] - pts[0][0]) * t, pts[0][1] + (pts[1][1] - pts[0][1]) * t] as P2) : pts;
-      const ys = dense.map((p) => groundAt(map, s.x, s.z, p[0], p[1]) * cellSize);
-      const world = dense.map((p) => [(s.x - half + p[0]) * cellSize, (s.z - half + p[1]) * cellSize] as P2);
+    if (railPts && railPts.length >= 4) {
+      // Coarser pitch than the real track is plenty for a smooth hologram.
+      const s = sampleTrack(map, railPts, 0.25);
+      const world: Array<[number, number]> = [];
+      const ys: number[] = [];
+      const w0 = [railPts[0], railPts[1]], w1 = [railPts[railPts.length - 2], railPts[railPts.length - 1]];
+      const push = (x: number, z: number, h: number) => {
+        world.push([(x - half) * cellSize, (z - half) * cellSize]);
+        ys.push(h * cellSize);
+      };
+      push(w0[0], w0[1], s.h[0]);
+      for (let i = 0; i < s.n; i++) push(s.x[i], s.z[i], s.h[i]);
+      push(w1[0], w1[1], s.h[s.n - 1]);
       sweepBar(bed, world, ys, 0.34 * cellSize, 0.34 * cellSize, 0.04 * cellSize, 0.16 * cellSize);
       sweepBar(line, world, ys, 0.05 * cellSize, 0.05 * cellSize, 0.165 * cellSize, 0.18 * cellSize);
     }
     return { bed: toGeometry(bed), line: toGeometry(line) };
-  }, [path, map, cellSize, half]);
+  }, [railPts, map, cellSize, half]);
   useLayoutEffect(() => () => {
     geo.bed?.dispose();
     geo.line?.dispose();
   }, [geo]);
 
-  const ends: GridCell[] = [];
-  if (start) ends.push(start);
-  const last = path[path.length - 1];
-  if (last && !(start && last.x === start.x && last.z === start.z)) ends.push(last);
+  const ends: Array<{ x: number; z: number }> = [];
+  if (railPts && railPts.length >= 4) {
+    ends.push({ x: railPts[0], z: railPts[1] });
+    ends.push({ x: railPts[railPts.length - 2], z: railPts[railPts.length - 1] });
+  }
   return (
     <group>
       {geo.bed && <mesh geometry={geo.bed} material={mats.slab} raycast={() => null} renderOrder={10} />}

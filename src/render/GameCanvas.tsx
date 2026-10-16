@@ -282,6 +282,12 @@ function Scene() {
     [cellSize, half],
   );
 
+  /** World point -> continuous grid coords (cell centre = integer). */
+  const gridOf = useCallback(
+    (worldX: number, worldZ: number) => ({ x: worldX / cellSize + half, z: worldZ / cellSize + half }),
+    [cellSize, half],
+  );
+
   // Drag-painting tools (bulldoze, terraform selection). Road and rail use the
   // two-click A→B planner below instead.
   const handlePaint = useCallback(
@@ -326,42 +332,43 @@ function Scene() {
       active: () => trackOf(game.getActiveTool()) !== null,
       onHover: (wx: number, wz: number) => {
         if (pathPlan.getSnapshot().pathbuildingState !== 'selecting_end') return;
-        const c = cellOf(wx, wz);
-        if (!terrain.inBounds(c.x, c.z)) return;
-        pathPlan.preview(terrain.getMap(), c);
+        const g = gridOf(wx, wz);
+        if (!terrain.inBounds(Math.round(g.x), Math.round(g.z))) return;
+        pathPlan.preview(terrain.getMap(), g);
       },
       onClick: (wx: number, wz: number) => {
         const tool = TOOLS[game.getActiveTool()];
         const type = trackOf(tool.id);
         if (type === null) return;
-        const c = cellOf(wx, wz);
-        if (!terrain.inBounds(c.x, c.z)) return;
+        const g = gridOf(wx, wz);
+        if (!terrain.inBounds(Math.round(g.x), Math.round(g.z))) return;
         const m = terrain.getMap();
         const snap = pathPlan.getSnapshot();
 
         if (snap.pathbuildingState === 'idle') {
-          // Point A: must be a cell the track can use.
-          if (canStartRoute(m, c, type)) pathPlan.begin(m, c, type);
+          // Point A: must be a point the track can use.
+          if (canStartRoute(m, g, type)) pathPlan.begin(m, g, type);
           return;
         }
 
-        // Point B: make sure the route ends exactly at the clicked cell.
-        pathPlan.preview(m, c);
+        // Point B: make sure the route ends exactly at the clicked point.
+        pathPlan.preview(m, g, true);
         const p = pathPlan.getSnapshot();
         const cost = p.newCells * tool.cost;
         // Red hologram = refuse (blocked route or not enough money).
-        if (p.blocked || p.previewPath.length === 0 || !game.canAfford(cost)) return;
-        const placed =
-          type === CellType.Rail
-            ? terrain.buildRailRoute(
-                p.previewPath.filter((st) => st.piece !== undefined) as Array<{ x: number; z: number; piece: number }>,
-              )
-            : terrain.buildPath(p.previewPath);
+        if (p.blocked || !game.canAfford(cost)) return;
+        let placed = 0;
+        if (type === CellType.Rail) {
+          if (p.rail) placed = terrain.buildRail(p.rail);
+        } else if (p.previewPath.length > 0) {
+          placed = terrain.buildPath(p.previewPath);
+        }
+        if (placed === 0) return;
         game.spend(placed * tool.cost);
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, cellOf],
+    [game, terrain, pathPlan, gridOf],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -498,6 +505,7 @@ function Scene() {
           map={map}
           cellSize={cellSize}
           rail={pathSnap.type === CellType.Rail}
+          railPts={pathSnap.rail?.pts}
           start={pathSnap.startNode}
         />
       )}

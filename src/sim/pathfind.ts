@@ -28,7 +28,7 @@ import {
   type SlopeKind,
   type TerrainMap,
 } from './terrain';
-import { railBitsAt, roadCrossingAxis, STRAIGHT_NS } from './railPieces';
+import { hasRailAt, roadCrossingAxis } from './railNet';
 
 export interface GridCell {
   x: number;
@@ -123,7 +123,7 @@ export function isTrackPassable(map: TerrainMap, x: number, z: number, type: Tra
   if (x < 0 || z < 0 || x >= map.size || z >= map.size) return false;
   if (map.cells[x][z] === type) return true;
   if (type === CellType.Road) {
-    // A road may cross a straight rail (level crossing).
+    // A road may cross a single, roughly axis-aligned track (level crossing).
     if (map.cells[x][z] === CellType.Rail) return roadCrossingAxis(map, x, z) !== null;
     return canBuildRoadAt(map, x, z);
   }
@@ -135,9 +135,8 @@ export function isTrackPassable(map: TerrainMap, x: number, z: number, type: Tra
  * level crossing at (x, z), or null if the cell has no rail.
  */
 function roadThroughAxis(map: TerrainMap, x: number, z: number): 'x' | 'z' | null {
-  const bits = railBitsAt(map, x, z);
-  if (!bits) return null;
-  return bits === 1 << STRAIGHT_NS ? 'x' : 'z';
+  if (!hasRailAt(map, x, z)) return null;
+  return roadCrossingAxis(map, x, z) ?? 'x';
 }
 
 /** May a track pass through a cell of this slope kind along heading `d`? */

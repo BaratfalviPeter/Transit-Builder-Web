@@ -22,7 +22,8 @@ import {
   type GenerateOptions,
   type TerrainMap,
 } from './terrain';
-import { canAddRailPiece, railBitsAt, roadCrossingAxis } from './railPieces';
+import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
+import type { RailPlan } from './railRoute';
 
 type Listener = () => void;
 
@@ -126,40 +127,59 @@ export class TerrainStore {
   }
 
   /**
-   * Lay a planned RAIL route (a list of track pieces) in one commit. Pieces
-   * already on the map are skipped; each new one is checked with
-   * `canAddRailPiece` against the pieces laid so far. Empty/Hill cells become
-   * Rail; Rail cells gain the piece (switch / crossing); a Road cell gains it
-   * as a level crossing. Returns the number of pieces placed.
+   * Lay a planned rail line (see railRoute.ts) in one commit: split the
+   * existing tracks where the line branches off / merges in (→ switches), add
+   * the new centre-line, and turn its footprint cells into Rail (Road cells
+   * stay Road = level crossing). Returns the length built (cells).
    */
-  buildRailRoute(steps: ReadonlyArray<{ x: number; z: number; piece: number }>): number {
-    const size = this.map.size;
-    const rails = this.map.rails ? this.map.rails.slice() : new Uint8Array(size * size);
+  buildRail(plan: RailPlan): number {
+    if (plan.blocked || plan.pts.length < 4) return 0;
+    let net = this.map.railNet ?? EMPTY_NET;
+    const p = plan.pts;
+    if (plan.start?.kind === 'mid') net = splitAtPoint(net, p[0], p[1]);
+    if (plan.end?.kind === 'mid') net = splitAtPoint(net, p[p.length - 2], p[p.length - 1]);
+    net = addEdge(net, plan.pts.slice());
+    this.setRailNet(net, null);
+    return Math.ceil(plan.length);
+  }
+
+  /**
+   * Swap in a new rail network and re-type the cells: footprint Empty/Hill →
+   * Rail; former Rail cells no longer covered → back to Hill/Empty (and marked
+   * `cleared`, so no tree pops back onto the old trackbed).
+   */
+  private setRailNet(net: RailNet, extraCleared: number | null): void {
+    const view: TerrainMap = { ...this.map, railNet: net };
+    const idx = railIndex(view);
+    const n = this.map.size;
     let cells: CellType[][] | null = null;
-    const touched = new Set<number>();
-    let placed = 0;
-    for (const { x, z, piece } of steps) {
-      if (!this.inBounds(x, z)) continue;
-      const view: TerrainMap = { ...this.map, cells: cells ?? this.map.cells, rails };
-      const bit = 1 << piece;
-      if (rails[x * size + z] & bit) continue;
-      if (!canAddRailPiece(view, x, z, piece)) continue;
-      rails[x * size + z] |= bit;
-      const t = view.cells[x][z];
-      if (t === CellType.Empty || t === CellType.Hill) {
-        if (!cells) cells = this.map.cells.slice();
-        if (!touched.has(x)) {
-          cells[x] = cells[x].slice();
-          touched.add(x);
+    let cleared: Set<number> | null = null;
+    const set = (x: number, z: number, t: CellType) => {
+      if (!cells) cells = this.map.cells.slice();
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      cells[x][z] = t;
+    };
+    for (let x = 0; x < n; x++) {
+      for (let z = 0; z < n; z++) {
+        const t = this.map.cells[x][z];
+        const has = idx.has(x * n + z);
+        if (has && (t === CellType.Empty || t === CellType.Hill)) set(x, z, CellType.Rail);
+        else if (!has && t === CellType.Rail) {
+          set(x, z, this.map.heights[x][z] > 0 ? CellType.Hill : CellType.Empty);
+          if (!cleared) cleared = new Set(this.map.cleared ?? []);
+          cleared.add(cellKey(n, x, z));
         }
-        cells[x][z] = CellType.Rail;
       }
-      placed++;
     }
-    if (placed === 0) return 0;
-    this.commit(cells ? { cells, rails } : { rails }, true);
+    if (extraCleared !== null) {
+      if (!cleared) cleared = new Set(this.map.cleared ?? []);
+      cleared.add(extraCleared);
+    }
+    const partial: { cells?: CellType[][]; cleared?: ReadonlySet<number>; railNet: RailNet } = { railNet: net };
+    if (cells) partial.cells = cells;
+    if (cleared) partial.cleared = cleared;
+    this.commit(partial, true);
     this.emit();
-    return placed;
   }
 
   /**
@@ -173,11 +193,13 @@ export class TerrainStore {
     const key = cellKey(this.map.size, x, z);
     const cleared = this.map.cleared ?? new Set<number>();
 
-    // Level crossing: the first bulldoze lifts the rails, keeping the road.
-    if (current === CellType.Road && railBitsAt(this.map, x, z)) {
-      this.commit({ rails: this.withoutRails(x, z) }, true);
-      this.emit();
-      return true;
+    // Track (incl. a level crossing — the road stays): cut it out here.
+    if ((current === CellType.Rail || current === CellType.Road) && hasRailAt(this.map, x, z)) {
+      const net = cutAtCell(this.map.railNet ?? EMPTY_NET, x, z);
+      if (net !== this.map.railNet) {
+        this.setRailNet(net, null);
+        return true;
+      }
     }
 
     if (canBulldoze(current)) {
@@ -189,7 +211,6 @@ export class TerrainStore {
       this.map = { ...this.map, cleared: next };
       // A road/rail on a raised cell goes back to hillside, not flat grass.
       const raised = (current === CellType.Road || current === CellType.Rail) && this.map.heights[x][z] > 0;
-      if (current === CellType.Rail) this.map = { ...this.map, rails: this.withoutRails(x, z) };
       this.applyCell(x, z, raised ? CellType.Hill : CellType.Empty);
       this.emit();
       return true;
@@ -337,7 +358,7 @@ export class TerrainStore {
       cells?: CellType[][];
       heights?: number[][];
       cleared?: ReadonlySet<number>;
-      rails?: Uint8Array;
+      railNet?: RailNet;
     },
     typeChanged: boolean,
   ): void {
@@ -347,14 +368,6 @@ export class TerrainStore {
       version: this.map.version + 1,
       cellsVersion: this.map.cellsVersion + (typeChanged ? 1 : 0),
     };
-  }
-
-  /** Copy of the rail layer with cell (x, z) cleared. */
-  private withoutRails(x: number, z: number): Uint8Array | undefined {
-    if (!this.map.rails) return undefined;
-    const rails = this.map.rails.slice();
-    rails[x * this.map.size + z] = 0;
-    return rails;
   }
 
   private countType(type: CellType): number {

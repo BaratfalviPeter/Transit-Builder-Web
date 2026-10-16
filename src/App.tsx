@@ -24,7 +24,7 @@ import { VisualTuner } from './ui/VisualTuner';
 export default function App() {
   return (
     <TerrainProvider options={{ size: DEFAULT_MAP_SIZE }}>
-      <GameProvider startingMoney={1000}>
+      <GameProvider startingMoney={100000}>
         <TerraformPlanProvider>
           <PathPlanProvider>
             <GameCanvas />

@@ -290,6 +290,7 @@ function Scene() {
   const liveShadows =
     liveOptIn &&
     ((shadowVis.cloudShadows && shadowVis.cloudsVisible) || shadowVis.birdsVisible);
+  // (Without live mode clouds still cast cheap shader-projected shadows.)
   const sunSig = [
     shadowVis.sunAzimuth,
     shadowVis.sunElevation,

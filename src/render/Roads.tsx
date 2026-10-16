@@ -16,6 +16,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import { patchRef } from './cloudShadows';
 
 export interface RoadsProps {
   map: TerrainMap;
@@ -116,6 +117,7 @@ function FlatRoads({
           buffer so they always win over the coplanar grass tile — a robust
           z-fighting fix on top of the small Y lift. */}
       <meshStandardMaterial
+        ref={patchRef}
         color={ROAD_STYLE.color}
         roughness={0.8}
         polygonOffset
@@ -135,7 +137,8 @@ function HillRoads({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   if (!geometry) return null;
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial color={ROAD_STYLE.color} roughness={0.85} />
+      <meshStandardMaterial
+        ref={patchRef} color={ROAD_STYLE.color} roughness={0.85} />
     </mesh>
   );
 }

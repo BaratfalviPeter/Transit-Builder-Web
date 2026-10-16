@@ -26,9 +26,10 @@ export const VISUAL_DEFAULTS = {
   shadowBias: -0.0004,
   shadowNormalBias: 0.04,
   /**
-   * Live shadow updates every frame. OFF = the shadow map is computed once
-   * (huge FPS win with ~1700 trees); moving cloud/bird shadows then stay put.
-   * ON = clouds/birds cast moving shadows at a 60 fps cost.
+   * Live shadow-map updates every frame. OFF = the shadow map is computed once
+   * (huge FPS win with ~1700 trees); clouds still cast cheap shader-projected
+   * shadows and birds cast none. ON = clouds/birds cast real shadow-map
+   * shadows at a 60 fps re-render cost.
    */
   liveShadows: false,
   /** Tone-mapping exposure (overall brightness). */
@@ -77,7 +78,9 @@ export const VISUAL_DEFAULTS = {
   cloudGlow: 0.2,
   cloudCount: 8,
   cloudSpeed: 0.5,
-  cloudShadows: false,
+  cloudShadows: true,
+  /** Darkness of the (shader-projected) cloud shadows, 0..1. */
+  cloudShadowStrength: 0.45,
 
   // --- Birds ---
   birdsVisible: true,

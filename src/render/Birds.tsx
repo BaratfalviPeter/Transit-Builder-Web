@@ -71,7 +71,7 @@ interface Flock {
 }
 
 export function Birds({ map, cellSize }: BirdsProps) {
-  const vis = useVisualKeys(['birdsVisible', 'birdFlocks', 'birdColor', 'birdSpeed'] as const);
+  const vis = useVisualKeys(['birdsVisible', 'birdFlocks', 'birdColor', 'birdSpeed', 'liveShadows'] as const);
   BIRD_MAT.color.set(vis.birdColor);
   const flockCount = Math.round(vis.birdFlocks);
 
@@ -187,9 +187,9 @@ export function Birds({ map, cellSize }: BirdsProps) {
   if (!vis.birdsVisible || birds.length === 0) return null;
   return (
     <group>
-      <instancedMesh ref={bodyRef} args={[BODY, BIRD_MAT, MAX_BIRDS]} castShadow frustumCulled={false} />
-      <instancedMesh ref={lRef} args={[WING_L, BIRD_MAT, MAX_BIRDS]} castShadow frustumCulled={false} />
-      <instancedMesh ref={rRef} args={[WING_R, BIRD_MAT, MAX_BIRDS]} castShadow frustumCulled={false} />
+      <instancedMesh ref={bodyRef} args={[BODY, BIRD_MAT, MAX_BIRDS]} castShadow={vis.liveShadows} frustumCulled={false} />
+      <instancedMesh ref={lRef} args={[WING_L, BIRD_MAT, MAX_BIRDS]} castShadow={vis.liveShadows} frustumCulled={false} />
+      <instancedMesh ref={rRef} args={[WING_R, BIRD_MAT, MAX_BIRDS]} castShadow={vis.liveShadows} frustumCulled={false} />
     </group>
   );
 }

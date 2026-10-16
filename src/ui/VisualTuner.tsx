@@ -103,6 +103,7 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
     ctls: [
       b('cloudsVisible', 'Felhők látszanak'),
       b('cloudShadows', 'Felhő árnyék'),
+      r('cloudShadowStrength', 'Felhő árnyék erősség', 0, 1, 0.01),
       c('cloudColor', 'Szín'),
       r('cloudGlow', 'Világítás', 0, 1, 0.01),
       r('cloudCount', 'Darabszám', 0, 20, 1),

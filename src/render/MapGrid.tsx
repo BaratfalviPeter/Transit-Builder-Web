@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { CellType, type TerrainMap } from '../sim';
 import { surfaceYAt } from './TerrainSurface';
 import { useVisualKeys } from './visualSettings';
+import { patchCloudShadows } from './cloudShadows';
 
 export interface MapGridProps {
   map: TerrainMap;
@@ -111,6 +112,7 @@ const LEAF_MAT = new THREE.MeshStandardMaterial({
   vertexColors: true,
 });
 const ROCK_MAT = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true });
+[TRUNK_MAT, LEAF_MAT, ROCK_MAT].forEach((m) => patchCloudShadows(m));
 
 function hash01(a: number, b: number, salt: number): number {
   let h = (a * 374761393 + b * 668265263 + salt * 2246822519) | 0;

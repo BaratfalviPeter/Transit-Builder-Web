@@ -31,6 +31,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { patchCloudShadows } from './cloudShadows';
 
 type V3 = [number, number, number];
 
@@ -89,6 +90,7 @@ const M = {
   crateDark: std('#3a3d44'),
   transformer: std('#8d939b', { roughness: 0.6, metalness: 0.3 }),
 };
+Object.values(M).forEach((m) => patchCloudShadows(m));
 
 /**
  * Cooling tower centers (x, z). Footing radius is 0.47, so both stay inside the

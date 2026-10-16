@@ -15,7 +15,8 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useVisualKeys } from './visualSettings';
+import { getVisual, sunPosition, useVisualKeys } from './visualSettings';
+import { CLOUD_SHADOW_UNIFORMS, MAX_CLOUD_PUFFS } from './cloudShadows';
 
 export interface CloudsProps {
   /** Half-width of the area the clouds drift within (world units). */
@@ -75,7 +76,15 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
     'cloudCount',
     'cloudSpeed',
     'cloudShadows',
+    'cloudShadowStrength',
+    'liveShadows',
   ] as const);
+  // Real shadow-map shadows only in "live" mode (the static map would freeze
+  // them); otherwise the cheap projected shader shadow (cloudShadows.ts).
+  const realShadows = vis.cloudShadows && vis.liveShadows;
+  const shaderShadows = vis.cloudShadows && !vis.liveShadows && vis.cloudsVisible;
+  CLOUD_SHADOW_UNIFORMS.uCloudStrength.value = vis.cloudShadowStrength;
+  if (!shaderShadows) CLOUD_SHADOW_UNIFORMS.uCloudCount.value = 0;
   CLOUD_MAT.color.set(vis.cloudColor);
   CLOUD_MAT.emissive.set(vis.cloudColor);
   CLOUD_MAT.emissiveIntensity = vis.cloudGlow;
@@ -126,10 +135,17 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
   const puffRefs = useRef<Array<Array<THREE.Mesh | null>>>([]);
   const speedRef = useRef(vis.cloudSpeed);
   speedRef.current = vis.cloudSpeed;
+  const shaderRef = useRef(shaderShadows);
+  shaderRef.current = shaderShadows;
+  const sunDir = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.1); // no big jumps after a tab switch
     const t = state.clock.getElapsedTime();
+    const v = getVisual();
+    sunDir.set(...sunPosition(v.sunAzimuth, v.sunElevation)).normalize();
+    const puffsOut = CLOUD_SHADOW_UNIFORMS.uCloudPuffs.value;
+    let np = 0;
     for (let i = 0; i < clouds.length; i++) {
       const g = groups.current[i];
       if (!g) continue;
@@ -167,9 +183,19 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
           const p = c.puffs[j];
           const b = 1 + 0.15 * Math.sin(t * p.breathe + p.breathePhase);
           m.scale.set(p.r * b, p.r * 0.8 * b, p.r * b);
+          // Project this puff along the sun onto the ground for the shader
+          // shadow (ground ≈ y 0).
+          if (shaderRef.current && g.visible && np < MAX_CLOUD_PUFFS) {
+            const wx = s.x + p.p[0] * k;
+            const wy = c.y + p.p[1] * k;
+            const wz = s.z + p.p[2] * k;
+            const f = wy / Math.max(0.05, sunDir.y);
+            puffsOut[np++].set(wx - sunDir.x * f, wz - sunDir.z * f, p.r * b * k, 0);
+          }
         }
       }
     }
+    if (shaderRef.current) CLOUD_SHADOW_UNIFORMS.uCloudCount.value = np;
   });
 
   if (!vis.cloudsVisible) return null;
@@ -194,7 +220,7 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
               position={p.p}
               scale={[p.r, p.r * 0.8, p.r]}
               rotation={[j * 0.7, j * 1.3, 0]}
-              castShadow={vis.cloudShadows}
+              castShadow={realShadows}
             />
           ))}
         </group>

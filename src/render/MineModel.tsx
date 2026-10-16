@@ -31,6 +31,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BOX, Box, Elbow, Pipe, Steam } from './PowerPlantModel';
+import { patchCloudShadows } from './cloudShadows';
 
 type V3 = [number, number, number];
 
@@ -82,6 +83,7 @@ const M = {
   stone: std('#8a8a88', { roughness: 1, flatShading: true }),
   ore: std('#6d6a66', { roughness: 1, flatShading: true }),
 };
+Object.values(M).forEach((m) => patchCloudShadows(m));
 
 const STONE_GEOM = new THREE.IcosahedronGeometry(1, 0);
 

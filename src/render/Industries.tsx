@@ -2,7 +2,7 @@
  * Industries — renders the auto-generated industry buildings.
  *
  * Two kinds, placed by the generator next to their resource:
- *   - LumberMill (fatelep): a brown sawmill building with a chimney.
+ *   - LumberMill (fatelep): the detailed animated LumberMillModel (3×3 lot).
  *   - Mine (bánya): the detailed animated open-pit MineModel (3×3 lot).
  *
  * There are only a handful of industry cells, so each is a small group of
@@ -20,6 +20,7 @@ import {
 import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
 import { MineModel } from './MineModel';
+import { LumberMillModel } from './LumberMillModel';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -54,9 +55,15 @@ export function Industries({ map, cellSize }: IndustriesProps) {
         const key = `${x},${z}`;
         switch (type) {
           case CellType.LumberMill:
-            // Temporary: old small model scaled up to the 3x3 lot until the
-            // detailed LumberMillModel lands.
-            return <LumberMill key={key} x={wx} y={wy} z={wz} cellSize={cellSize * 2.4} />;
+            return (
+              <LumberMillModel
+                key={key}
+                position={[wx, wy, wz]}
+                scale={cellSize}
+                rotationY={(((x * 3 + z * 7) % 4) * Math.PI) / 2}
+                phase={(x * 0.41 + z * 0.23) % 5}
+              />
+            );
           case CellType.Mine:
             return (
               <MineModel
@@ -83,44 +90,6 @@ export function Industries({ map, cellSize }: IndustriesProps) {
             return null;
         }
       })}
-    </group>
-  );
-}
-
-/** Brown sawmill building + a chimney. */
-function LumberMill({
-  x,
-  y,
-  z,
-  cellSize,
-}: {
-  x: number;
-  y: number;
-  z: number;
-  cellSize: number;
-}) {
-  const s = cellSize;
-  const color = CELL_STYLE[CellType.LumberMill].color;
-  const bodyW = 0.7 * s;
-  const bodyH = 0.55 * s;
-  const roofH = 0.3 * s;
-  return (
-    <group position={[x, y, z]}>
-      {/* Main building */}
-      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[bodyW, bodyH, bodyW]} />
-        <meshStandardMaterial color={color} roughness={0.8} />
-      </mesh>
-      {/* Pitched roof (a 4-sided pyramid). */}
-      <mesh position={[0, bodyH + roofH / 2, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
-        <coneGeometry args={[bodyW * 0.72, roofH, 4]} />
-        <meshStandardMaterial color="#5c3a1b" roughness={0.9} />
-      </mesh>
-      {/* Chimney */}
-      <mesh position={[bodyW * 0.28, bodyH + roofH * 0.6, bodyW * 0.28]} castShadow>
-        <boxGeometry args={[0.12 * s, 0.5 * s, 0.12 * s]} />
-        <meshStandardMaterial color="#3d2a19" roughness={0.9} />
-      </mesh>
     </group>
   );
 }

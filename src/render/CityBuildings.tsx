@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import type { Building, TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { CellType } from '../sim';
+import { patchRef } from './cloudShadows';
 
 export interface CityBuildingsProps {
   buildings: Building[];
@@ -85,7 +86,8 @@ export function CityBuildings({ buildings, map, cellSize }: CityBuildingsProps) 
       receiveShadow
     >
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color="#eef0f2" roughness={0.6} />
+      <meshStandardMaterial
+        ref={patchRef} color="#eef0f2" roughness={0.6} />
     </instancedMesh>
   );
 }

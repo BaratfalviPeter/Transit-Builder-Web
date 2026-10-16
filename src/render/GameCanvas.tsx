@@ -80,6 +80,39 @@ const BuildingIconsM = memo(BuildingIcons, sameCells);
 const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
 
+/**
+ * Sun direction: the requested [20, 30, 10] angle, pushed further out along the
+ * same direction so the whole map sits in front of the shadow camera's near
+ * plane (the light aims at the origin = map centre).
+ */
+const SUN_POS: [number, number, number] = [20 * 3.5, 30 * 3.5, 10 * 3.5];
+/**
+ * Half-extent of the orthographic shadow frustum. The map is 61 cells × 2 =
+ * 122 units; its half-diagonal (~86) plus margin covers it from any angle.
+ */
+const SHADOW_EXTENT = 92;
+
+function Sun() {
+  return (
+    <directionalLight
+      position={SUN_POS}
+      color="#fff3d6"
+      intensity={2.2}
+      castShadow
+      shadow-mapSize-width={4096}
+      shadow-mapSize-height={4096}
+      shadow-camera-left={-SHADOW_EXTENT}
+      shadow-camera-right={SHADOW_EXTENT}
+      shadow-camera-top={SHADOW_EXTENT}
+      shadow-camera-bottom={-SHADOW_EXTENT}
+      shadow-camera-near={1}
+      shadow-camera-far={320}
+      shadow-bias={-0.0004}
+      shadow-normalBias={0.04}
+    />
+  );
+}
+
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
 
@@ -178,16 +211,12 @@ function Scene() {
       <CameraRig />
       <GameClock />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <directionalLight
-        position={[30, 50, 20]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
-      <Sky sunPosition={[30, 50, 20]} />
+      {/* Lighting — warm "diorama" look: soft warm ambient, a cool sky / green
+          ground bounce, and one strong shadow-casting sun. */}
+      <ambientLight intensity={0.4} color="#fdf6e3" />
+      <hemisphereLight args={['#cfe3ff', '#5d7a45', 0.35]} />
+      <Sun />
+      <Sky sunPosition={SUN_POS} />
 
       {/* ONE unified heightmap terrain mesh (grass + hills + ramps + water +
           city). Carries the build handlers, so every click hits the real
@@ -223,7 +252,7 @@ function Scene() {
 export function GameCanvas() {
   return (
     <Canvas
-      shadows
+      shadows="soft"
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}
     >

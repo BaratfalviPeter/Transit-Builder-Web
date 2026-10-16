@@ -21,7 +21,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
-import { CellType, HILL_STEP, cornerHeightAt, type TerrainMap } from '../sim';
+import { CellType, HILL_STEP, cornerHeightAt, industryAnchorOf, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import {
   getVisual,
@@ -50,7 +50,8 @@ const WATER_SINK = 0.2;
  */
 const WATER_LEVEL = FLAT_TOP - WATER_SINK;
 /** How far below the grass base the solid block's floor sits (cellSize units). */
-const FLOOR_DROP = 1.5;
+// Deep enough for the (now 6×6, 2× scaled) mine pit to fit inside the block.
+const FLOOR_DROP = 3.2;
 
 const SIDE_COLOR = new THREE.Color('#7a5536'); // warm brown earth (diorama cliff)
 const TMP_COLOR = new THREE.Color();
@@ -97,20 +98,11 @@ function besideWater(map: TerrainMap, x: number, z: number): boolean {
 
 /**
  * Whether cell (x, z) belongs to a Mine's 3×3 lot (the Mine centre or an
- * IndustryLot ring cell next to one). Those cells are rendered as a hole.
+ * an IndustryLot cell of its lot). Those cells are rendered as a hole.
  */
 export function isMineLot(map: TerrainMap, x: number, z: number): boolean {
-  const t = map.cells[x][z];
-  if (t === CellType.Mine) return true;
-  if (t !== CellType.IndustryLot) return false;
-  for (let dx = -1; dx <= 1; dx++)
-    for (let dz = -1; dz <= 1; dz++) {
-      const nx = x + dx;
-      const nz = z + dz;
-      if (nx >= 0 && nz >= 0 && nx < map.size && nz < map.size && map.cells[nx][nz] === CellType.Mine)
-        return true;
-    }
-  return false;
+  const a = industryAnchorOf(map, x, z);
+  return a !== null && map.cells[a[0]][a[1]] === CellType.Mine;
 }
 
 /** Jitter of corner (cx, cz) — only if all four cells around it are grass. */

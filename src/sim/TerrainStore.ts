@@ -160,7 +160,7 @@ export class TerrainStore {
     return (
       t !== CellType.CityCenter &&
       !SPECIAL_BUILDINGS.has(t) &&
-      t !== CellType.IndustryLot && // 3×3 industry footprint
+      t !== CellType.IndustryLot && // big-industry (6×6) footprint
       t !== CellType.Road &&
       t !== CellType.Rail
     );

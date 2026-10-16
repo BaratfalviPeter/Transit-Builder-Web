@@ -14,6 +14,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { sunPosition, useVisual, useVisualKeys } from './visualSettings';
+import { applyNight, setSkyClock, setSunDir, skyAt, type Sky } from './dayNight';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
@@ -21,6 +22,9 @@ import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { Clouds } from './CloudLayer';
 import { Birds } from './Birds';
+import { Farms } from './Farms';
+import { Life } from './Life';
+import { Plinth } from './Plinth';
 import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
 import { Rails } from './Rails';
@@ -84,6 +88,8 @@ const BuildingIconsM = memo(BuildingIcons, sameCells);
 const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
 const BirdsM = memo(Birds, sameCells);
+const FarmsM = memo(Farms, sameCells);
+const LifeM = memo(Life, sameCells);
 
 /**
  * Half-extent of the orthographic shadow frustum. The map is 121 cells × 1 =
@@ -104,15 +110,64 @@ function Lights() {
   useEffect(() => {
     gl.toneMappingExposure = v.exposure;
   }, [gl, v.exposure]);
+
+  const amb = useRef<THREE.AmbientLight>(null);
+  const hemi = useRef<THREE.HemisphereLight>(null);
+  const sunRef = useRef<THREE.DirectionalLight>(null);
+  // Time of day (0 = midnight, 0.5 = noon). Starts at the slider value and
+  // runs forward while the cycle is on.
+  const tod = useRef(v.timeOfDay);
+  const sky = useRef<Sky | undefined>(undefined);
+  const lastStep = useRef<number | null>(null);
+  const vRef = useRef(v);
+  vRef.current = v;
   useEffect(() => {
-    scene.background = new THREE.Color(v.background);
-  }, [scene, v.background]);
+    tod.current = v.timeOfDay;
+  }, [v.timeOfDay]);
+  // A tuned sun/light value changed: force a re-light (+ shadow refresh).
+  useEffect(() => {
+    lastStep.current = null;
+  }, [v.sunAzimuth, v.sunElevation]);
+
+  useFrame((_, delta) => {
+    const vv = vRef.current;
+    if (vv.dayCycle) tod.current = (tod.current + Math.min(delta, 0.1) / Math.max(10, vv.dayLength)) % 1;
+    const sk = (sky.current = skyAt(vv.dayCycle ? tod.current : vv.timeOfDay, vv, sky.current));
+    setSkyClock(vv.dayCycle ? tod.current : vv.timeOfDay);
+    const sun = sunRef.current;
+    if (sun) {
+      sun.color.copy(sk.lightColor);
+      sun.intensity = sk.lightIntensity;
+      const stepKey = sk.sun ? sk.step : -1;
+      if (stepKey !== lastStep.current) {
+        lastStep.current = stepKey;
+        sun.position.set(...sk.pos);
+        sun.updateMatrixWorld();
+        setSunDir(sun.position);
+        gl.shadowMap.needsUpdate = true; // sun moved one step → re-bake shadows
+      }
+    }
+    if (amb.current) {
+      amb.current.color.copy(sk.ambientColor);
+      amb.current.intensity = sk.ambientIntensity;
+    }
+    if (hemi.current) {
+      hemi.current.color.copy(sk.hemiSky);
+      hemi.current.groundColor.copy(sk.hemiGround);
+      hemi.current.intensity = sk.hemiIntensity;
+    }
+    if (!(scene.background instanceof THREE.Color)) scene.background = new THREE.Color();
+    (scene.background as THREE.Color).copy(sk.background);
+    applyNight(sk.night);
+  });
+
   const sunPos = sunPosition(v.sunAzimuth, v.sunElevation);
   return (
     <>
-      <ambientLight intensity={v.ambientIntensity} color={v.ambientColor} />
-      <hemisphereLight args={[v.hemiSky, v.hemiGround, v.hemiIntensity]} />
+      <ambientLight ref={amb} intensity={v.ambientIntensity} color={v.ambientColor} />
+      <hemisphereLight ref={hemi} args={[v.hemiSky, v.hemiGround, v.hemiIntensity]} />
       <directionalLight
+        ref={sunRef}
         position={sunPos}
         color={v.sunColor}
         intensity={v.sunIntensity}
@@ -395,6 +450,12 @@ function Scene() {
           city). Carries the build handlers, so every click hits the real
           surface under the cursor — exact picking on flat ground and slopes. */}
       <TerrainSurface map={map} cellSize={cellSize} handlers={buildHandlers} />
+      {/* Layered earth/rock base under the board (diorama look). */}
+      <Plinth map={map} cellSize={cellSize} />
+      {/* Countryside: crop rows, fences, barns, windmills, grazing sheep. */}
+      <FarmsM map={map} cellSize={cellSize} />
+      {/* Cars, trains, boats and deer. */}
+      <LifeM map={map} cellSize={cellSize} />
       {/* Overlays below are memoized on cellsVersion, so a pure terraform
           (height) edit doesn't rebuild their geometry — only the terrain
           surface patches itself. They refresh when a cell TYPE changes. */}

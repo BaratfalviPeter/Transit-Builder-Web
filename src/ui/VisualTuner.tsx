@@ -49,6 +49,15 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
     ],
   },
   {
+    title: 'Napszak',
+    ctls: [
+      b('dayCycle', 'Napszakváltás'),
+      r('dayLength', 'Egy nap hossza (mp)', 60, 1800, 10),
+      r('timeOfDay', 'Napszak (0 éjfél · 0.5 dél)', 0, 1, 0.005),
+      b('lifeVisible', 'Élet (autók, vonatok, hajók, állatok)'),
+    ],
+  },
+  {
     title: 'Környezeti fény',
     ctls: [
       r('ambientIntensity', 'Ambient erősség', 0, 2, 0.01),
@@ -75,6 +84,9 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
       c('water', 'Víz'),
       c('cliff', 'Oldalfal (föld)'),
       c('city', 'Város alap'),
+      c('sand', 'Homokpart'),
+      c('mountainRock', 'Hegyi szikla'),
+      c('snow', 'Hósapka'),
       r('terrainRoughness', 'Matt ↔ fényes', 0, 1, 0.01),
     ],
   },

@@ -32,6 +32,18 @@ export const VISUAL_DEFAULTS = {
    * shadows at a 60 fps re-render cost.
    */
   liveShadows: false,
+
+  // --- Day / night ---
+  /** Run the day/night cycle. Off = fixed time of day (`timeOfDay`). */
+  dayCycle: true,
+  /** Real seconds for one full day. */
+  dayLength: 480,
+  /** Time of day when the cycle is off (and the cycle's start): 0.5 = noon. */
+  timeOfDay: 0.45,
+
+  // --- Life ---
+  /** Cars, trains, boats, deer. */
+  lifeVisible: true,
   /** Tone-mapping exposure (overall brightness). */
   exposure: 1,
   background: '#bccdd8',
@@ -50,6 +62,9 @@ export const VISUAL_DEFAULTS = {
   water: '#78a0ba',
   cliff: '#7b4b36',
   city: '#cdc8bc',
+  sand: '#d6c48e',
+  mountainRock: '#8a8479',
+  snow: '#f2f4f6',
   /** Terrain roughness (0 = shiny, 1 = matte). */
   terrainRoughness: 0.95,
 

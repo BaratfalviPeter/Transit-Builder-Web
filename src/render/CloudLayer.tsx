@@ -15,7 +15,8 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getVisual, sunPosition, useVisualKeys } from './visualSettings';
+import { getVisual, useVisualKeys } from './visualSettings';
+import { getSunDir, nightFactor } from './dayNight';
 import { CLOUD_SHADOW_UNIFORMS, MAX_CLOUD_PUFFS } from './cloudShadows';
 
 export interface CloudsProps {
@@ -135,6 +136,12 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
   const puffRefs = useRef<Array<Array<THREE.Mesh | null>>>([]);
   const speedRef = useRef(vis.cloudSpeed);
   speedRef.current = vis.cloudSpeed;
+  const cloudGlowRef = useRef(vis.cloudGlow);
+  cloudGlowRef.current = vis.cloudGlow;
+  const cloudColorRef = useRef(new THREE.Color());
+  cloudColorRef.current.set(vis.cloudColor);
+  const cloudStrengthRef = useRef(vis.cloudShadowStrength);
+  cloudStrengthRef.current = vis.cloudShadowStrength;
   const shaderRef = useRef(shaderShadows);
   shaderRef.current = shaderShadows;
   const sunDir = useMemo(() => new THREE.Vector3(), []);
@@ -143,7 +150,15 @@ export function Clouds({ extent, seed = 7 }: CloudsProps) {
     const dt = Math.min(delta, 0.1); // no big jumps after a tab switch
     const t = state.clock.getElapsedTime();
     const v = getVisual();
-    sunDir.set(...sunPosition(v.sunAzimuth, v.sunElevation)).normalize();
+    // Project along the CURRENT light (the sun moves with the day cycle).
+    sunDir.copy(getSunDir());
+    void v;
+    // Clouds dim at night (no glowing white blobs), and their shadows fade
+    // with the moonlight.
+    const nf = nightFactor();
+    CLOUD_MAT.emissiveIntensity = cloudGlowRef.current * (1 - nf * 0.9);
+    CLOUD_MAT.color.copy(cloudColorRef.current).multiplyScalar(1 - nf * 0.55);
+    CLOUD_SHADOW_UNIFORMS.uCloudStrength.value = cloudStrengthRef.current * (1 - nf * 0.8);
     const puffsOut = CLOUD_SHADOW_UNIFORMS.uCloudPuffs.value;
     let np = 0;
     for (let i = 0; i < clouds.length; i++) {

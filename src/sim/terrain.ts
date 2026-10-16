@@ -285,6 +285,15 @@ export interface TerrainMap {
  */
 export const HILL_STEP = 0.45;
 
+/** Highest level the generator creates (mountain peaks). */
+export const MAX_GEN_LEVEL = 13;
+
+/** Highest level forests grow on (the treeline). */
+export const TREELINE_LEVEL = 4;
+
+/** Above this level mountain flanks may rise 2 levels per cell (rocky, unbuildable). */
+export const STEEP_FROM_LEVEL = 3;
+
 /** Reference grid size the noise frequency was tuned for. */
 const REFERENCE_SIZE = 21;
 
@@ -398,12 +407,22 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   const elevation = makeValueNoise(rng, 10);
   const moisture = makeValueNoise(rng, 10);
   const detail = makeValueNoise(rng, 20);
+  // Low-frequency massif field + a ridge field: a few big mountain ranges
+  // with sharper crests, on top of the old rolling hills.
+  const massif = makeValueNoise(rng, 7);
+  const ridges = makeValueNoise(rng, 14);
 
   const center = Math.floor(size / 2);
   // Noise frequency is scaled to the reference grid so that biomes stay the
   // same *relative* size as the map grows — i.e. bigger maps get larger,
   // fewer blobs of hills/forest/water rather than fine-grained noise.
   const freq = 0.35 * (REFERENCE_SIZE / size);
+
+  // --- Pass 0: discrete height levels (rolling hills + mountain ranges) ----
+  // Levels are smoothed so neighbouring cells differ by at most ONE level:
+  // mountains become stepped, OpenTTD-style terraced cones that roads can
+  // climb one level per cell (switchbacks), never sheer multi-level walls.
+  const levels = computeLevels();
 
   // --- Pass 1: base terrain (hills, water, city, empty) + heights ---------
   // Trees and buildings are NOT placed here — the ground is generated first.
@@ -415,11 +434,17 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     for (let z = 0; z < size; z++) {
       const t = classifyCell(x, z);
       col.push(t);
-      hcol.push(t === CellType.Hill ? hillHeight(x, z) : 0);
+      hcol.push(t === CellType.Hill ? levels[x][z] * HILL_STEP : 0);
     }
     cells.push(col);
     heights.push(hcol);
   }
+
+  // --- Pass 1b: rivers ------------------------------------------------------
+  // A couple of meandering rivers wind across the lowlands, joining lakes and
+  // running off the map edge. They only cut through flat ground (never
+  // mountains or the city), so the land stays connected by bridges-to-be.
+  carveRivers(cells, heights, levels);
 
   const base: TerrainMap = {
     size,
@@ -451,6 +476,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
       if (t !== CellType.Empty && t !== CellType.Hill) continue;
       if (distFromCity(x, z) <= cityHalf + 1) continue; // keep city clear
       if (!isFlatCell(x, z)) continue; // corner rule for trees too
+      if (levels[x][z] > TREELINE_LEVEL) continue; // no forest above the treeline
       const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
       const d = detail(x * freq * 2.1, z * freq * 2.1);
       if (m > 0.64 && d > 0.42) cells[x][z] = CellType.Forest;
@@ -470,6 +496,128 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   /** Chebyshev distance (in cells) from the city center. */
   function distFromCity(x: number, z: number): number {
     return Math.max(Math.abs(x - center), Math.abs(z - center));
+  }
+
+  /** Raw (unsmoothed) level: old rolling hills + big mountain massifs. */
+  function rawLevel(x: number, z: number): number {
+    if (distFromCity(x, z) <= CITY_BUFFER) return 0;
+    let lvl = hillLevel(x, z);
+    // Mountains: a low-frequency massif mask, crests sharpened by ridge noise.
+    const m = massif(x * freq * 0.55 + 3.1, z * freq * 0.55 + 7.7);
+    const edgeBand = Math.max(4, Math.floor(size * 0.14));
+    const corridor = z < edgeBand || z >= size - edgeBand ? 0.12 : 0;
+    const t = (m - (0.6 + corridor)) / 0.4; // 0 at the foot, 1 at the core
+    if (t > 0) {
+      const r = ridges(x * freq * 1.6, z * freq * 1.6);
+      const ridge = 1 - Math.abs(2 * r - 1); // 1 on crest lines
+      const mtn = Math.floor(Math.pow(t, 0.75) * 11 + ridge * 4 * t);
+      lvl = Math.max(lvl, Math.min(MAX_GEN_LEVEL, mtn));
+    }
+    // Keep a soft ramp-up away from the city so it is never walled in.
+    const dc = distFromCity(x, z) - CITY_BUFFER;
+    return Math.min(lvl, Math.max(0, Math.floor(dc / 2)));
+  }
+
+  /**
+   * Levels grid with the slope rule enforced (iterative erosion): at most one
+   * level between neighbours in the foothills, two on the upper flanks.
+   */
+  function computeLevels(): number[][] {
+    const L: number[][] = [];
+    for (let x = 0; x < size; x++) {
+      const col: number[] = [];
+      for (let z = 0; z < size; z++) col.push(rawLevel(x, z));
+      L.push(col);
+    }
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (let x = 0; x < size; x++) {
+        for (let z = 0; z < size; z++) {
+          let lo = L[x][z];
+          for (let dx = -1; dx <= 1; dx++)
+            for (let dz = -1; dz <= 1; dz++) {
+              const nx = x + dx;
+              const nz = z + dz;
+              if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+              // Foothills climb one level per cell (roads can follow); higher
+              // up the flanks may rise two per cell → steep rocky slopes.
+              lo = Math.min(lo, L[nx][nz] + (L[nx][nz] >= STEEP_FROM_LEVEL ? 2 : 1));
+            }
+          if (lo < L[x][z]) {
+            L[x][z] = lo;
+            changed = true;
+          }
+        }
+      }
+    }
+    return L;
+  }
+
+  /** Meandering rivers through the lowlands (see Pass 1b). */
+  function carveRivers(cellsG: CellType[][], heightsG: number[][], L: number[][]): void {
+    const rivers = 2;
+    for (let r = 0; r < rivers; r++) {
+      // Start on a random edge, heading inward.
+      const side = Math.floor(rng() * 4);
+      const along = Math.floor(size * (0.2 + rng() * 0.6));
+      let px = side === 0 ? 0 : side === 1 ? size - 1 : along;
+      let pz = side === 2 ? 0 : side === 3 ? size - 1 : along;
+      let ang =
+        side === 0 ? 0 : side === 1 ? Math.PI : side === 2 ? Math.PI / 2 : -Math.PI / 2;
+      ang += (rng() - 0.5) * 0.8;
+      const width = 1 + (rng() < 0.5 ? 1 : 0);
+      let fx = px;
+      let fz = pz;
+      for (let step = 0; step < size * 3; step++) {
+        // Meander: slowly drifting heading, steered off mountains.
+        ang += (detail(fx * 0.09 + r * 13, fz * 0.09) - 0.5) * 0.5;
+        let best = ang;
+        let bestCost = Infinity;
+        for (const da of [-0.6, -0.3, 0, 0.3, 0.6]) {
+          const a = ang + da;
+          const tx = Math.round(fx + Math.cos(a) * 2);
+          const tz = Math.round(fz + Math.sin(a) * 2);
+          if (tx < 0 || tz < 0 || tx >= size || tz >= size) {
+            if (da === 0) bestCost = -1; // allow running off the map edge
+            continue;
+          }
+          const cost =
+            L[tx][tz] * 10 + Math.abs(da) * 0.5 + (distFromCity(tx, tz) <= CITY_BUFFER + 2 ? 50 : 0);
+          if (cost < bestCost) {
+            bestCost = cost;
+            best = a;
+          }
+        }
+        ang = best;
+        fx += Math.cos(ang);
+        fz += Math.sin(ang);
+        px = Math.round(fx);
+        pz = Math.round(fz);
+        if (px < 0 || pz < 0 || px >= size || pz >= size) break;
+        for (let wx = 0; wx < width + 1; wx++)
+          for (let wz = 0; wz < width + 1; wz++) {
+            const cx = px + wx - (width >> 1);
+            const cz = pz + wz - (width >> 1);
+            if (cx < 0 || cz < 0 || cx >= size || cz >= size) continue;
+            if (L[cx][cz] !== 0) continue;
+            if (distFromCity(cx, cz) <= cityHalf + 3) continue;
+            cellsG[cx][cz] = CellType.Water;
+            heightsG[cx][cz] = 0;
+          }
+        // Stop once we've run long enough and reached a lake.
+        if (step > size * 0.6 && cellsG[px][pz] === CellType.Water && lakeAround(px, pz)) break;
+      }
+    }
+    function lakeAround(x: number, z: number): boolean {
+      let n = 0;
+      for (let dx = -3; dx <= 3; dx++)
+        for (let dz = -3; dz <= 3; dz++) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx >= 0 && nz >= 0 && nx < size && nz < size && cellsG[nx][nz] === CellType.Water) n++;
+        }
+      return n > 35;
+    }
   }
 
   /**
@@ -503,11 +651,6 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     return 0;
   }
 
-  /** Per-cell hill height in cellSize units (level * step). */
-  function hillHeight(x: number, z: number): number {
-    return hillLevel(x, z) * HILL_STEP;
-  }
-
   function classifyCell(x: number, z: number): CellType {
     // 1) Central city square (fixed) — stays at the exact map center.
     if (Math.abs(x - center) <= cityHalf && Math.abs(z - center) <= cityHalf) {
@@ -523,8 +666,8 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     }
 
     // 3) Noise-based biome classification.
-    // High elevation => hills (rarer now; see hillLevel threshold).
-    if (hillLevel(x, z) > 0) {
+    // Any raised level => hill / mountain.
+    if (levels[x][z] > 0) {
       return CellType.Hill;
     }
     // Low elevation + wet => water (kept uncommon).

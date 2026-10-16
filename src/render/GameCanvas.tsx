@@ -12,7 +12,6 @@
  */
 
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Sky } from '@react-three/drei';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
@@ -117,7 +116,7 @@ function Sun() {
 const TICK_MS = 2500;
 
 function Scene() {
-  const { cellSize, gridHalfExtent } = DEFAULT_CONFIG;
+  const { cellSize } = DEFAULT_CONFIG;
 
   const terrain = useTerrainStore();
   const game = useGame();
@@ -216,7 +215,6 @@ function Scene() {
       <ambientLight intensity={0.4} color="#fdf6e3" />
       <hemisphereLight args={['#cfe3ff', '#5d7a45', 0.35]} />
       <Sun />
-      <Sky sunPosition={SUN_POS} />
 
       {/* ONE unified heightmap terrain mesh (grass + hills + ramps + water +
           city). Carries the build handlers, so every click hits the real
@@ -244,7 +242,7 @@ function Scene() {
       <TerraformSelection plan={planSnap} map={map} cellSize={cellSize} />
 
       {/* Visual reference grid lines (picking is on the terrain surface). */}
-      <GridFloor cellSize={cellSize} gridHalfExtent={gridHalfExtent} />
+      <GridFloor cellSize={cellSize} gridHalfExtent={map.size / 2} />
     </>
   );
 }
@@ -256,7 +254,7 @@ export function GameCanvas() {
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}
     >
-      <color attach="background" args={['#adc8e6']} />
+      <color attach="background" args={['#bcd6e6']} />
       <Scene />
     </Canvas>
   );

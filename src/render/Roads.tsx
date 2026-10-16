@@ -150,30 +150,29 @@ function FlatRoads({
           push(n && s ? 0 : t, n && s ? t : 0, yaw, 0.17);
         }
       } else if (count === 2) {
-        // Corner: a quarter-arc of small dashes between the two arms. The two
-        // connected sides define the bend; dashes follow a 90° arc of radius
-        // ~0.3 centred on the inner corner.
-        const dx = e ? 1 : w ? -1 : 0;
-        const dz = s ? 1 : n ? -1 : 0;
-        // Pick the two connected directions.
-        const dirs: Array<[number, number]> = [];
-        if (n) dirs.push([0, -1]);
-        if (s) dirs.push([0, 1]);
-        if (e) dirs.push([1, 0]);
-        if (w) dirs.push([-1, 0]);
-        const [a0, a1] = dirs;
-        const R = 0.3;
-        // Arc centre = opposite quadrant corner of the cell.
-        const cxArc = -dx * R;
-        const czArc = -dz * R;
-        const ang0 = Math.atan2(a0[1] * 0.5 - czArc, a0[0] * 0.5 - cxArc);
-        let ang1 = Math.atan2(a1[1] * 0.5 - czArc, a1[0] * 0.5 - cxArc);
-        if (ang1 - ang0 > Math.PI) ang1 -= Math.PI * 2;
-        if (ang0 - ang1 > Math.PI) ang1 += Math.PI * 2;
-        const N = 5;
+        // Corner: a smooth 90° arc of dashes bending between the two arms. The
+        // arc is centred on the OUTER cell corner (the quadrant with no
+        // neighbour) with radius 0.5, so it starts exactly at one edge
+        // mid-point and ends at the other — meeting the straight lines of both
+        // neighbours flush.
+        const dirX = e ? 1 : -1; // which side has the horizontal neighbour
+        const dirZ = s ? 1 : -1; // which side has the vertical neighbour
+        const R = 0.5;
+        // The quarter-circle that joins the two edge mid-points — (dirX·0.5, 0)
+        // and (0, dirZ·0.5) — tangent to both arms is radius 0.5 centred on the
+        // cell corner that sits BETWEEN the two arms: (dirX·0.5, dirZ·0.5).
+        const cxArc = dirX * 0.5;
+        const czArc = dirZ * 0.5;
+        // Sweep from the horizontal edge-point to the vertical edge-point.
+        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc); // points to (dirX·0.5, 0)
+        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc); // points to (0, dirZ·0.5)
+        let span = ang1 - ang0;
+        if (span > Math.PI) span -= Math.PI * 2;
+        if (span < -Math.PI) span += Math.PI * 2;
+        const N = 7;
         for (let i = 0; i < N; i++) {
-          const a = ang0 + ((ang1 - ang0) * (i + 0.5)) / N;
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, 0.15);
+          const a = ang0 + (span * (i + 0.5)) / N;
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, 0.14);
         }
       } else {
         // T-junction (3) or crossroad (4): a short dash toward each arm, with a

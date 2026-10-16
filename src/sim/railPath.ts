@@ -223,10 +223,32 @@ function retargetToRegion(map: TerrainMap, start: GridCell, goal: GridCell): { c
   return { cell: { x: bx, z: best - bx * n }, reachable: false };
 }
 
-export function findRailPath(map: TerrainMap, start: GridCell, goalIn: GridCell): RailPathResult {
+/**
+ * @param startHeading optional forced direction (0..7, see railPieces) the
+ *   route must LEAVE point A in — set by the player with R. null = automatic.
+ */
+export function findRailPath(
+  map: TerrainMap,
+  start: GridCell,
+  goalIn: GridCell,
+  startHeading: number | null = null,
+): RailPathResult {
   const n = map.size;
   if (!canHostRail(map, start.x, start.z)) return { steps: [], blocked: true };
-  if (start.x === goalIn.x && start.z === goalIn.z) return { steps: [], blocked: false };
+  if (start.x === goalIn.x && start.z === goalIn.z) {
+    // Just A with a chosen direction: lay the one piece pointing that way.
+    if (startHeading === null) return { steps: [], blocked: false };
+    const bits = railBitsAt(map, start.x, start.z);
+    for (let s = 0; s < 4; s++) {
+      for (let to = 0; to < 4; to++) {
+        if (to === s) continue;
+        const piece = pieceBetween(s, to);
+        if (pieceHeading(piece, s) !== startHeading || !canAddRailPiece(map, start.x, start.z, piece)) continue;
+        return { steps: [{ ...start, piece, isNew: (bits & (1 << piece)) === 0 }], blocked: false };
+      }
+    }
+    return { steps: [], blocked: true };
+  }
   const near = reachableGoal(map, start, goalIn);
   const region = retargetToRegion(map, start, near.cell);
   const goal = region.cell;
@@ -271,6 +293,11 @@ export function findRailPath(map: TerrainMap, start: GridCell, goalIn: GridCell)
         push(sid(startCell, a, variantOf(a, pieceHeading(p, a)), MIN_RUN), 0, -1, start.x, start.z);
       }
     }
+  } else if (startHeading !== null) {
+    // Forced direction: every (entry side, variant) whose heading is it.
+    for (let s = 0; s < 4; s++)
+      for (let hv = 0; hv < 3; hv++)
+        if (headingOf(s, hv) === startHeading) push(sid(startCell, s, hv, MIN_RUN), 0, -1, start.x, start.z);
   } else {
     for (let s = 0; s < 4; s++) push(sid(startCell, s, 0, MIN_RUN), 0, -1, start.x, start.z);
   }
@@ -314,6 +341,8 @@ export function findRailPath(map: TerrainMap, start: GridCell, goalIn: GridCell)
       const dh = headingDiff(h, nh);
       if (dh > 1 || dh < -1) continue;
       if (dh !== 0 && r < MIN_RUN) continue;
+      // The first piece out of A follows the player's chosen direction.
+      if (startHeading !== null && from[id] === -1 && nh !== startHeading) continue;
       const exists = (bits & (1 << piece)) !== 0;
       if (!exists && !(allowedAt(x, z) & (1 << piece))) continue;
       // Level crossing: straight in, straight out.

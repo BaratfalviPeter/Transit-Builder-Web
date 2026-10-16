@@ -20,6 +20,7 @@ import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
 import { Clouds } from './CloudLayer';
+import { Birds } from './Birds';
 import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
 import { Rails } from './Rails';
@@ -81,6 +82,7 @@ const IndustriesM = memo(Industries, sameCells);
 const BuildingIconsM = memo(BuildingIcons, sameCells);
 const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
+const BirdsM = memo(Birds, sameCells);
 
 /**
  * Half-extent of the orthographic shadow frustum. The map is 61 cells × 2 =
@@ -241,7 +243,9 @@ function Scene() {
       {/* Instanced low-poly pine trees (forests + scattered) and rocks. */}
       <MapGridM map={map} cellSize={cellSize} />
       {/* Drifting low-poly clouds (cast soft shadows on the map). */}
-      <Clouds extent={(map.size / 2) * cellSize + 14} count={8} seed={map.seed} />
+      <Clouds extent={(map.size / 2) * cellSize + 14} seed={map.seed} />
+      {/* Little flocks circling over the forests. */}
+      <BirdsM map={map} cellSize={cellSize} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <IndustriesM map={map} cellSize={cellSize} />
       {/* Floating UI icons above special buildings (for easy identification). */}

@@ -29,7 +29,7 @@
  * dust puffs. `phase` desyncs multiple mines.
  */
 
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BOX, Box, Elbow, Pipe, Steam } from './PowerPlantModel';
@@ -67,7 +67,7 @@ const M = {
   tunnel: new THREE.MeshBasicMaterial({ color: '#140d07' }),
   glow: new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
   door: std('#8a3f26'),
-  silo: std('#3d4a5e', { roughness: 0.7, metalness: 0.2 }),
+  silo: std('#3d4a5e', { roughness: 0.7, metalness: 0.2, flatShading: true }),
   rust: std('#8f4a2f', { roughness: 0.6, metalness: 0.25 }),
   rustDark: std('#6a3420', { roughness: 0.7, metalness: 0.3 }),
   pipeGrey: std('#8f959c', { roughness: 0.5, metalness: 0.35 }),
@@ -97,13 +97,13 @@ const EDGE = 1.49;
 const BOTTOM = -1.42;
 /** Pit opening in the deck, depth and terraces. */
 const PIT = { x0: -0.72, x1: 0.62, z0: -0.72, z1: 0.95 };
-const DEPTH = 1.15;
-const STEPS = 4;
-const STEP_IN = 0.105;
+const DEPTH = 1.0;
+const STEPS = 3;
+const STEP_IN = 0.15;
 const STEP_H = DEPTH / (STEPS + 1);
 const FLOOR = -DEPTH;
 /** Raised rock platform on the left (crane). */
-const PLAT = { x0: -EDGE, x1: -0.78, z0: -1.42, z1: 0.3, top: 0.3 };
+const PLAT = { x0: -EDGE, x1: -0.78, z0: -1.42, z1: 0.95, top: 0.32 };
 
 /** Surface height (lot units) at a point — for trestle feet and props. */
 function groundY(x: number, z: number): number {
@@ -238,9 +238,9 @@ export function MineModel({
       <Processing phase={phase} />
       <Crusher />
       <Conveyor
-        a={[0.0, FLOOR + 0.05, 0.5]}
-        b={[-1.0, 0.36, 1.18]}
-        legs={[0.25, 0.5, 0.78]}
+        a={[-0.05, FLOOR + 0.05, 0.42]}
+        b={[HOPPER.x + 0.1, PLAT.top + 0.34, HOPPER.z - 0.02]}
+        legs={[0.22, 0.45, 0.68, 0.88]}
         stones={10}
         speed={0.12}
         phase={phase}
@@ -337,6 +337,106 @@ function Portal({ p, rotY }: { p: V3; rotY: number }) {
   );
 }
 
+/** Irregular rubble along the terrace lips + rock slabs jutting from the faces. */
+function PitRubble() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const { stones, slabs } = useMemo(() => {
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const stones: Array<{ p: V3; s: V3; r: V3 }> = [];
+    const slabs: Array<{ p: V3; s: V3; ry: number; m: THREE.Material }> = [];
+    const cx = (PIT.x0 + PIT.x1) / 2;
+    const cz = (PIT.z0 + PIT.z1) / 2;
+    const hx = (PIT.x1 - PIT.x0) / 2;
+    const hz = (PIT.z1 - PIT.z0) / 2;
+    for (let k = 0; k <= STEPS; k++) {
+      const top = k < STEPS ? -(k + 1) * STEP_H : FLOOR;
+      // Lip of terrace k (inset k*IN .. (k+1)*IN): walk its 4 sides.
+      const ox = hx - k * STEP_IN - (k < STEPS ? STEP_IN * 0.5 : 0.15);
+      const oz = hz - k * STEP_IN - (k < STEPS ? STEP_IN * 0.5 : 0.15);
+      const per = k < STEPS ? 0.13 : 0.2;
+      const sides: Array<[number, number, number, number]> = [
+        [cx - ox, cz - oz, cx + ox, cz - oz],
+        [cx + ox, cz - oz, cx + ox, cz + oz],
+        [cx + ox, cz + oz, cx - ox, cz + oz],
+        [cx - ox, cz + oz, cx - ox, cz - oz],
+      ];
+      for (const [ax, az, bx, bz] of sides) {
+        const len = Math.hypot(bx - ax, bz - az);
+        const n = Math.max(1, Math.round(len / per));
+        for (let i = 0; i < n; i++) {
+          if (rnd() < 0.35) continue;
+          const f = (i + rnd()) / n;
+          const r = 0.018 + rnd() * 0.035;
+          stones.push({
+            p: [ax + (bx - ax) * f + (rnd() - 0.5) * 0.06, top + r * 0.5, az + (bz - az) * f + (rnd() - 0.5) * 0.06],
+            s: [r * (0.8 + rnd() * 0.6), r * (0.6 + rnd() * 0.5), r * (0.8 + rnd() * 0.6)],
+            r: [rnd() * 3, rnd() * 3, rnd() * 3],
+          });
+        }
+      }
+      // Jutting rock slabs on the wall face just above this terrace.
+      if (k < STEPS) {
+        const fy = top + STEP_H * (0.3 + rnd() * 0.4);
+        const fx = hx - (k + 1) * STEP_IN;
+        const fz = hz - (k + 1) * STEP_IN;
+        for (let i = 0; i < 5; i++) {
+          const t = rnd() * 1.6 - 0.8;
+          const m = STRATA[(k + i) % STRATA.length];
+          const sz: V3 = [0.12 + rnd() * 0.1, 0.05 + rnd() * 0.05, 0.03];
+          const which = i % 4;
+          if (which === 0) slabs.push({ p: [cx + t * fx, fy, cz - fz - 0.012], s: sz, ry: (rnd() - 0.5) * 0.3, m });
+          if (which === 1) slabs.push({ p: [cx - fx - 0.012, fy, cz + t * fz], s: sz, ry: Math.PI / 2 + (rnd() - 0.5) * 0.3, m });
+          if (which === 2) slabs.push({ p: [cx + fx + 0.012, fy, cz + t * fz], s: sz, ry: Math.PI / 2 + (rnd() - 0.5) * 0.3, m });
+          if (which === 3) slabs.push({ p: [cx + t * fx, fy, cz + fz + 0.012], s: sz, ry: (rnd() - 0.5) * 0.3, m });
+        }
+      }
+    }
+    return { stones, slabs };
+  }, []);
+
+  useLayoutEffect(() => {
+    const m = ref.current;
+    if (!m) return;
+    const d = new THREE.Object3D();
+    stones.forEach((st, i) => {
+      d.position.set(...st.p);
+      d.rotation.set(...st.r);
+      d.scale.set(...st.s);
+      d.updateMatrix();
+      m.setMatrixAt(i, d.matrix);
+    });
+    m.instanceMatrix.needsUpdate = true;
+    m.computeBoundingSphere();
+  }, [stones]);
+
+  return (
+    <group>
+      <instancedMesh ref={ref} args={[STONE, M.boulder, stones.length]} castShadow receiveShadow />
+      {slabs.map((sl, i) => (
+        <group key={i} position={sl.p} rotation={[0, sl.ry, 0]}>
+          <Box p={[0, 0, 0]} s={sl.s} m={sl.m} cast />
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** Timber shoring frame (two posts + cap) against a terrace face. */
+function Shoring({ p, rotY, h }: { p: V3; rotY: number; h: number }) {
+  return (
+    <group position={p} rotation={[0, rotY, 0]}>
+      <Box p={[-0.08, h / 2, 0.012]} s={[0.022, h, 0.022]} m={M.wood} cast />
+      <Box p={[0.08, h / 2, 0.012]} s={[0.022, h, 0.022]} m={M.wood} cast />
+      <Box p={[0, h - 0.012, 0.016]} s={[0.22, 0.024, 0.03]} m={M.wood} cast />
+      <Box p={[0, h * 0.45, 0.016]} s={[0.18, 0.016, 0.02]} m={M.wood} />
+    </group>
+  );
+}
+
 function PitDetails({ phase }: { phase: number }) {
   const cart = useRef<THREE.Group>(null);
   const cx = (PIT.x0 + PIT.x1) / 2;
@@ -366,6 +466,12 @@ function PitDetails({ phase }: { phase: number }) {
       <Portal p={[cx - 0.05, FLOOR, fz0]} rotY={0} />
       <Portal p={[PIT.x0 + 2 * STEP_IN, -3 * STEP_H, 0.2]} rotY={Math.PI / 2} />
       <Portal p={[PIT.x1 - 1 * STEP_IN, -2 * STEP_H, -0.25]} rotY={-Math.PI / 2} />
+      <PitRubble />
+      {/* Timber shoring on the terrace faces */}
+      <Shoring p={[PIT.x0 + STEP_IN + 0.004, -2 * STEP_H, -0.45]} rotY={Math.PI / 2} h={STEP_H} />
+      <Shoring p={[0.05, -1 * STEP_H, PIT.z0 + 0.004]} rotY={0} h={STEP_H} />
+      <Shoring p={[-0.35, -2 * STEP_H, PIT.z0 + STEP_IN + 0.004]} rotY={0} h={STEP_H} />
+      <Shoring p={[PIT.x1 - 2 * STEP_IN - 0.004, -3 * STEP_H, 0.3]} rotY={-Math.PI / 2} h={STEP_H} />
       <pointLight position={[cx - 0.05, FLOOR + 0.2, fz0 + 0.2]} color="#ffb347" intensity={1.4} distance={2.2} decay={1.5} />
       {/* Ladders up the terrace faces */}
       {Array.from({ length: STEPS }).map((_, k) => {
@@ -437,17 +543,27 @@ function Platform() {
       <Box p={[cx - 0.01, 0.23, cz - 0.01]} s={[w - 0.02, 0.14, d - 0.02]} m={M.rockA} cast />
       <Box p={[cx, PLAT.top + 0.01, cz]} s={[w, 0.02, d]} m={M.deck} />
       {/* Crates + barrels on the platform */}
-      <Box p={[-1.35, PLAT.top + 0.06, 0.15]} s={[0.1, 0.1, 0.1]} m={M.crate} cast />
-      <Box p={[-1.35, PLAT.top + 0.15, 0.15]} s={[0.08, 0.08, 0.08]} m={M.crateDark} cast />
-      <Box p={[-1.24, PLAT.top + 0.05, 0.2]} s={[0.08, 0.08, 0.08]} m={M.crate} cast />
+      <Box p={[-1.35, PLAT.top + 0.06, -1.15]} s={[0.1, 0.1, 0.1]} m={M.crate} cast />
+      <Box p={[-1.35, PLAT.top + 0.15, -1.15]} s={[0.08, 0.08, 0.08]} m={M.crateDark} cast />
+      <Box p={[-1.24, PLAT.top + 0.05, -1.1]} s={[0.08, 0.08, 0.08]} m={M.crate} cast />
       {[
-        [-1.38, -0.2, M.barrelBlue],
-        [-1.3, -0.24, M.barrelBlue],
-        [-1.36, -0.3, M.barrelRust],
+        [-1.38, -0.9, M.barrelBlue],
+        [-1.3, -0.94, M.barrelBlue],
+        [-1.36, -1.0, M.barrelRust],
+        [-1.0, -1.25, M.barrelRust],
+        [-0.92, -1.28, M.barrelBlue],
       ].map(([x, z, m]) => (
         <mesh key={`${x}${z}`} material={m as THREE.Material} position={[x as number, PLAT.top + 0.06, z as number]} castShadow>
           <cylinderGeometry args={[0.032, 0.032, 0.1, 10]} />
         </mesh>
+      ))}
+      {/* Tunnel portal in the platform's front cliff + rails out onto the deck */}
+      <Portal p={[-1.28, 0, PLAT.z1]} rotY={0} />
+      {[-0.035, 0.035].map((dx) => (
+        <Box key={dx} p={[-1.28 + dx, 0.032, PLAT.z1 + 0.15]} s={[0.01, 0.012, 0.3]} m={M.steel} />
+      ))}
+      {[0.06, 0.15, 0.24].map((dz) => (
+        <Box key={dz} p={[-1.28, 0.027, PLAT.z1 + dz]} s={[0.11, 0.006, 0.02]} m={M.wood} />
       ))}
       {/* Dump hopper the crane fills */}
       <group position={[HOPPER.x, PLAT.top, HOPPER.z]}>
@@ -472,157 +588,190 @@ function Platform() {
 
 // --- Crane (left platform) ----------------------------------------------------------------------------
 
-const CRANE = { x: -1.12, z: -0.85, h: 0.6 };
-const HOPPER = { x: -1.12, z: -0.15 };
-/** Pick point over the pit floor and the hopper (relative to the tower). */
-const PICK = { x: -0.15 - CRANE.x, z: 0.0 - CRANE.z };
-const DROP = { x: HOPPER.x - CRANE.x + 0.001, z: HOPPER.z - CRANE.z };
-const JIB = 1.3;
-const CRANE_CYCLE = 14;
+/**
+ * A big crawler-style lattice-boom crane on a dark trestle: the boom is held at
+ * a FIXED angle (like the art), so the grab always hangs at the same radius —
+ * the pick point over the pit floor and the hopper on the platform are both on
+ * that circle. The crane slews between them; only the hoist and grab move.
+ */
+const CRANE = { x: -1.12, z: -0.55, h: 0.44 };
+/** Boom: pivot offset (slew space), length, fixed lift angle. */
+const BOOM = { px: 0.14, len: 1.45, lift: 0.62 };
+const REACH = BOOM.px + BOOM.len * Math.cos(BOOM.lift);
+const PICK_ANG = Math.atan2(-(-0.12 - CRANE.z), 0.05 - CRANE.x);
+/** Hopper on the platform at the same radius from the tower. */
+const HOPPER = { x: CRANE.x + 0.15, z: CRANE.z + Math.sqrt(REACH * REACH - 0.15 * 0.15) };
+const DROP_ANG = Math.atan2(-(HOPPER.z - CRANE.z), HOPPER.x - CRANE.x);
+const CRANE_CYCLE = 15;
 
 function Crane({ phase }: { phase: number }) {
   const slew = useRef<THREE.Group>(null);
-  const jib = useRef<THREE.Group>(null);
   const cable = useRef<THREE.Mesh>(null);
   const grab = useRef<THREE.Group>(null);
   const shells = useRef<Array<THREE.Group | null>>([]);
-  const load = useRef<THREE.Mesh>(null);
+  const load = useRef<THREE.Group>(null);
 
-  const angOf = (p: { x: number; z: number }) => Math.atan2(-p.z, p.x);
-  const a0 = angOf(PICK);
-  let a1 = angOf(DROP);
-  if (a1 - a0 > Math.PI) a1 -= Math.PI * 2;
-  if (a0 - a1 > Math.PI) a1 += Math.PI * 2;
-  // Luffing: reach = JIB·cos(lift).
-  const l0 = Math.acos(Math.min(0.98, Math.hypot(PICK.x, PICK.z) / JIB));
-  const l1 = Math.acos(Math.min(0.98, Math.hypot(DROP.x, DROP.z) / JIB));
-  const baseY = PLAT.top + CRANE.h + 0.12; // jib pivot height (lot units)
-  const pickY = FLOOR + 0.12; // grab bottom over the pit floor
-  const dropY = PLAT.top + 0.4; // grab bottom over the hopper
+  const deckY = PLAT.top + CRANE.h; // top of the trestle
+  const pivotY = deckY + 0.16;
+  const tipX = REACH;
+  const tipY = pivotY + BOOM.len * Math.sin(BOOM.lift);
+  const pickY = FLOOR + 0.02; // grab bottom on the pit floor
+  const dropY = PLAT.top + 0.36; // grab bottom just above the hopper
+  const high = tipY - 0.38;
   const ease = (k: number) => k * k * (3 - 2 * k);
 
   useFrame((state) => {
     const u = ((state.clock.getElapsedTime() + phase * 3.1) % CRANE_CYCLE) / CRANE_CYCLE;
-    let ang = a0, lift = l0, closed = false, holding = false;
-    let bottom: number; // grab bottom Y
-    const tip0 = baseY + JIB * Math.sin(l0);
-    const tip1 = baseY + JIB * Math.sin(l1);
+    let ang = PICK_ANG;
+    let bottom = high;
+    let closed = false;
+    let holding = false;
     if (u < 0.2) {
-      bottom = tip0 - 0.5 + (pickY - tip0 + 0.5) * ease(u / 0.2);
+      bottom = high + (pickY - high) * ease(u / 0.2); // lower into the pit
     } else if (u < 0.3) {
-      closed = (u - 0.2) / 0.1 > 0.3;
+      const k = (u - 0.2) / 0.1;
+      closed = k > 0.3;
       holding = closed;
-      bottom = pickY + (tip0 - 0.5 - pickY) * ease(Math.max(0, ((u - 0.2) / 0.1) * 1.5 - 0.5));
-    } else if (u < 0.55) {
-      const k = ease((u - 0.3) / 0.25);
-      ang = a0 + (a1 - a0) * k;
-      lift = l0 + (l1 - l0) * k;
-      closed = true;
-      holding = true;
-      const tip = baseY + JIB * Math.sin(lift);
-      bottom = Math.min(tip - 0.3, tip0 - 0.5 + (dropY - tip0 + 0.5) * k);
-    } else if (u < 0.7) {
-      ang = a1;
-      lift = l1;
-      const k = (u - 0.55) / 0.15;
-      closed = k < 0.5;
-      holding = closed;
-      bottom = Math.min(tip1 - 0.3, dropY);
+      bottom = pickY + (high - pickY) * ease(Math.max(0, k * 1.6 - 0.6)); // bite + lift
+    } else if (u < 0.5) {
+      ang = PICK_ANG + (DROP_ANG - PICK_ANG) * ease((u - 0.3) / 0.2); // swing
+      closed = holding = true;
+    } else if (u < 0.58) {
+      ang = DROP_ANG;
+      bottom = high + (dropY - high) * ease((u - 0.5) / 0.08);
+      closed = holding = true;
+    } else if (u < 0.68) {
+      ang = DROP_ANG;
+      bottom = dropY + (high - dropY) * ease(Math.max(0, ((u - 0.58) / 0.1) * 1.6 - 0.6)); // dump
     } else {
-      const k = ease((u - 0.7) / 0.3);
-      ang = a1 + (a0 - a1) * k;
-      lift = l1 + (l0 - l1) * k;
-      const tip = baseY + JIB * Math.sin(lift);
-      bottom = Math.min(tip - 0.3, dropY + (tip0 - 0.5 - dropY) * k);
+      ang = DROP_ANG + (PICK_ANG - DROP_ANG) * ease((u - 0.68) / 0.32); // swing back
     }
     if (slew.current) slew.current.rotation.y = ang;
-    if (jib.current) jib.current.rotation.z = lift;
-    // The grab hangs straight down from the jib tip (in slew space).
-    const tipX = JIB * Math.cos(lift);
-    const tipY = baseY + JIB * Math.sin(lift);
-    if (grab.current) grab.current.position.set(tipX, bottom + 0.1, 0);
+    if (grab.current) grab.current.position.set(tipX, bottom, 0);
     if (cable.current) {
-      const len = tipY - (bottom + 0.16);
-      cable.current.position.set(tipX, tipY - len / 2, 0);
+      const len = tipY - 0.03 - (bottom + 0.15);
+      cable.current.position.set(tipX, tipY - 0.03 - len / 2, 0);
       cable.current.scale.y = Math.max(0.001, len);
     }
-    const open = closed ? 0.05 : 0.6;
-    shells.current.forEach((s, i) => {
-      if (s) s.rotation.x = (i ? 1 : -1) * open;
+    const open = closed ? 0.04 : 0.65;
+    shells.current.forEach((sh, i) => {
+      if (sh) sh.rotation.x = (i ? 1 : -1) * open;
     });
     if (load.current) load.current.visible = holding;
   });
 
+  // Trestle: 4 splayed legs, X-bracing on every face, top deck.
+  const B = 0.2; // half-width at the foot
+  const T = 0.13; // half-width at the top
   const legs: Array<[number, number]> = [
-    [-0.15, -0.15],
-    [0.15, -0.15],
-    [0.15, 0.15],
-    [-0.15, 0.15],
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
   ];
+  const at = (sx: number, sz: number, f: number): V3 => {
+    const w = B + (T - B) * f;
+    return [sx * w, PLAT.top + CRANE.h * f, sz * w];
+  };
+  const boomPts = 9;
   return (
     <group position={[CRANE.x, 0, CRANE.z]}>
-      {/* Dark steel portal tower on the platform */}
-      <group position={[0, PLAT.top, 0]}>
-        {legs.map(([lx, lz]) => (
-          <Rod key={`${lx}${lz}`} from={[lx, 0, lz]} to={[lx * 0.6, CRANE.h, lz * 0.6]} w={0.03} m={M.frame} />
-        ))}
-        {[0.35, 0.7].map((f) =>
-          [-1, 1].map((sd) => {
-            const k = 1 - 0.4 * f;
-            return (
-              <group key={`${f}${sd}`}>
-                <Box p={[0, CRANE.h * f, sd * 0.15 * k]} s={[0.3 * k, 0.02, 0.02]} m={M.frame} />
-                <Box p={[sd * 0.15 * k, CRANE.h * f, 0]} s={[0.02, 0.02, 0.3 * k]} m={M.frame} />
-              </group>
-            );
-          }),
-        )}
-        <Box p={[0, CRANE.h, 0]} s={[0.22, 0.03, 0.22]} m={M.frame} />
-      </group>
-      {/* Slewing superstructure (positions in lot-Y via baseY) */}
+      <Box p={[0, PLAT.top + 0.02, 0]} s={[B * 2 + 0.1, 0.04, B * 2 + 0.1]} m={M.frame} />
+      {legs.map(([sx, sz]) => (
+        <Rod key={`l${sx}${sz}`} from={at(sx, sz, 0)} to={at(sx, sz, 1)} w={0.04} m={M.frame} />
+      ))}
+      {[0, 0.5].map((f0) =>
+        [
+          [-1, -1, 1, -1],
+          [1, -1, 1, 1],
+          [1, 1, -1, 1],
+          [-1, 1, -1, -1],
+        ].map(([ax, az, bx, bz]) => (
+          <group key={`${f0}${ax}${az}${bx}${bz}`}>
+            <Rod from={at(ax, az, f0)} to={at(bx, bz, f0 + 0.5)} w={0.016} m={M.frame} />
+            <Rod from={at(bx, bz, f0)} to={at(ax, az, f0 + 0.5)} w={0.016} m={M.frame} />
+            <Rod from={at(ax, az, f0 + 0.5)} to={at(bx, bz, f0 + 0.5)} w={0.02} m={M.frame} />
+          </group>
+        )),
+      )}
+      <Box p={[0, deckY + 0.015, 0]} s={[T * 2 + 0.08, 0.03, T * 2 + 0.08]} m={M.frame} cast />
+
+      {/* Slewing superstructure */}
       <group ref={slew}>
-        {/* Yellow house + cab + counterweight */}
-        <Box p={[-0.08, PLAT.top + CRANE.h + 0.1, 0]} s={[0.32, 0.16, 0.2]} m={M.yellow} cast />
-        <Box p={[-0.26, PLAT.top + CRANE.h + 0.12, 0]} s={[0.1, 0.14, 0.18]} m={M.frame} cast />
-        <Box p={[0.06, PLAT.top + CRANE.h + 0.12, 0.101]} s={[0.08, 0.06, 0.004]} m={M.glass} />
-        {/* A-frame mast + pendant */}
-        <Rod from={[-0.12, PLAT.top + CRANE.h + 0.18, -0.07]} to={[-0.1, PLAT.top + CRANE.h + 0.48, 0]} w={0.02} m={M.frame} />
-        <Rod from={[-0.12, PLAT.top + CRANE.h + 0.18, 0.07]} to={[-0.1, PLAT.top + CRANE.h + 0.48, 0]} w={0.02} m={M.frame} />
-        {/* Luffing lattice jib (pivot at baseY) */}
-        <group ref={jib} position={[0.05, baseY, 0]}>
-          <Box p={[JIB / 2, 0, -0.04]} s={[JIB, 0.018, 0.018]} m={M.yellow} cast />
-          <Box p={[JIB / 2, 0, 0.04]} s={[JIB, 0.018, 0.018]} m={M.yellow} cast />
-          <Box p={[JIB / 2, 0.07, 0]} s={[JIB, 0.018, 0.018]} m={M.yellow} cast />
-          {Array.from({ length: 10 }).map((_, i) => {
-            const x0 = (i * JIB) / 10;
-            const x1 = ((i + 1) * JIB) / 10;
+        <mesh material={M.frame} position={[0, deckY + 0.045, 0]}>
+          <cylinderGeometry args={[0.12, 0.12, 0.03, 14]} />
+        </mesh>
+        {/* Yellow machinery house + cab, black counterweight at the back */}
+        <Box p={[-0.04, deckY + 0.17, 0]} s={[0.4, 0.22, 0.26]} m={M.yellow} cast />
+        <Box p={[-0.04, deckY + 0.285, 0]} s={[0.42, 0.015, 0.28]} m={M.frame} />
+        <Box p={[0.14, deckY + 0.2, 0.135]} s={[0.1, 0.09, 0.004]} m={M.glass} />
+        <Box p={[0.162, deckY + 0.2, 0.06]} s={[0.004, 0.09, 0.12]} m={M.glass} />
+        <Box p={[-0.18, deckY + 0.2, 0.131]} s={[0.12, 0.012, 0.004]} m={M.frame} />
+        <Box p={[-0.32, deckY + 0.15, 0]} s={[0.16, 0.2, 0.24]} m={M.frame} cast />
+        {/* A-frame gantry with pendant cables to the boom tip */}
+        {[-0.1, 0.1].map((z) => (
+          <Rod key={z} from={[-0.2, deckY + 0.29, z]} to={[-0.12, deckY + 0.62, 0]} w={0.025} m={M.frame} />
+        ))}
+        <Rod from={[0.02, deckY + 0.29, 0]} to={[-0.12, deckY + 0.62, 0]} w={0.02} m={M.frame} />
+        <Rod from={[-0.12, deckY + 0.62, 0.02]} to={[tipX, tipY + 0.05, 0.02]} w={0.006} m={M.cable} />
+        <Rod from={[-0.12, deckY + 0.62, -0.02]} to={[tipX, tipY + 0.05, -0.02]} w={0.006} m={M.cable} />
+        <Rod from={[-0.12, deckY + 0.62, 0]} to={[-0.32, deckY + 0.25, 0]} w={0.006} m={M.cable} />
+        {/* Yellow lattice boom at a fixed angle */}
+        <group position={[BOOM.px, pivotY, 0]} rotation={[0, 0, BOOM.lift]}>
+          {[
+            [0, -0.05],
+            [0, 0.05],
+            [0.08, -0.05],
+            [0.08, 0.05],
+          ].map(([y, z]) => (
+            <Box key={`${y}${z}`} p={[BOOM.len / 2, y, z]} s={[BOOM.len, 0.02, 0.02]} m={M.yellow} cast />
+          ))}
+          {Array.from({ length: boomPts }).map((_, i) => {
+            const x0 = (i * BOOM.len) / boomPts;
+            const x1 = ((i + 1) * BOOM.len) / boomPts;
             return (
               <group key={i}>
-                <Rod from={[x0, 0, -0.04]} to={[x1, 0.07, 0]} w={0.008} m={M.yellow} />
-                <Rod from={[x0, 0, 0.04]} to={[x1, 0.07, 0]} w={0.008} m={M.yellow} />
+                <Rod from={[x0, 0, -0.05]} to={[x1, 0.08, -0.05]} w={0.009} m={M.yellow} />
+                <Rod from={[x0, 0, 0.05]} to={[x1, 0.08, 0.05]} w={0.009} m={M.yellow} />
+                <Rod from={[x0, 0, -0.05]} to={[x1, 0, 0.05]} w={0.008} m={M.yellow} />
+                <Rod from={[x0, 0.08, 0.05]} to={[x1, 0.08, -0.05]} w={0.008} m={M.yellow} />
+                <Box p={[x1, 0.04, 0]} s={[0.012, 0.09, 0.11]} m={M.yellow} />
               </group>
             );
           })}
-          <Box p={[JIB, 0.02, 0]} s={[0.05, 0.06, 0.09]} m={M.frame} />
+          {/* Boom head sheaves */}
+          <mesh material={M.frame} position={[BOOM.len, 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.04, 0.04, 0.12, 12]} />
+          </mesh>
         </group>
         {/* Hoist cable + clamshell grab */}
         <mesh ref={cable} geometry={BOX} material={M.cable} scale={[0.008, 0.5, 0.008]} />
         <group ref={grab}>
-          <Box p={[0, 0.05, 0]} s={[0.07, 0.03, 0.05]} m={M.frame} />
+          <Box p={[0, 0.13, 0]} s={[0.05, 0.04, 0.04]} m={M.frame} />
+          {[-1, 1].map((sd) => (
+            <Rod key={sd} from={[0, 0.12, 0]} to={[sd * 0.045, 0.07, 0]} w={0.01} m={M.frame} />
+          ))}
           {[0, 1].map((i) => (
             <group
               key={i}
-              position={[0, 0.03, 0]}
+              position={[0, 0.09, 0]}
               ref={(el) => {
                 shells.current[i] = el;
               }}
             >
-              <Box p={[0, -0.05, (i ? 1 : -1) * 0.025]} s={[0.1, 0.08, 0.05]} m={M.frame} />
+              <Box p={[0, -0.045, (i ? 1 : -1) * 0.032]} s={[0.12, 0.07, 0.06]} m={M.frame} />
+              <Box p={[0, -0.085, (i ? 1 : -1) * 0.052]} s={[0.12, 0.012, 0.02]} m={M.steel} />
             </group>
           ))}
-          <mesh ref={load} material={M.ore} position={[0, -0.02, 0]}>
-            <coneGeometry args={[0.05, 0.05, 5]} />
-          </mesh>
+          <group ref={load}>
+            {[
+              [0, 0.1, 0, 0.04],
+              [0.03, 0.115, 0.02, 0.028],
+              [-0.03, 0.11, -0.02, 0.03],
+            ].map(([x, y, z, r], i) => (
+              <mesh key={i} geometry={STONE} material={M.boulder} position={[x, y, z]} scale={r} />
+            ))}
+          </group>
         </group>
       </group>
     </group>
@@ -632,11 +781,11 @@ function Crane({ phase }: { phase: number }) {
 // --- Silos (back-right) ------------------------------------------------------------------------------
 
 const SILOS: Array<[number, number]> = [
-  [1.0, -1.1],
-  [1.22, -0.55],
+  [1.0, -1.15],
+  [1.2, -0.62],
 ];
-const SILO_R = 0.19;
-const SILO_H = 0.95;
+const SILO_R = 0.235;
+const SILO_H = 1.2;
 const SILO_BASE = 0.3;
 
 function Silos() {
@@ -657,28 +806,53 @@ function Silos() {
             );
           })}
           <mesh material={M.silo} position={[0, SILO_BASE - 0.02, 0]} rotation={[Math.PI, 0, 0]} castShadow>
-            <coneGeometry args={[SILO_R, 0.14, 12]} />
+            <coneGeometry args={[SILO_R, 0.16, 8]} />
           </mesh>
           <mesh material={M.silo} position={[0, SILO_BASE + SILO_H / 2 + 0.05, 0]} castShadow>
-            <cylinderGeometry args={[SILO_R, SILO_R, SILO_H, 12]} />
+            <cylinderGeometry args={[SILO_R, SILO_R, SILO_H, 8]} />
           </mesh>
           {[0.3, 0.6, 0.9].map((f) => (
             <mesh key={f} material={M.rustDark} position={[0, SILO_BASE + 0.05 + SILO_H * f, 0]}>
-              <cylinderGeometry args={[SILO_R + 0.006, SILO_R + 0.006, 0.02, 12]} />
+              <cylinderGeometry args={[SILO_R + 0.006, SILO_R + 0.006, 0.02, 8]} />
             </mesh>
           ))}
           <mesh material={M.silo} position={[0, SILO_BASE + SILO_H + 0.1, 0]} castShadow>
-            <coneGeometry args={[SILO_R, 0.1, 12]} />
+            <coneGeometry args={[SILO_R, 0.12, 8]} />
           </mesh>
           {/* Ladder up the side */}
           <Ladder p={[SILO_R + 0.012, SILO_BASE, 0]} h={SILO_H + 0.05} rotY={Math.PI / 2} />
         </group>
       ))}
-      {/* Top gantry walkway between the silos, and over to the processing house */}
-      <Rod from={[SILOS[0][0], top, SILOS[0][1]]} to={[SILOS[1][0], top, SILOS[1][1]]} w={0.05} m={M.frame} />
-      <Rod from={[SILOS[1][0], top, SILOS[1][1]]} to={[0.95, 0.9, -0.15]} w={0.05} m={M.frame} />
-      {/* Gantry posts */}
-      <Box p={[1.11, top / 2, -0.82]} s={[0.025, top, 0.025]} m={M.frame} />
+      {/* Top gantry: walkway + railings between the silo roofs */}
+      <Rod from={[SILOS[0][0], top, SILOS[0][1]]} to={[SILOS[1][0], top, SILOS[1][1]]} w={0.06} m={M.frame} />
+      {[-0.035, 0.035].map((o) => (
+        <Rod
+          key={o}
+          from={[SILOS[0][0] + o, top + 0.09, SILOS[0][1]]}
+          to={[SILOS[1][0] + o, top + 0.09, SILOS[1][1]]}
+          w={0.008}
+          m={M.frame}
+        />
+      ))}
+      {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+        <Box
+          key={f}
+          p={[SILOS[0][0] + (SILOS[1][0] - SILOS[0][0]) * f, top + 0.045, SILOS[0][1] + (SILOS[1][1] - SILOS[0][1]) * f]}
+          s={[0.008, 0.09, 0.008]}
+          m={M.frame}
+        />
+      ))}
+      {/* Covered conveyor gallery from the silo top down to the processing house */}
+      <Rod from={[SILOS[1][0], top - 0.02, SILOS[1][1]]} to={[0.95, 0.92, -0.12]} w={0.07} m={M.hallDark} />
+      <Rod from={[SILOS[1][0], top + 0.03, SILOS[1][1]]} to={[0.95, 0.97, -0.12]} w={0.05} m={M.roof} />
+      {/* Gantry tower between the silos */}
+      {[
+        [0.86, -0.86],
+        [0.86, -0.92],
+      ].map(([x, z]) => (
+        <Box key={z} p={[x, top / 2, z]} s={[0.025, top, 0.025]} m={M.frame} />
+      ))}
+      <Rod from={[0.86, 0, -0.86]} to={[0.86, top, -0.92]} w={0.012} m={M.frame} />
     </group>
   );
 }
@@ -744,13 +918,13 @@ function Crusher() {
     <group>
       <Shed p={[0.98, 0, 0.72]} w={0.5} d={0.42} h={0.42} rise={0.14} windows={3} />
       {/* Rust main: out of the crusher wall, over the pit rim, plunging down */}
-      <Pipe from={[0.73, 0.24, 0.62]} to={[xEdge, 0.24, 0.62]} r={0.045} m={M.rust} />
-      <Elbow p={[xEdge, 0.24 - R, 0.62]} rot={[0, 0, Math.PI / 2]} R={R} r={0.045} m={M.rust} />
-      <Pipe from={[xEdge - R, 0.24 - R, 0.62]} to={[xEdge - R, -STEP_H + 0.01, 0.62]} r={0.045} m={M.rust} />
+      <Pipe from={[0.73, 0.24, 0.62]} to={[xEdge, 0.24, 0.62]} r={0.06} m={M.rust} />
+      <Elbow p={[xEdge, 0.24 - R, 0.62]} rot={[0, 0, Math.PI / 2]} R={R} r={0.06} m={M.rust} />
+      <Pipe from={[xEdge - R, 0.24 - R, 0.62]} to={[xEdge - R, -STEP_H + 0.01, 0.62]} r={0.06} m={M.rust} />
       {/* Grey main alongside */}
-      <Pipe from={[0.73, 0.14, 0.78]} to={[xEdge, 0.14, 0.78]} r={0.04} m={M.pipeGrey} />
-      <Elbow p={[xEdge, 0.14 - R, 0.78]} rot={[0, 0, Math.PI / 2]} R={R} r={0.04} m={M.pipeGrey} />
-      <Pipe from={[xEdge - R, 0.14 - R, 0.78]} to={[xEdge - R, -STEP_H + 0.01, 0.78]} r={0.04} m={M.pipeGrey} />
+      <Pipe from={[0.73, 0.14, 0.8]} to={[xEdge, 0.14, 0.8]} r={0.05} m={M.pipeGrey} />
+      <Elbow p={[xEdge, 0.14 - R, 0.8]} rot={[0, 0, Math.PI / 2]} R={R} r={0.05} m={M.pipeGrey} />
+      <Pipe from={[xEdge - R, 0.14 - R, 0.8]} to={[xEdge - R, -STEP_H + 0.01, 0.8]} r={0.05} m={M.pipeGrey} />
       {/* Valve wheel + flange */}
       <mesh material={M.valveRed} position={[0.68, 0.31, 0.62]} rotation={[0, Math.PI / 2, 0]}>
         <torusGeometry args={[0.04, 0.009, 6, 12]} />
@@ -859,10 +1033,11 @@ function FrontYard({ phase }: { phase: number }) {
   });
   return (
     <group>
-      {/* Ore pile under the conveyor head */}
-      <mesh material={M.ore} position={[-1.06, 0.12, 1.24]} castShadow receiveShadow>
-        <coneGeometry args={[0.2, 0.22, 8]} />
-      </mesh>
+      {/* Crates + barrels on the front-left deck */}
+      <Box p={[-0.95, 0.035, 1.24]} s={[0.2, 0.02, 0.16]} m={M.wood} cast />
+      <Box p={[-1.0, 0.09, 1.24]} s={[0.09, 0.09, 0.09]} m={M.crate} cast />
+      <Box p={[-0.9, 0.085, 1.26]} s={[0.08, 0.08, 0.08]} m={M.crateDark} cast />
+      <Box p={[-0.95, 0.175, 1.24]} s={[0.08, 0.08, 0.08]} m={M.crate} cast />
       {/* Cart track along the front-right */}
       {[-0.04, 0.04].map((dz) => (
         <Box key={dz} p={[0.75, 0.032, TZ + dz]} s={[1.3, 0.012, 0.01]} m={M.steel} />

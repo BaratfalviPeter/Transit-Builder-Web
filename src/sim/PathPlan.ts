@@ -14,19 +14,41 @@
  */
 
 import { cellsToBuild, findTrackPath, isTrackPassable, type GridCell, type TrackType } from './pathfind';
+import { canHostRail } from './railPieces';
+import { findRailPath } from './railPath';
 import { CellType, type TerrainMap } from './terrain';
+
+/** A route cell; rail routes also carry the track piece laid in it. */
+export interface PlanStep extends GridCell {
+  piece?: number;
+  isNew?: boolean;
+}
+
+/** Can a route of `type` start on this cell? */
+export function canStartRoute(map: TerrainMap, c: GridCell, type: TrackType): boolean {
+  return type === CellType.Rail ? canHostRail(map, c.x, c.z) : isTrackPassable(map, c.x, c.z, type);
+}
+
+function route(map: TerrainMap, start: GridCell, goal: GridCell, type: TrackType) {
+  if (type === CellType.Rail) {
+    const { steps, blocked } = findRailPath(map, start, goal);
+    return { path: steps as PlanStep[], blocked, newCells: steps.filter((s) => s.isNew).length };
+  }
+  const { path, blocked } = findTrackPath(map, start, goal, type);
+  return { path: path as PlanStep[], blocked, newCells: cellsToBuild(map, path, type).length };
+}
 
 export type PathBuildingState = 'idle' | 'selecting_end';
 
 export interface PathPlanSnapshot {
   pathbuildingState: PathBuildingState;
   startNode: GridCell | null;
-  previewPath: GridCell[];
+  previewPath: PlanStep[];
   /** Track type being planned. */
   type: TrackType;
   /** Goal not reachable — the preview is only the possible part (red). */
   blocked: boolean;
-  /** Number of NEW cells the route would build (existing track is free). */
+  /** NEW cells (road) / pieces (rail) the route would build; existing track is free. */
   newCells: number;
 }
 
@@ -57,10 +79,10 @@ export class PathPlan {
     this.snap = {
       pathbuildingState: 'selecting_end',
       startNode: { ...start },
-      previewPath: [{ ...start }],
+      previewPath: type === CellType.Rail ? [] : [{ ...start }],
       type,
       blocked: false,
-      newCells: map.cells[start.x][start.z] === type ? 0 : 1,
+      newCells: type === CellType.Rail || map.cells[start.x][start.z] === type ? 0 : 1,
     };
     this.lastGoal = `${start.x},${start.z}`;
     this.goalCell = { ...start };
@@ -75,13 +97,8 @@ export class PathPlan {
     if (!force && key === this.lastGoal) return;
     this.lastGoal = key;
     this.goalCell = { ...goal };
-    const { path, blocked } = findTrackPath(map, s.startNode, goal, s.type);
-    this.snap = {
-      ...s,
-      previewPath: path,
-      blocked,
-      newCells: cellsToBuild(map, path, s.type).length,
-    };
+    const { path, blocked, newCells } = route(map, s.startNode, goal, s.type);
+    this.snap = { ...s, previewPath: path, blocked, newCells };
     this.emit();
   }
 
@@ -91,7 +108,7 @@ export class PathPlan {
     if (s.pathbuildingState !== 'selecting_end' || !s.startNode) return;
     const st = s.startNode;
     // The start cell itself may have become unusable (e.g. the city grew).
-    if (!isTrackPassable(map, st.x, st.z, s.type)) {
+    if (!canStartRoute(map, st, s.type)) {
       this.clear();
       return;
     }

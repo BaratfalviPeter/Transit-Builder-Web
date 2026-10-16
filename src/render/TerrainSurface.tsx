@@ -194,7 +194,8 @@ function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.C
     return out.multiplyScalar(wob);
   }
   let palette: THREE.Color[] | null = null;
-  if (type === CellType.Empty || type === CellType.IndustryLot) palette = PAL.grass;
+  // Rail cells show the ground between/around the (half-cell) track pieces.
+  if (type === CellType.Empty || type === CellType.IndustryLot || type === CellType.Rail) palette = PAL.grass;
   if (!palette) return out.copy(surfaceColor(type));
   const pick = Math.floor(hash01(x, z, map.seed + 17) * palette.length);
   out.copy(palette[pick]);

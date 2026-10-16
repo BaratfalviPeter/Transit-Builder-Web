@@ -12,7 +12,6 @@
 import {
   CellType,
   MAX_GEN_LEVEL,
-  canBuildRailAt,
   canBuildRoadAt,
   canBulldoze,
   canClearProps,
@@ -23,6 +22,7 @@ import {
   type GenerateOptions,
   type TerrainMap,
 } from './terrain';
+import { canAddRailPiece, railBitsAt, roadCrossingAxis } from './railPieces';
 
 type Listener = () => void;
 
@@ -91,44 +91,73 @@ export class TerrainStore {
     return true;
   }
 
-  /** Build rail on `(x, z)` — same placement rules as a road. */
-  buildRail(x: number, z: number): boolean {
-    if (!canBuildRailAt(this.map, x, z)) return false;
-    this.applyCell(x, z, CellType.Rail);
-    this.emit();
-    return true;
-  }
-
   /**
-   * Build a whole planned route of `type` (Road or Rail) in ONE commit + ONE
-   * emit, so the overlays rebuild once instead of once per cell. Cells that
-   * already hold `type` are skipped (joined, not rebuilt). Each new cell is
-   * checked against the build rules as the route grows, so the result is the
-   * same as building it cell by cell. Returns the number of cells placed.
+   * Build a whole planned ROAD route in ONE commit + ONE emit, so the overlays
+   * rebuild once instead of once per cell. Existing road cells are skipped
+   * (joined, not rebuilt). A straight rail on the way becomes a level crossing
+   * (the cell turns Road, its rail piece stays). Each new cell is checked
+   * against the build rules as the route grows. Returns the cells placed.
    */
-  buildPath(path: ReadonlyArray<{ x: number; z: number }>, type: CellType.Road | CellType.Rail): number {
-    const canBuild = type === CellType.Road ? canBuildRoadAt : canBuildRailAt;
+  buildPath(path: ReadonlyArray<{ x: number; z: number }>): number {
     let cells: CellType[][] | null = null;
     const touched = new Set<number>();
     let placed = 0;
     for (const { x, z } of path) {
       if (!this.inBounds(x, z)) continue;
       const cur = (cells ?? this.map.cells)[x][z];
-      if (cur === type) continue;
+      if (cur === CellType.Road) continue;
       // Rules see the cells placed so far (slope-connectivity checks).
       const view = cells ? { ...this.map, cells } : this.map;
-      if (!canBuild(view, x, z)) continue;
+      const ok = cur === CellType.Rail ? roadCrossingAxis(view, x, z) !== null : canBuildRoadAt(view, x, z);
+      if (!ok) continue;
       if (!cells) cells = this.map.cells.slice();
       if (!touched.has(x)) {
         cells[x] = cells[x].slice();
         touched.add(x);
       }
-      cells[x][z] = type;
+      cells[x][z] = CellType.Road;
       placed++;
     }
     if (!cells || placed === 0) return 0;
-    if (type === CellType.Road) this.roadCount += placed;
+    this.roadCount += placed;
     this.commit({ cells }, true);
+    this.emit();
+    return placed;
+  }
+
+  /**
+   * Lay a planned RAIL route (a list of track pieces) in one commit. Pieces
+   * already on the map are skipped; each new one is checked with
+   * `canAddRailPiece` against the pieces laid so far. Empty/Hill cells become
+   * Rail; Rail cells gain the piece (switch / crossing); a Road cell gains it
+   * as a level crossing. Returns the number of pieces placed.
+   */
+  buildRailRoute(steps: ReadonlyArray<{ x: number; z: number; piece: number }>): number {
+    const size = this.map.size;
+    const rails = this.map.rails ? this.map.rails.slice() : new Uint8Array(size * size);
+    let cells: CellType[][] | null = null;
+    const touched = new Set<number>();
+    let placed = 0;
+    for (const { x, z, piece } of steps) {
+      if (!this.inBounds(x, z)) continue;
+      const view: TerrainMap = { ...this.map, cells: cells ?? this.map.cells, rails };
+      const bit = 1 << piece;
+      if (rails[x * size + z] & bit) continue;
+      if (!canAddRailPiece(view, x, z, piece)) continue;
+      rails[x * size + z] |= bit;
+      const t = view.cells[x][z];
+      if (t === CellType.Empty || t === CellType.Hill) {
+        if (!cells) cells = this.map.cells.slice();
+        if (!touched.has(x)) {
+          cells[x] = cells[x].slice();
+          touched.add(x);
+        }
+        cells[x][z] = CellType.Rail;
+      }
+      placed++;
+    }
+    if (placed === 0) return 0;
+    this.commit(cells ? { cells, rails } : { rails }, true);
     this.emit();
     return placed;
   }
@@ -144,6 +173,13 @@ export class TerrainStore {
     const key = cellKey(this.map.size, x, z);
     const cleared = this.map.cleared ?? new Set<number>();
 
+    // Level crossing: the first bulldoze lifts the rails, keeping the road.
+    if (current === CellType.Road && railBitsAt(this.map, x, z)) {
+      this.commit({ rails: this.withoutRails(x, z) }, true);
+      this.emit();
+      return true;
+    }
+
     if (canBulldoze(current)) {
       // Road / rail / forest → bare ground, and mark it cleared so no fringe
       // tree or rock pops back onto the freshly cleared cell.
@@ -153,6 +189,7 @@ export class TerrainStore {
       this.map = { ...this.map, cleared: next };
       // A road/rail on a raised cell goes back to hillside, not flat grass.
       const raised = (current === CellType.Road || current === CellType.Rail) && this.map.heights[x][z] > 0;
+      if (current === CellType.Rail) this.map = { ...this.map, rails: this.withoutRails(x, z) };
       this.applyCell(x, z, raised ? CellType.Hill : CellType.Empty);
       this.emit();
       return true;
@@ -296,7 +333,12 @@ export class TerrainStore {
    * skip their geometry rebuild on pure height edits.
    */
   private commit(
-    partial: { cells?: CellType[][]; heights?: number[][]; cleared?: ReadonlySet<number> },
+    partial: {
+      cells?: CellType[][];
+      heights?: number[][];
+      cleared?: ReadonlySet<number>;
+      rails?: Uint8Array;
+    },
     typeChanged: boolean,
   ): void {
     this.map = {
@@ -305,6 +347,14 @@ export class TerrainStore {
       version: this.map.version + 1,
       cellsVersion: this.map.cellsVersion + (typeChanged ? 1 : 0),
     };
+  }
+
+  /** Copy of the rail layer with cell (x, z) cleared. */
+  private withoutRails(x: number, z: number): Uint8Array | undefined {
+    if (!this.map.rails) return undefined;
+    const rails = this.map.rails.slice();
+    rails[x * this.map.size + z] = 0;
+    return rails;
   }
 
   private countType(type: CellType): number {

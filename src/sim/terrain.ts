@@ -231,7 +231,7 @@ export function canBuildRailAt(map: TerrainMap, x: number, z: number): boolean {
  * there would climb two levels in one tile, which we forbid (you must step up
  * one level per cell: 0 -> 1 -> 2).
  */
-function cellRiseWithinOneStep(map: TerrainMap, x: number, z: number): boolean {
+export function cellRiseWithinOneStep(map: TerrainMap, x: number, z: number): boolean {
   const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
   const span = Math.max(h00, h10, h11, h01) - Math.min(h00, h10, h11, h01);
   return span <= HILL_STEP + 1e-6;
@@ -319,6 +319,13 @@ export interface TerrainMap {
    * keeps a cleared cell clear. Keys: `cellKey(size, x, z)`.
    */
   readonly cleared?: ReadonlySet<number>;
+  /**
+   * Rail track pieces per cell (see `railPieces.ts`): a 6-bit mask of the
+   * straight / curve pieces laid in the cell, index `cellKey(size, x, z)`.
+   * Rail cells (and Road cells with a level crossing) carry non-zero bits.
+   * Copy-on-write like the other layers; undefined = no rails anywhere.
+   */
+  readonly rails?: Uint8Array;
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.

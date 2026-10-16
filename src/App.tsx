@@ -5,6 +5,7 @@ import { GameCanvas } from './render/GameCanvas';
 import { Hud } from './ui/Hud';
 import { SidePanel } from './ui/SidePanel';
 import { TerraformConfirm } from './ui/TerraformConfirm';
+import { VisualTuner } from './ui/VisualTuner';
 
 /**
  * App root. Providers own the single simulation instances, shared between the
@@ -24,6 +25,7 @@ export default function App() {
           <Hud />
           <SidePanel />
           <TerraformConfirm />
+          <VisualTuner />
         </TerraformPlanProvider>
       </GameProvider>
     </TerrainProvider>

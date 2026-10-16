@@ -55,6 +55,9 @@ export function CameraRig() {
       }
     };
     const down = (e: KeyboardEvent) => {
+      // Don't steal keys while typing in a UI field (e.g. the visual tuner).
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const k = map(e.code);
       if (k) {
         keys.current[k] = true;

@@ -8,6 +8,7 @@
  */
 
 import { Grid } from '@react-three/drei';
+import { useVisualKeys } from './visualSettings';
 import { CellType } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
@@ -20,6 +21,8 @@ const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export function GridFloor({ cellSize, gridHalfExtent }: GridFloorProps) {
   const size = gridHalfExtent * 2 * cellSize;
+  const vis = useVisualKeys(['gridVisible', 'gridCell', 'gridSection'] as const);
+  if (!vis.gridVisible) return null;
 
   return (
     <Grid
@@ -35,10 +38,10 @@ export function GridFloor({ cellSize, gridHalfExtent }: GridFloorProps) {
       args={[size, size]}
       cellSize={cellSize}
       cellThickness={0.6}
-      cellColor="#6c8a3a"
+      cellColor={vis.gridCell}
       sectionSize={cellSize * 5}
       sectionThickness={0.9}
-      sectionColor="#62803a"
+      sectionColor={vis.gridSection}
       infiniteGrid={false}
       fadeDistance={size * 1.5}
       fadeStrength={1}

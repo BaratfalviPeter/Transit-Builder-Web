@@ -19,6 +19,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CellType, type TerrainMap } from '../sim';
 import { surfaceYAt } from './TerrainSurface';
+import { useVisualKeys } from './visualSettings';
 
 export interface MapGridProps {
   map: TerrainMap;
@@ -39,10 +40,13 @@ const TIERS = [
   [0.13, 0.26, 0.54],
 ] as const;
 
-const TREE_GREENS = ['#3f6a33', '#4a7a3a', '#365d2e', '#567f3c', '#2f5529'].map(
-  (c) => new THREE.Color(c),
-);
-const ROCK_GREYS = ['#6e6c69', '#7c7a76', '#5f5e5c', '#86847f'].map((c) => new THREE.Color(c));
+/** Palette sizes (colours themselves come from the visual tuner). */
+const TREE_SHADES = 5;
+const ROCK_SHADES = 4;
+const VISUAL_KEYS = [
+  'tree1', 'tree2', 'tree3', 'tree4', 'tree5', 'treeTipLight', 'trunk',
+  'rock1', 'rock2', 'rock3', 'rock4',
+] as const;
 
 // Shared geometries / materials (module level: created once).
 const TRUNK_GEOM = new THREE.CylinderGeometry(0.04, 0.055, 1, 6);
@@ -72,7 +76,7 @@ interface Tree {
   z: number;
   s: number;
   rot: number;
-  color: THREE.Color;
+  color: number;
 }
 interface Rock {
   x: number;
@@ -84,7 +88,7 @@ interface Rock {
   rx: number;
   ry: number;
   rz: number;
-  color: THREE.Color;
+  color: number;
 }
 
 function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Rock[] } {
@@ -100,7 +104,7 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
       z: (z - half + v) * cellSize,
       s: s * cellSize,
       rot: hash01(x * 7 + k, z, seed + 5) * Math.PI * 2,
-      color: TREE_GREENS[Math.floor(hash01(x, z * 3 + k, seed + 9) * TREE_GREENS.length)],
+      color: Math.floor(hash01(x, z * 3 + k, seed + 9) * TREE_SHADES),
     });
   };
   const addRock = (x: number, z: number, k: number, u: number, v: number, big: number) => {
@@ -115,7 +119,7 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
       rx: hash01(x, z, seed + 59 + k) * Math.PI,
       ry: hash01(x, z, seed + 61 + k) * Math.PI * 2,
       rz: hash01(x, z, seed + 67 + k) * Math.PI,
-      color: ROCK_GREYS[Math.floor(hash01(x + k, z, seed + 71) * ROCK_GREYS.length)],
+      color: Math.floor(hash01(x + k, z, seed + 71) * ROCK_SHADES),
     });
   };
   // A jittered spot inside the cell, kept away from the edges.
@@ -174,7 +178,13 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
   const tierRefs = useRef<Array<THREE.InstancedMesh | null>>([]);
   const rockRef = useRef<THREE.InstancedMesh>(null);
 
+  const vis = useVisualKeys(VISUAL_KEYS);
+  const visSig = VISUAL_KEYS.map((k) => vis[k]).join('|');
+
   useLayoutEffect(() => {
+    const greens = [vis.tree1, vis.tree2, vis.tree3, vis.tree4, vis.tree5].map((c) => new THREE.Color(c));
+    const greys = [vis.rock1, vis.rock2, vis.rock3, vis.rock4].map((c) => new THREE.Color(c));
+    TRUNK_MAT.color.set(vis.trunk);
     const d = new THREE.Object3D();
     const trunk = trunkRef.current;
     if (trunk) {
@@ -199,7 +209,7 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
         d.updateMatrix();
         mesh.setMatrixAt(i, d.matrix);
         // Upper tiers a touch lighter (sun-catching tips).
-        mesh.setColorAt(i, c.copy(t.color).multiplyScalar(1 + ti * 0.08));
+        mesh.setColorAt(i, c.copy(greens[t.color]).multiplyScalar(1 + ti * vis.treeTipLight));
       });
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -213,13 +223,14 @@ export function MapGrid({ map, cellSize }: MapGridProps) {
         d.scale.set(r.sx, r.sy, r.sz);
         d.updateMatrix();
         rock.setMatrixAt(i, d.matrix);
-        rock.setColorAt(i, r.color);
+        rock.setColorAt(i, greys[r.color]);
       });
       rock.instanceMatrix.needsUpdate = true;
       if (rock.instanceColor) rock.instanceColor.needsUpdate = true;
       rock.computeBoundingSphere();
     }
-  }, [trees, rocks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trees, rocks, visSig]);
 
   return (
     <group>

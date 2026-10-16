@@ -24,7 +24,7 @@ export function Hud() {
       </div>
 
       <div className="hud__hint">
-        Út/sín: klikk a kezdőpontra, majd a célpontra (Jobb klikk/Esc: mégse) · Földmunka: jelöld ki a cellákat (piros), majd
+        Út/sín: klikk a kezdőpontra, majd a célpontra (sínnél R: indulási irány · Jobb klikk/Esc: mégse) · Földmunka: jelöld ki a cellákat (piros), majd
         Építés · Mozgás: WASD/nyilak · Jobb húzás: forgatás · Görgő: zoom
       </div>
     </div>

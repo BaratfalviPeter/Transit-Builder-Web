@@ -15,9 +15,12 @@
  *     flat ground, slightly penalised so it isn't done by accident),
  *   - a straight piece across a straight road makes a level crossing.
  *
- * Joining is decided by the cursor: starting on an existing line, the route
- * branches off whichever way leads to the cursor; ending on one, it curves in
- * and merges in the direction it is travelling.
+ * Routes are octilinear (Mini Metro style): the exact octile heuristic plus a
+ * high bend cost give the fewest-bend route — on open ground one straight leg
+ * and one 45° diagonal leg joined by a single smooth curve. No manual rotation:
+ * starting on an existing line the route can only leave it within 45° of the
+ * line (a turnout, branching off diagonally from the side toward the cursor);
+ * ending on one it curves in and merges diagonally from the side.
  */
 
 import {
@@ -56,8 +59,12 @@ const R = MIN_RUN + 1;
 const DIAG_LEN = Math.SQRT1_2;
 /** Existing track is only a bit cheaper, so routes don't wander along it. */
 const REUSE = 0.85;
-/** Per 45° heading change: favours long straights/diagonals over wiggles. */
-const TURN_COST = 1.6;
+/**
+ * Per 45° heading change. High on purpose: with the exact octile heuristic
+ * below the search returns the route with the FEWEST bends — on open ground
+ * one straight leg + one 45° diagonal leg (Mini Metro style), no wiggles.
+ */
+const TURN_COST = 3.5;
 const CLIMB_COST = 0.4;
 /** A new piece sharing a side with existing ones (creates a switch). */
 const JUNCTION_COST = 2;
@@ -65,12 +72,16 @@ const JUNCTION_COST = 2;
 const DIAMOND_COST = 0.6;
 const LEVEL_CROSSING_COST = 1;
 /**
- * Heuristic weight. ≥ the true min cost per cell of fresh track (1), so the
- * search is a slightly greedy (weighted) A*: much faster on a 121² map, and
- * routes stay near-optimal; re-use of existing track is still preferred
- * locally via its lower step cost.
+ * Octile distance in piece costs: a straight piece advances one cell (cost 1),
+ * a diagonal pair advances (1, 1) for 2 × √½. So the cheapest bend-free cost
+ * from (dx, dz) is max − min + √2·min — exact on open ground, which keeps the
+ * search tight AND stops it zig-zagging toward the goal (the old Euclidean,
+ * over-weighted heuristic pulled routes along the straight line → wiggles).
  */
-const H_FACTOR = 1.15;
+function octile(dx: number, dz: number): number {
+  const a = Math.abs(dx), b = Math.abs(dz);
+  return Math.max(a, b) - Math.min(a, b) + Math.SQRT2 * Math.min(a, b);
+}
 const MAX_EXPANSIONS = 40_000;
 
 let buf: {
@@ -223,32 +234,10 @@ function retargetToRegion(map: TerrainMap, start: GridCell, goal: GridCell): { c
   return { cell: { x: bx, z: best - bx * n }, reachable: false };
 }
 
-/**
- * @param startHeading optional forced direction (0..7, see railPieces) the
- *   route must LEAVE point A in — set by the player with R. null = automatic.
- */
-export function findRailPath(
-  map: TerrainMap,
-  start: GridCell,
-  goalIn: GridCell,
-  startHeading: number | null = null,
-): RailPathResult {
+export function findRailPath(map: TerrainMap, start: GridCell, goalIn: GridCell): RailPathResult {
   const n = map.size;
   if (!canHostRail(map, start.x, start.z)) return { steps: [], blocked: true };
-  if (start.x === goalIn.x && start.z === goalIn.z) {
-    // Just A with a chosen direction: lay the one piece pointing that way.
-    if (startHeading === null) return { steps: [], blocked: false };
-    const bits = railBitsAt(map, start.x, start.z);
-    for (let s = 0; s < 4; s++) {
-      for (let to = 0; to < 4; to++) {
-        if (to === s) continue;
-        const piece = pieceBetween(s, to);
-        if (pieceHeading(piece, s) !== startHeading || !canAddRailPiece(map, start.x, start.z, piece)) continue;
-        return { steps: [{ ...start, piece, isNew: (bits & (1 << piece)) === 0 }], blocked: false };
-      }
-    }
-    return { steps: [], blocked: true };
-  }
+  if (start.x === goalIn.x && start.z === goalIn.z) return { steps: [], blocked: false };
   const near = reachableGoal(map, start, goalIn);
   const region = retargetToRegion(map, start, near.cell);
   const goal = region.cell;
@@ -270,7 +259,7 @@ export function findRailPath(
   };
   const heap = new Heap();
   const sid = (cell: number, s: number, hv: number, r: number) => ((cell * 4 + s) * 3 + hv) * R + r;
-  const hcost = (x: number, z: number) => Math.hypot(x - goal.x, z - goal.z) * H_FACTOR;
+  const hcost = (x: number, z: number) => octile(x - goal.x, z - goal.z);
 
   const push = (id: number, ng: number, prev: number, x: number, z: number) => {
     if (closed[id] === gen) return;
@@ -293,13 +282,11 @@ export function findRailPath(
         push(sid(startCell, a, variantOf(a, pieceHeading(p, a)), MIN_RUN), 0, -1, start.x, start.z);
       }
     }
-  } else if (startHeading !== null) {
-    // Forced direction: every (entry side, variant) whose heading is it.
-    for (let s = 0; s < 4; s++)
-      for (let hv = 0; hv < 3; hv++)
-        if (headingOf(s, hv) === startHeading) push(sid(startCell, s, hv, MIN_RUN), 0, -1, start.x, start.z);
   } else {
-    for (let s = 0; s < 4; s++) push(sid(startCell, s, 0, MIN_RUN), 0, -1, start.x, start.z);
+    // Fresh ground: leave A in any of the 8 directions, so the route can be
+    // diagonal-first or straight-first with no bend charged at A.
+    for (let s = 0; s < 4; s++)
+      for (let hv = 0; hv < 3; hv++) push(sid(startCell, s, hv, MIN_RUN), 0, -1, start.x, start.z);
   }
 
   let final = -1;
@@ -341,8 +328,6 @@ export function findRailPath(
       const dh = headingDiff(h, nh);
       if (dh > 1 || dh < -1) continue;
       if (dh !== 0 && r < MIN_RUN) continue;
-      // The first piece out of A follows the player's chosen direction.
-      if (startHeading !== null && from[id] === -1 && nh !== startHeading) continue;
       const exists = (bits & (1 << piece)) !== 0;
       if (!exists && !(allowedAt(x, z) & (1 << piece))) continue;
       // Level crossing: straight in, straight out.

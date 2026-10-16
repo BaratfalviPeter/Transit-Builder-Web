@@ -381,12 +381,6 @@ function Scene() {
     let rightDown: { x: number; y: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') pathPlan.clear();
-      // R / Shift+R: rotate the rail's starting direction at point A.
-      if (e.code === 'KeyR' && !e.repeat) {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        pathPlan.rotateStart(terrain.getMap(), e.shiftKey ? -1 : 1);
-      }
     };
     const onDown = (e: PointerEvent) => {
       if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY };
@@ -405,7 +399,7 @@ function Scene() {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [pathPlan, terrain]);
+  }, [pathPlan]);
 
   // Shared click + drag handlers, attached to the terrain surface so each hit
   // lands on the real geometry under the cursor.
@@ -505,7 +499,6 @@ function Scene() {
           cellSize={cellSize}
           rail={pathSnap.type === CellType.Rail}
           start={pathSnap.startNode}
-          startHeading={pathSnap.startHeading}
         />
       )}
 

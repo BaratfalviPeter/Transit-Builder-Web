@@ -46,8 +46,6 @@ export interface PathPreviewProps {
   rail?: boolean;
   /** Point A (always marked, even before the route has any piece). */
   start?: GridCell | null;
-  /** Rail: direction forced at A with R (0..7, 0 = +x, counter-clockwise). */
-  startHeading?: number | null;
 }
 
 export function PathPreview(props: PathPreviewProps) {
@@ -75,46 +73,6 @@ function useHolo(red: boolean) {
 }
 
 const BEACON_GEO = new THREE.CylinderGeometry(0.16, 0.16, 1.4, 10);
-const ARROW_GEO = (() => {
-  // Flat arrow lying on the ground, pointing +x (shaft + head).
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.45, -0.09);
-  shape.lineTo(0.2, -0.09);
-  shape.lineTo(0.2, -0.24);
-  shape.lineTo(0.62, 0);
-  shape.lineTo(0.2, 0.24);
-  shape.lineTo(0.2, 0.09);
-  shape.lineTo(-0.45, 0.09);
-  shape.closePath();
-  const g = new THREE.ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false });
-  g.rotateX(Math.PI / 2); // shape XY → ground XZ (extrude goes down)
-  g.translate(0, 0.06, 0);
-  return g;
-})();
-
-/** Ground arrow at A showing the R-chosen start direction. */
-function StartArrow({ cell, heading, map, cellSize, mat }: { cell: GridCell; heading: number; map: TerrainMap; cellSize: number; mat: THREE.Material }) {
-  const half = (map.size - 1) / 2;
-  // Heading k: angle k·45° from +x toward −z (north); rotation about +y.
-  const a = (heading * Math.PI) / 4;
-  const ahead = 0.9; // sit just in front of A, above the hologram
-  return (
-    <mesh
-      geometry={ARROW_GEO}
-      material={mat}
-      position={[
-        (cell.x - half + Math.cos(a) * ahead) * cellSize,
-        (groundAt(map, cell.x, cell.z, 0, 0) + 0.32) * cellSize,
-        (cell.z - half - Math.sin(a) * ahead) * cellSize,
-      ]}
-      rotation={[0, a, 0]}
-      scale={cellSize * 2}
-      raycast={() => null}
-      renderOrder={12}
-    />
-  );
-}
-
 /** Beacon pillars on the given cells. */
 function Beacons({ cells, map, cellSize, mat }: { cells: GridCell[]; map: TerrainMap; cellSize: number; mat: THREE.Material }) {
   const half = (map.size - 1) / 2;
@@ -140,7 +98,7 @@ function Beacons({ cells, map, cellSize, mat }: { cells: GridCell[]; map: Terrai
  * each planned piece, using the same smoothed centre-lines as the real track
  * (tangents blend with the existing network it joins).
  */
-function RailHologram({ path, red, map, cellSize, start, startHeading }: PathPreviewProps) {
+function RailHologram({ path, red, map, cellSize, start }: PathPreviewProps) {
   const mats = useHolo(red);
   const half = (map.size - 1) / 2;
   const geo = useMemo(() => {
@@ -175,9 +133,6 @@ function RailHologram({ path, red, map, cellSize, start, startHeading }: PathPre
       {geo.bed && <mesh geometry={geo.bed} material={mats.slab} raycast={() => null} renderOrder={10} />}
       {geo.line && <mesh geometry={geo.line} material={mats.glow} raycast={() => null} renderOrder={11} />}
       <Beacons cells={ends} map={map} cellSize={cellSize} mat={mats.glow} />
-      {start && startHeading != null && (
-        <StartArrow cell={start} heading={startHeading} map={map} cellSize={cellSize} mat={mats.glow} />
-      )}
     </group>
   );
 }

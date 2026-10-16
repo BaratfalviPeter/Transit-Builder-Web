@@ -18,7 +18,7 @@ export const VISUAL_DEFAULTS = {
   hemiIntensity: 0.42,
   hemiSky: '#bcd0e6',
   hemiGround: '#6d7a4a',
-  sunIntensity: 2.15,
+  sunIntensity: 2.0,
   sunColor: '#ffeccc',
   /** Sun direction: compass angle (deg) and height above the horizon (deg). */
   sunAzimuth: 27,
@@ -75,9 +75,9 @@ export const VISUAL_DEFAULTS = {
   cloudsVisible: true,
   cloudColor: '#f4eef2',
   cloudGlow: 0.2,
-  cloudCount: 12,
-  cloudSpeed: 0.65,
-  cloudShadows: true,
+  cloudCount: 8,
+  cloudSpeed: 0.5,
+  cloudShadows: false,
 
   // --- Birds ---
   birdsVisible: true,

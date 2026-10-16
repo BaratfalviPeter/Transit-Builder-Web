@@ -31,11 +31,25 @@ const GRAVEL_COLOR = RAIL_STYLE.color;
 const SLEEPER_COLOR = '#5a3f27';
 const RAIL_COLOR = '#9aa0a6';
 
-const SLEEPERS_PER_CELL = 4;
+/** Track geometry in cell units. */
+const RAIL_GAUGE = 0.25; // half-distance between the two rails
+const RAIL_HW = 0.03; // rail half-width
+const SLEEPER_HALF = 0.34; // sleeper half-length (across the track)
+const SLEEPER_HW = 0.055; // sleeper half-width (along the track)
+const SLEEPER_PITCH = 0.22; // spacing of sleepers along the track
 
 function isFlatRail(map: TerrainMap, x: number, z: number): boolean {
   const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
   return h00 === h10 && h10 === h11 && h11 === h01;
+}
+
+/** Does cell (x,z) connect to rail/road one step away? (rail auto-tiling) */
+function railConnects(map: TerrainMap, x: number, z: number, dx: number, dz: number): boolean {
+  const nx = x + dx;
+  const nz = z + dz;
+  if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) return false;
+  const t = map.cells[nx][nz];
+  return t === CellType.Rail || t === CellType.Road;
 }
 
 export function Rails({ map, cellSize }: RailsProps) {
@@ -59,7 +73,32 @@ export function Rails({ map, cellSize }: RailsProps) {
   );
 }
 
-/** Flat rail cells: gravel bed + sleepers + two rails, all instanced. */
+/** Flat ribbon quad on Y=y from (x0,z0)→(x1,z1), half-width hw, into `out`. */
+function ribbon(
+  out: number[],
+  x0: number, z0: number, x1: number, z1: number,
+  y: number, hw: number,
+): void {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dx, dz) || 1;
+  const nx = (-dz / len) * hw;
+  const nz = (dx / len) * hw;
+  out.push(
+    x0 + nx, y, z0 + nz, x1 + nx, y, z1 + nz, x1 - nx, y, z1 - nz,
+    x0 + nx, y, z0 + nz, x1 - nx, y, z1 - nz, x0 - nx, y, z0 - nz,
+  );
+}
+
+/**
+ * Flat rail cells: an instanced gravel bed PLUS auto-tiled sleepers + two rails
+ * built as merged ribbon geometry. The track follows the cell's connections:
+ *   - straight: sleepers perpendicular to the run, two rails along it,
+ *   - corner: the two rails curve through a 90° arc and sleepers fan along it,
+ *   - T / cross: the through track is continuous; a branch adds a short spur,
+ *   - dead-end / lone: a short stub of track.
+ * This mirrors the road auto-tiling so rails read as a real, curving network.
+ */
 function FlatRails({
   coords,
   map,
@@ -70,70 +109,120 @@ function FlatRails({
   cellSize: number;
 }) {
   const bedRef = useRef<THREE.InstancedMesh>(null);
-  const sleeperRef = useRef<THREE.InstancedMesh>(null);
-  const railRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
+
+  const { sleeperGeom, railGeom } = useMemo(() => {
+    const S: number[] = []; // sleeper triangles (wood)
+    const R: number[] = []; // rail triangles (metal)
+    const bedThick = RAIL_STYLE.scaleY;
+    for (const [x, z] of coords) {
+      const cornerH = cellCornerHeights(map, x, z)[0];
+      const topBed = FLAT_TOP + cornerH + SURFACE_LIFT + bedThick;
+      const sleeperY = (topBed + 0.03) * cellSize;
+      const railY = (topBed + 0.06) * cellSize;
+      const cx = (x - half) * cellSize;
+      const cz = (z - half) * cellSize;
+      const wx = (u: number) => cx + u * cellSize;
+      const wz = (v: number) => cz + v * cellSize;
+
+      const n = railConnects(map, x, z, 0, -1);
+      const s = railConnects(map, x, z, 0, 1);
+      const e = railConnects(map, x, z, 1, 0);
+      const w = railConnects(map, x, z, -1, 0);
+      const count = (n ? 1 : 0) + (s ? 1 : 0) + (e ? 1 : 0) + (w ? 1 : 0);
+
+      // --- Straight track along an axis, from u0..u1 (the "along" coord) ---
+      const straight = (axis: 'x' | 'z', a0: number, a1: number) => {
+        const along = (t: number): [number, number] => (axis === 'x' ? [t, 0] : [0, t]);
+        // Two rails offset across the track.
+        for (const off of [-RAIL_GAUGE, RAIL_GAUGE]) {
+          const p0 = along(a0), p1 = along(a1);
+          if (axis === 'x') ribbon(R, wx(p0[0]), wz(off), wx(p1[0]), wz(off), railY, RAIL_HW * cellSize);
+          else ribbon(R, wx(off), wz(p0[1]), wx(off), wz(p1[1]), railY, RAIL_HW * cellSize);
+        }
+        // Sleepers perpendicular, spaced along the run.
+        for (let t = a0 + SLEEPER_PITCH / 2; t <= a1 - 1e-6; t += SLEEPER_PITCH) {
+          if (axis === 'x') ribbon(S, wx(t), wz(-SLEEPER_HALF), wx(t), wz(SLEEPER_HALF), sleeperY, SLEEPER_HW * cellSize);
+          else ribbon(S, wx(-SLEEPER_HALF), wz(t), wx(SLEEPER_HALF), wz(t), sleeperY, SLEEPER_HW * cellSize);
+        }
+      };
+
+      // --- Curved corner track between two arms (e.g. E+S) ---
+      const corner = () => {
+        const dirX = e ? 1 : -1;
+        const dirZ = s ? 1 : -1;
+        const ccx = dirX * 0.5;
+        const ccz = dirZ * 0.5;
+        const a0 = Math.atan2(0 - ccz, dirX * 0.5 - ccx);
+        let a1 = Math.atan2(dirZ * 0.5 - ccz, 0 - ccx);
+        if (a1 - a0 > Math.PI) a1 -= Math.PI * 2;
+        if (a0 - a1 > Math.PI) a1 += Math.PI * 2;
+        const NSEG = 10;
+        // Two rails at radius 0.5 ± gauge; sleepers across them.
+        for (const rr of [0.5 - RAIL_GAUGE, 0.5 + RAIL_GAUGE]) {
+          let prev: [number, number] | null = null;
+          for (let i = 0; i <= NSEG; i++) {
+            const b = a0 + ((a1 - a0) * i) / NSEG;
+            const p: [number, number] = [ccx + Math.cos(b) * rr, ccz + Math.sin(b) * rr];
+            if (prev) ribbon(R, wx(prev[0]), wz(prev[1]), wx(p[0]), wz(p[1]), railY, RAIL_HW * cellSize);
+            prev = p;
+          }
+        }
+        const nTie = 5;
+        for (let i = 0; i < nTie; i++) {
+          const b = a0 + ((a1 - a0) * (i + 0.5)) / nTie;
+          const inx = ccx + Math.cos(b) * (0.5 - SLEEPER_HALF);
+          const inz = ccz + Math.sin(b) * (0.5 - SLEEPER_HALF);
+          const ox = ccx + Math.cos(b) * (0.5 + SLEEPER_HALF);
+          const oz = ccz + Math.sin(b) * (0.5 + SLEEPER_HALF);
+          ribbon(S, wx(inx), wz(inz), wx(ox), wz(oz), sleeperY, SLEEPER_HW * cellSize);
+        }
+      };
+
+      if (count === 0) {
+        straight('x', -0.2, 0.2);
+      } else if (count === 1) {
+        if (n) straight('z', -0.5, 0);
+        else if (s) straight('z', 0, 0.5);
+        else if (e) straight('x', 0, 0.5);
+        else straight('x', -0.5, 0);
+      } else if (count === 2 && ((n && s) || (e && w))) {
+        if (n && s) straight('z', -0.5, 0.5);
+        else straight('x', -0.5, 0.5);
+      } else if (count === 2) {
+        corner();
+      } else {
+        // T / cross: straight through on each present axis (overlaps in centre).
+        if (n || s) straight('z', n ? -0.5 : 0, s ? 0.5 : 0);
+        if (e || w) straight('x', w ? -0.5 : 0, e ? 0.5 : 0);
+      }
+    }
+    const sg = S.length ? new THREE.BufferGeometry() : null;
+    if (sg) { sg.setAttribute('position', new THREE.Float32BufferAttribute(S, 3)); sg.computeVertexNormals(); }
+    const rg = R.length ? new THREE.BufferGeometry() : null;
+    if (rg) { rg.setAttribute('position', new THREE.Float32BufferAttribute(R, 3)); rg.computeVertexNormals(); }
+    return { sleeperGeom: sg, railGeom: rg };
+  }, [coords, map, cellSize, half]);
 
   useLayoutEffect(() => {
     const bed = bedRef.current;
-    const sleeper = sleeperRef.current;
-    const rail = railRef.current;
-    if (!bed || !sleeper || !rail) return;
-
+    if (!bed) return;
     const dummy = new THREE.Object3D();
     const bedThick = RAIL_STYLE.scaleY * cellSize;
-    const sleeperH = 0.05 * cellSize;
-    const railH = 0.05 * cellSize;
-
-    let si = 0;
-    let ri = 0;
     for (let i = 0; i < coords.length; i++) {
       const [x, z] = coords[i];
       const cx = (x - half) * cellSize;
       const cz = (z - half) * cellSize;
       const cornerH = cellCornerHeights(map, x, z)[0];
       const top = (FLAT_TOP + cornerH) * cellSize + SURFACE_LIFT * cellSize;
-
-      // Gravel bed tile.
       dummy.position.set(cx, top + bedThick / 2, cz);
-      dummy.rotation.set(0, 0, 0);
       dummy.scale.set(cellSize, bedThick, cellSize);
       dummy.updateMatrix();
       bed.setMatrixAt(i, dummy.matrix);
-
-      // Sleepers (cross-ties) spanning the cell, spaced along Z.
-      for (let s = 0; s < SLEEPERS_PER_CELL; s++) {
-        const fz = (s + 0.5) / SLEEPERS_PER_CELL - 0.5; // -0.5..0.5
-        dummy.position.set(cx, top + bedThick + sleeperH / 2, cz + fz * cellSize);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(cellSize * 0.8, sleeperH, cellSize * 0.12);
-        dummy.updateMatrix();
-        sleeper.setMatrixAt(si++, dummy.matrix);
-      }
-
-      // Two parallel rails running along Z, offset in X.
-      for (const sx of [-0.25, 0.25]) {
-        dummy.position.set(
-          cx + sx * cellSize,
-          top + bedThick + sleeperH + railH / 2,
-          cz,
-        );
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(cellSize * 0.06, railH, cellSize);
-        dummy.updateMatrix();
-        rail.setMatrixAt(ri++, dummy.matrix);
-      }
     }
-
     bed.count = coords.length;
-    sleeper.count = coords.length * SLEEPERS_PER_CELL;
-    rail.count = coords.length * 2;
     bed.instanceMatrix.needsUpdate = true;
-    sleeper.instanceMatrix.needsUpdate = true;
-    rail.instanceMatrix.needsUpdate = true;
     bed.computeBoundingSphere();
-    sleeper.computeBoundingSphere();
-    rail.computeBoundingSphere();
   }, [coords, cellSize, half, map]);
 
   if (coords.length === 0) return null;
@@ -148,7 +237,7 @@ function FlatRails({
       >
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial
-        ref={patchRef}
+          ref={patchRef}
           color={GRAVEL_COLOR}
           roughness={1}
           polygonOffset
@@ -156,24 +245,31 @@ function FlatRails({
           polygonOffsetUnits={-1}
         />
       </instancedMesh>
-      <instancedMesh
-        ref={sleeperRef}
-        args={[undefined, undefined, coords.length * SLEEPERS_PER_CELL]}
-        castShadow
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-        ref={patchRef} color={SLEEPER_COLOR} roughness={0.9} />
-      </instancedMesh>
-      <instancedMesh
-        ref={railRef}
-        args={[undefined, undefined, coords.length * 2]}
-        castShadow
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-        ref={patchRef} color={RAIL_COLOR} metalness={0.6} roughness={0.4} />
-      </instancedMesh>
+      {sleeperGeom && (
+        <mesh geometry={sleeperGeom} castShadow>
+          <meshStandardMaterial
+            ref={patchRef}
+            color={SLEEPER_COLOR}
+            roughness={0.9}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
+        </mesh>
+      )}
+      {railGeom && (
+        <mesh geometry={railGeom} castShadow>
+          <meshStandardMaterial
+            ref={patchRef}
+            color={RAIL_COLOR}
+            metalness={0.6}
+            roughness={0.4}
+            polygonOffset
+            polygonOffsetFactor={-3}
+            polygonOffsetUnits={-3}
+          />
+        </mesh>
+      )}
     </group>
   );
 }

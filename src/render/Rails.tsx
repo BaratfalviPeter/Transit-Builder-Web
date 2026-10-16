@@ -90,6 +90,72 @@ function ribbon(
   );
 }
 
+/** 2D point in cell-local (u, v) ∈ [-0.5, 0.5]. */
+type P2 = [number, number];
+
+/**
+ * A raised 3D rail bar (a thin box cross-section) swept along a centre-line
+ * polyline `pts` (cell-local u,v). Emits side walls + a top strip so the rail
+ * reads as a solid steel bar, not a flat sticker. Local → world via wx/wz; the
+ * bar sits between railY and railTop.
+ */
+function railBar(
+  out: number[],
+  pts: P2[],
+  hw: number,
+  railY: number,
+  railTop: number,
+  wx: (u: number) => number,
+  wz: (v: number) => number,
+): void {
+  const L = pts.length;
+  if (L < 2) return;
+  // Per-point left/right offset points (world), using segment normals averaged
+  // at joints so the ribbon keeps constant width around curves.
+  const left: P2[] = [];
+  const right: P2[] = [];
+  for (let i = 0; i < L; i++) {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(L - 1, i + 1)];
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const n = Math.hypot(dx, dz) || 1;
+    const nx = (-dz / n) * hw;
+    const nz = (dx / n) * hw;
+    left.push([pts[i][0] + nx, pts[i][1] + nz]);
+    right.push([pts[i][0] - nx, pts[i][1] - nz]);
+  }
+  const W = (p: P2, y: number): [number, number, number] => [wx(p[0]), y, wz(p[1])];
+  const quad = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+    d: [number, number, number],
+  ) => out.push(...a, ...b, ...c, ...a, ...c, ...d);
+  for (let i = 0; i < L - 1; i++) {
+    const l0 = left[i], l1 = left[i + 1];
+    const r0 = right[i], r1 = right[i + 1];
+    // Top strip.
+    quad(W(l0, railTop), W(l1, railTop), W(r1, railTop), W(r0, railTop));
+    // Outer + inner side walls.
+    quad(W(l0, railY), W(l1, railY), W(l1, railTop), W(l0, railTop));
+    quad(W(r1, railY), W(r0, railY), W(r0, railTop), W(r1, railTop));
+  }
+}
+
+/** Cubic Bézier sample at t for control points p0..p3. */
+function bezier(p0: P2, p1: P2, p2: P2, p3: P2, t: number): P2 {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return [
+    a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+    a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
+  ];
+}
+
 /**
  * Flat rail cells: an instanced gravel bed PLUS auto-tiled sleepers + two rails
  * built as merged ribbon geometry. The track follows the cell's connections:
@@ -115,86 +181,113 @@ function FlatRails({
     const S: number[] = []; // sleeper triangles (wood)
     const R: number[] = []; // rail triangles (metal)
     const bedThick = RAIL_STYLE.scaleY;
+    // Edge mid-points of the cell toward each side, in local (u, v).
+    const EDGE: Record<'n' | 's' | 'e' | 'w', P2> = {
+      n: [0, -0.5],
+      s: [0, 0.5],
+      e: [0.5, 0],
+      w: [-0.5, 0],
+    };
+    const C: P2 = [0, 0];
+
     for (const [x, z] of coords) {
       const cornerH = cellCornerHeights(map, x, z)[0];
       const topBed = FLAT_TOP + cornerH + SURFACE_LIFT + bedThick;
       const sleeperY = (topBed + 0.03) * cellSize;
-      const railY = (topBed + 0.06) * cellSize;
+      const railY = (topBed + 0.05) * cellSize;
+      const railTop = (topBed + 0.1) * cellSize;
       const cx = (x - half) * cellSize;
       const cz = (z - half) * cellSize;
       const wx = (u: number) => cx + u * cellSize;
       const wz = (v: number) => cz + v * cellSize;
+      const gauge = RAIL_GAUGE;
+      const hw = RAIL_HW * cellSize;
 
       const n = railConnects(map, x, z, 0, -1);
       const s = railConnects(map, x, z, 0, 1);
       const e = railConnects(map, x, z, 1, 0);
       const w = railConnects(map, x, z, -1, 0);
-      const count = (n ? 1 : 0) + (s ? 1 : 0) + (e ? 1 : 0) + (w ? 1 : 0);
+      const sides = (['n', 's', 'e', 'w'] as const).filter((k) => ({ n, s, e, w }[k]));
+      const count = sides.length;
 
-      // --- Straight track along an axis, from u0..u1 (the "along" coord) ---
-      const straight = (axis: 'x' | 'z', a0: number, a1: number) => {
-        const along = (t: number): [number, number] => (axis === 'x' ? [t, 0] : [0, t]);
-        // Two rails offset across the track.
-        for (const off of [-RAIL_GAUGE, RAIL_GAUGE]) {
-          const p0 = along(a0), p1 = along(a1);
-          if (axis === 'x') ribbon(R, wx(p0[0]), wz(off), wx(p1[0]), wz(off), railY, RAIL_HW * cellSize);
-          else ribbon(R, wx(off), wz(p0[1]), wx(off), wz(p1[1]), railY, RAIL_HW * cellSize);
+      // Perpendicular unit (in u,v) of a direction, for the two rail offsets.
+      const perp = (p: P2): P2 => {
+        const n2 = Math.hypot(p[0], p[1]) || 1;
+        return [-p[1] / n2, p[0] / n2];
+      };
+
+      /** Both steel rails + sleepers along a centre-line polyline. */
+      const track = (pts: P2[]) => {
+        for (const sgn of [-1, 1]) {
+          const rail: P2[] = pts.map((p, i) => {
+            const a = pts[Math.max(0, i - 1)];
+            const b = pts[Math.min(pts.length - 1, i + 1)];
+            const pv = perp([b[0] - a[0], b[1] - a[1]]);
+            return [p[0] + pv[0] * gauge * sgn, p[1] + pv[1] * gauge * sgn];
+          });
+          railBar(R, rail, hw, railY, railTop, wx, wz);
         }
-        // Sleepers perpendicular, spaced along the run.
-        for (let t = a0 + SLEEPER_PITCH / 2; t <= a1 - 1e-6; t += SLEEPER_PITCH) {
-          if (axis === 'x') ribbon(S, wx(t), wz(-SLEEPER_HALF), wx(t), wz(SLEEPER_HALF), sleeperY, SLEEPER_HW * cellSize);
-          else ribbon(S, wx(-SLEEPER_HALF), wz(t), wx(SLEEPER_HALF), wz(t), sleeperY, SLEEPER_HW * cellSize);
+        // Sleepers across the centre-line at a roughly even arc spacing.
+        let acc = SLEEPER_PITCH / 2;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i];
+          const b = pts[i + 1];
+          const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          while (acc <= seg) {
+            const t = acc / seg;
+            const mx = a[0] + (b[0] - a[0]) * t;
+            const mz = a[1] + (b[1] - a[1]) * t;
+            const pv = perp([b[0] - a[0], b[1] - a[1]]);
+            ribbon(
+              S,
+              wx(mx + pv[0] * SLEEPER_HALF), wz(mz + pv[1] * SLEEPER_HALF),
+              wx(mx - pv[0] * SLEEPER_HALF), wz(mz - pv[1] * SLEEPER_HALF),
+              sleeperY, SLEEPER_HW * cellSize,
+            );
+            acc += SLEEPER_PITCH;
+          }
+          acc -= seg;
         }
       };
 
-      // --- Curved corner track between two arms (e.g. E+S) ---
-      const corner = () => {
-        const dirX = e ? 1 : -1;
-        const dirZ = s ? 1 : -1;
-        const ccx = dirX * 0.5;
-        const ccz = dirZ * 0.5;
-        const a0 = Math.atan2(0 - ccz, dirX * 0.5 - ccx);
-        let a1 = Math.atan2(dirZ * 0.5 - ccz, 0 - ccx);
-        if (a1 - a0 > Math.PI) a1 -= Math.PI * 2;
-        if (a0 - a1 > Math.PI) a1 += Math.PI * 2;
-        const NSEG = 10;
-        // Two rails at radius 0.5 ± gauge; sleepers across them.
-        for (const rr of [0.5 - RAIL_GAUGE, 0.5 + RAIL_GAUGE]) {
-          let prev: [number, number] | null = null;
-          for (let i = 0; i <= NSEG; i++) {
-            const b = a0 + ((a1 - a0) * i) / NSEG;
-            const p: [number, number] = [ccx + Math.cos(b) * rr, ccz + Math.sin(b) * rr];
-            if (prev) ribbon(R, wx(prev[0]), wz(prev[1]), wx(p[0]), wz(p[1]), railY, RAIL_HW * cellSize);
-            prev = p;
-          }
-        }
-        const nTie = 5;
-        for (let i = 0; i < nTie; i++) {
-          const b = a0 + ((a1 - a0) * (i + 0.5)) / nTie;
-          const inx = ccx + Math.cos(b) * (0.5 - SLEEPER_HALF);
-          const inz = ccz + Math.sin(b) * (0.5 - SLEEPER_HALF);
-          const ox = ccx + Math.cos(b) * (0.5 + SLEEPER_HALF);
-          const oz = ccz + Math.sin(b) * (0.5 + SLEEPER_HALF);
-          ribbon(S, wx(inx), wz(inz), wx(ox), wz(oz), sleeperY, SLEEPER_HW * cellSize);
-        }
+      /** Sample a cell edge→edge path: straight if opposite, Bézier if a bend. */
+      const path = (from: P2, to: P2): P2[] => {
+        const opposite = Math.abs(from[0] + to[0]) < 1e-6 && Math.abs(from[1] + to[1]) < 1e-6;
+        if (opposite) return [from, to];
+        // Sweeping curve: cubic Bézier whose end tangents point straight out of
+        // each edge (so it meets the neighbour's straight rail with no kink),
+        // handles pulled toward the centre for a gentle quarter-turn.
+        const h = 0.55;
+        const c1: P2 = [from[0] * (1 - h), from[1] * (1 - h)];
+        const c2: P2 = [to[0] * (1 - h), to[1] * (1 - h)];
+        const N = 12;
+        const out: P2[] = [];
+        for (let i = 0; i <= N; i++) out.push(bezier(from, c1, c2, to, i / N));
+        return out;
       };
 
       if (count === 0) {
-        straight('x', -0.2, 0.2);
+        track([[-0.22, 0], [0.22, 0]]); // lone stub
       } else if (count === 1) {
-        if (n) straight('z', -0.5, 0);
-        else if (s) straight('z', 0, 0.5);
-        else if (e) straight('x', 0, 0.5);
-        else straight('x', -0.5, 0);
-      } else if (count === 2 && ((n && s) || (e && w))) {
-        if (n && s) straight('z', -0.5, 0.5);
-        else straight('x', -0.5, 0.5);
+        track([C, EDGE[sides[0]]]); // dead-end: centre → the one edge
       } else if (count === 2) {
-        corner();
+        // Straight or a sweeping curve between the two connected edges.
+        track([...path(EDGE[sides[0]], EDGE[sides[1]])]);
       } else {
-        // T / cross: straight through on each present axis (overlaps in centre).
-        if (n || s) straight('z', n ? -0.5 : 0, s ? 0.5 : 0);
-        if (e || w) straight('x', w ? -0.5 : 0, e ? 0.5 : 0);
+        // SWITCH / crossroad: pick the main through line (a straight pair if
+        // present, else the first two edges) and draw it; every remaining arm
+        // joins it as a sweeping-curve branch (Y-turnout).
+        let mainA: 'n' | 's' | 'e' | 'w';
+        let mainB: 'n' | 's' | 'e' | 'w';
+        if (n && s) { mainA = 'n'; mainB = 's'; }
+        else if (e && w) { mainA = 'e'; mainB = 'w'; }
+        else { mainA = sides[0]; mainB = sides[1]; }
+        track(path(EDGE[mainA], EDGE[mainB]));
+        for (const k of sides) {
+          if (k === mainA || k === mainB) continue;
+          // Branch curves from its edge into the main line near the centre.
+          track(path(EDGE[k], EDGE[mainB]));
+        }
       }
     }
     const sg = S.length ? new THREE.BufferGeometry() : null;
@@ -203,6 +296,24 @@ function FlatRails({
     if (rg) { rg.setAttribute('position', new THREE.Float32BufferAttribute(R, 3)); rg.computeVertexNormals(); }
     return { sleeperGeom: sg, railGeom: rg };
   }, [coords, map, cellSize, half]);
+
+  // Yellow switch levers: one per switch/crossroad cell, beside the track.
+  const switches = useMemo(() => {
+    const out: Array<[number, number, number]> = []; // world x, y, z
+    const bedThick = RAIL_STYLE.scaleY;
+    for (const [x, z] of coords) {
+      let c = 0;
+      if (railConnects(map, x, z, 0, -1)) c++;
+      if (railConnects(map, x, z, 0, 1)) c++;
+      if (railConnects(map, x, z, 1, 0)) c++;
+      if (railConnects(map, x, z, -1, 0)) c++;
+      if (c < 3) continue;
+      const cornerH = cellCornerHeights(map, x, z)[0];
+      const y = (FLAT_TOP + cornerH + SURFACE_LIFT + bedThick) * cellSize;
+      out.push([(x - half + 0.32) * cellSize, y, (z - half + 0.32) * cellSize]);
+    }
+    return out;
+  }, [coords, map, half, cellSize]);
 
   useLayoutEffect(() => {
     const bed = bedRef.current;
@@ -270,6 +381,54 @@ function FlatRails({
           />
         </mesh>
       )}
+      {switches.length > 0 && (
+        <SwitchLevers positions={switches} cellSize={cellSize} />
+      )}
+    </group>
+  );
+}
+
+/** Small yellow switch-stand lever beside each turnout, instanced. */
+function SwitchLevers({ positions, cellSize }: { positions: Array<[number, number, number]>; cellSize: number }) {
+  const baseRef = useRef<THREE.InstancedMesh>(null);
+  const leverRef = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const d = new THREE.Object3D();
+    const base = baseRef.current;
+    const lever = leverRef.current;
+    if (base) {
+      positions.forEach(([x, y, z], i) => {
+        d.position.set(x, y + 0.03 * cellSize, z);
+        d.rotation.set(0, 0, 0);
+        d.scale.set(0.07 * cellSize, 0.06 * cellSize, 0.07 * cellSize);
+        d.updateMatrix();
+        base.setMatrixAt(i, d.matrix);
+      });
+      base.instanceMatrix.needsUpdate = true;
+      base.computeBoundingSphere();
+    }
+    if (lever) {
+      positions.forEach(([x, y, z], i) => {
+        d.position.set(x, y + 0.12 * cellSize, z);
+        d.rotation.set(0, 0, Math.PI / 5);
+        d.scale.set(0.02 * cellSize, 0.14 * cellSize, 0.02 * cellSize);
+        d.updateMatrix();
+        lever.setMatrixAt(i, d.matrix);
+      });
+      lever.instanceMatrix.needsUpdate = true;
+      lever.computeBoundingSphere();
+    }
+  }, [positions, cellSize]);
+  return (
+    <group>
+      <instancedMesh key={`b${positions.length}`} ref={baseRef} args={[undefined, undefined, positions.length]} castShadow>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial ref={patchRef} color="#2d2f34" roughness={0.6} metalness={0.3} />
+      </instancedMesh>
+      <instancedMesh key={`l${positions.length}`} ref={leverRef} args={[undefined, undefined, positions.length]} castShadow>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial ref={patchRef} color="#e8b82e" roughness={0.5} />
+      </instancedMesh>
     </group>
   );
 }

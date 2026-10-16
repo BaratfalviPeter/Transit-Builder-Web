@@ -6,15 +6,20 @@
  */
 
 export interface RenderConfig {
-  /** World-space size (in meters) of one grid cell. */
+  /**
+   * World-space size of one grid cell. Halved (2 → 1) when the grid was
+   * subdivided 2×: the map keeps its physical size (121 cells × 1 = the old
+   * 61 × 2), but each old cell is now 4 finer cells. Everything that scales by
+   * cellSize (roads, rails, industries, trees, rocks, city blocks, terrain
+   * relief) automatically becomes half as big; snapping/picking use cellSize.
+   */
   cellSize: number;
   /** Number of cells along one half-axis; grid spans [-gridHalfExtent, +gridHalfExtent]. */
   gridHalfExtent: number;
 }
 
 export const DEFAULT_CONFIG: RenderConfig = {
-  cellSize: 2,
-  // Covers the full 61×61 play area (half-extent >= size/2) so the click/pick
-  // plane and reference grid span the whole map.
-  gridHalfExtent: 40,
+  cellSize: 1,
+  // Covers the full 121×121 play area (half-extent >= size/2).
+  gridHalfExtent: 80,
 };

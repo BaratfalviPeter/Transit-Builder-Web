@@ -13,6 +13,7 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useVisualKeys } from './visualSettings';
 
 export interface CloudsProps {
   /** Half-width of the area the clouds wrap within (world units). */
@@ -49,6 +50,12 @@ interface CloudDef {
 }
 
 export function Clouds({ extent, count = 8, speed = 0.8, seed = 7 }: CloudsProps) {
+  const vis = useVisualKeys(['cloudsVisible', 'cloudColor', 'cloudGlow', 'cloudCount', 'cloudSpeed', 'cloudShadows'] as const);
+  CLOUD_MAT.color.set(vis.cloudColor);
+  CLOUD_MAT.emissive.set(vis.cloudColor);
+  CLOUD_MAT.emissiveIntensity = vis.cloudGlow;
+  count = Math.round(vis.cloudCount);
+  speed = vis.cloudSpeed;
   const clouds = useMemo<CloudDef[]>(() => {
     const out: CloudDef[] = [];
     let k = 0;
@@ -91,6 +98,7 @@ export function Clouds({ extent, count = 8, speed = 0.8, seed = 7 }: CloudsProps
     }
   });
 
+  if (!vis.cloudsVisible) return null;
   return (
     <group>
       {clouds.map((c, i) => (
@@ -109,7 +117,7 @@ export function Clouds({ extent, count = 8, speed = 0.8, seed = 7 }: CloudsProps
               position={p.p}
               scale={[p.r, p.r * 0.8, p.r]}
               rotation={[j * 0.7, j * 1.3, 0]}
-              castShadow
+              castShadow={vis.cloudShadows}
             />
           ))}
         </group>

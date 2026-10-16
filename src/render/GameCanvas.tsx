@@ -11,7 +11,9 @@
  * stores so the canvas, toolbar, and HUD all stay in sync.
  */
 
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+import { sunPosition, useVisual } from './visualSettings';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
@@ -81,35 +83,49 @@ const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
 
 /**
- * Sun direction: the requested [20, 30, 10] angle, pushed further out along the
- * same direction so the whole map sits in front of the shadow camera's near
- * plane (the light aims at the origin = map centre).
- */
-const SUN_POS: [number, number, number] = [20 * 3.5, 30 * 3.5, 10 * 3.5];
-/**
  * Half-extent of the orthographic shadow frustum. The map is 61 cells × 2 =
  * 122 units; its half-diagonal (~86) plus margin covers it from any angle.
  */
 const SHADOW_EXTENT = 92;
 
-function Sun() {
+/**
+ * Lights + exposure + background, all driven live by the "Látvány" tuner
+ * (visualSettings). The sun aims at the origin (map centre) from the chosen
+ * azimuth/elevation, far enough out that the whole map is in front of the
+ * shadow camera's near plane.
+ */
+function Lights() {
+  const v = useVisual();
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    gl.toneMappingExposure = v.exposure;
+  }, [gl, v.exposure]);
+  useEffect(() => {
+    scene.background = new THREE.Color(v.background);
+  }, [scene, v.background]);
+  const sunPos = sunPosition(v.sunAzimuth, v.sunElevation);
   return (
-    <directionalLight
-      position={SUN_POS}
-      color="#fff3d6"
-      intensity={2.2}
-      castShadow
-      shadow-mapSize-width={4096}
-      shadow-mapSize-height={4096}
-      shadow-camera-left={-SHADOW_EXTENT}
-      shadow-camera-right={SHADOW_EXTENT}
-      shadow-camera-top={SHADOW_EXTENT}
-      shadow-camera-bottom={-SHADOW_EXTENT}
-      shadow-camera-near={1}
-      shadow-camera-far={320}
-      shadow-bias={-0.0004}
-      shadow-normalBias={0.04}
-    />
+    <>
+      <ambientLight intensity={v.ambientIntensity} color={v.ambientColor} />
+      <hemisphereLight args={[v.hemiSky, v.hemiGround, v.hemiIntensity]} />
+      <directionalLight
+        position={sunPos}
+        color={v.sunColor}
+        intensity={v.sunIntensity}
+        castShadow
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
+        shadow-camera-left={-SHADOW_EXTENT}
+        shadow-camera-right={SHADOW_EXTENT}
+        shadow-camera-top={SHADOW_EXTENT}
+        shadow-camera-bottom={-SHADOW_EXTENT}
+        shadow-camera-near={1}
+        shadow-camera-far={320}
+        shadow-bias={v.shadowBias}
+        shadow-normalBias={v.shadowNormalBias}
+      />
+    </>
   );
 }
 
@@ -213,9 +229,7 @@ function Scene() {
 
       {/* Lighting — warm "diorama" look: soft warm ambient, a cool sky / green
           ground bounce, and one strong shadow-casting sun. */}
-      <ambientLight intensity={0.4} color="#fdf6e3" />
-      <hemisphereLight args={['#cfe3ff', '#5d7a45', 0.35]} />
-      <Sun />
+      <Lights />
 
       {/* ONE unified heightmap terrain mesh (grass + hills + ramps + water +
           city). Carries the build handlers, so every click hits the real
@@ -257,7 +271,6 @@ export function GameCanvas() {
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}
     >
-      <color attach="background" args={['#bcd6e6']} />
       <Scene />
     </Canvas>
   );

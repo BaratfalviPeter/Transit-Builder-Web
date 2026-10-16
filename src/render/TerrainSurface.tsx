@@ -18,10 +18,16 @@
  * sets needsUpdate — no React re-render, no reallocation.
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CellType, cornerHeightAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import {
+  getVisual,
+  subscribeVisual,
+  useVisualKeys,
+  type VisualSettings,
+} from './visualSettings';
 import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface TerrainSurfaceProps {
@@ -90,39 +96,62 @@ function cornerJitter(map: TerrainMap, cx: number, cz: number): number {
   return (hash01(cx, cz, map.seed) * 2 - 1) * GRASS_CORNER_AMP;
 }
 
-/** Grass shade palette (light ↔ dark), picked per cell. */
-// Warm, slightly olive meadow greens (close together, so no checkerboard).
-const GRASS_SHADES = ['#7e9a45', '#76923f', '#86a24b', '#7a9642'].map(
-  (c) => new THREE.Color(c),
-);
-const HILL_SHADES = ['#8b9a52', '#83924b', '#93a259'].map((c) => new THREE.Color(c));
+/**
+ * Live terrain palette, refreshed from the visual-settings store (the in-game
+ * "Látvány" tuner). Mutable module state so writeCell stays allocation-free.
+ */
+const PAL = {
+  grass: [] as THREE.Color[],
+  hill: [] as THREE.Color[],
+  forest: new THREE.Color(),
+  water: new THREE.Color(),
+  city: new THREE.Color(),
+  wobble: 0.06,
+};
+/** Signature of the palette-relevant settings (to detect real changes). */
+function paletteSig(v: VisualSettings): string {
+  return [
+    v.grass1, v.grass2, v.grass3, v.grass4, v.hill1, v.hill2, v.hill3,
+    v.forestFloor, v.water, v.cliff, v.city, v.grassWobble,
+  ].join('|');
+}
+function refreshPalette(v: VisualSettings): void {
+  PAL.grass = [v.grass1, v.grass2, v.grass3, v.grass4].map((c) => new THREE.Color(c));
+  PAL.hill = [v.hill1, v.hill2, v.hill3].map((c) => new THREE.Color(c));
+  PAL.forest.set(v.forestFloor);
+  PAL.water.set(v.water);
+  PAL.city.set(v.city);
+  SIDE_COLOR.set(v.cliff);
+  PAL.wobble = v.grassWobble;
+}
+refreshPalette(getVisual());
 
 /** Top colour of one top triangle (i = 0..3) of cell (x, z). */
 function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.Color): THREE.Color {
   const type = map.cells[x][z];
   let palette: THREE.Color[] | null = null;
-  if (type === CellType.Empty || type === CellType.IndustryLot) palette = GRASS_SHADES;
-  else if (type === CellType.Hill) palette = HILL_SHADES;
+  if (type === CellType.Empty || type === CellType.IndustryLot) palette = PAL.grass;
+  else if (type === CellType.Hill) palette = PAL.hill;
   if (!palette) return out.copy(surfaceColor(type));
   const pick = Math.floor(hash01(x, z, map.seed + 17) * palette.length);
   out.copy(palette[pick]);
   // Small per-facet brightness wobble for an organic, hand-painted feel.
-  const k = 0.97 + hash01(x * 4 + i, z, map.seed + 31) * 0.06;
+  const k = 1 - PAL.wobble / 2 + hash01(x * 4 + i, z, map.seed + 31) * PAL.wobble;
   return out.multiplyScalar(k);
 }
 
 function surfaceColor(type: CellType): THREE.Color {
   switch (type) {
     case CellType.Water:
-      return new THREE.Color(CELL_STYLE[CellType.Water].color);
+      return PAL.water;
     case CellType.Forest:
-      return new THREE.Color(CELL_STYLE[CellType.Forest].color);
+      return PAL.forest;
     case CellType.Hill:
-      return new THREE.Color(CELL_STYLE[CellType.Hill].color);
+      return PAL.hill[0];
     case CellType.CityCenter:
-      return new THREE.Color(CELL_STYLE[CellType.CityCenter].color);
+      return PAL.city;
     default:
-      return new THREE.Color(CELL_STYLE[CellType.Empty].color);
+      return PAL.grass[0];
   }
 }
 
@@ -158,9 +187,38 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
     }
   }, [map, cellSize]);
 
+  // Live recolour from the tuner: rewrite every cell in the SAME buffers (the
+  // positions come out identical, so no normal recompute is needed).
+  useEffect(() => {
+    let sig = paletteSig(getVisual());
+    return subscribeVisual(() => {
+      const v = getVisual();
+      const next = paletteSig(v);
+      if (next === sig) return;
+      sig = next;
+      refreshPalette(v);
+      const geom = geomRef.current;
+      const m = prevMapRef.current;
+      if (!geom || !m) return;
+      const pos = geom.getAttribute('position') as THREE.BufferAttribute;
+      const col = geom.getAttribute('color') as THREE.BufferAttribute;
+      for (let x = 0; x < m.size; x++)
+        for (let z = 0; z < m.size; z++)
+          writeCell(
+            pos.array as Float32Array,
+            col.array as Float32Array,
+            (x * m.size + z) * VERTS_PER_CELL,
+            m, x, z, builtForRef.current!.cellSize,
+          );
+      col.needsUpdate = true;
+    });
+  }, []);
+
+  const { terrainRoughness } = useVisualKeys(['terrainRoughness'] as const);
+
   return (
     <mesh ref={meshRef} receiveShadow castShadow {...handlers}>
-      <meshStandardMaterial vertexColors flatShading roughness={0.95} />
+      <meshStandardMaterial vertexColors flatShading roughness={terrainRoughness} />
     </mesh>
   );
 }

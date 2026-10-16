@@ -82,10 +82,10 @@ export const VISUAL_DEFAULTS = {
   /** Darkness of the (shader-projected) cloud shadows, 0..1. */
   cloudShadowStrength: 0.45,
   /**
-   * Road corner centre-line bend angle (degrees). 90 = a full rounded quarter
-   * turn; smaller = tighter/sharper corner, larger = wider sweep.
+   * Extra rotation (degrees) of the dash marks inside a road corner. 0 keeps
+   * them aligned with the curve (tangent); ± spins each corner dash in place.
    */
-  roadCornerAngle: 90,
+  roadCornerAngle: 0,
 
   // --- Birds ---
   birdsVisible: true,

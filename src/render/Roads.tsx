@@ -110,9 +110,11 @@ function FlatRoads({
   const markRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
 
-  // Tunable corner "angle": how far the centre-line bends at a corner. 90° =
-  // full rounded quarter turn; lower = tighter/sharper; higher = wider sweep.
+  // Tunable EXTRA rotation of the dashes inside a corner (degrees → radians).
+  // 0 = aligned with the arc tangent (default); ± spins each corner dash in
+  // place without moving it off the curve.
   const { roadCornerAngle } = useVisualKeys(['roadCornerAngle'] as const);
+  const cornerRot = (roadCornerAngle * Math.PI) / 180;
 
   // Per-cell AUTO-TILED marking plan. We classify each road cell by its 4-
   // neighbour mask and emit the matching dash set, so the white line reads as a
@@ -177,21 +179,15 @@ function FlatRoads({
         let span = ang1 - ang0;
         if (span > Math.PI) span -= Math.PI * 2;
         if (span < -Math.PI) span += Math.PI * 2; // the 90° (short) way
-        // Scale the swept angle by the tuner (default 90° = full span). The arc
-        // stays centred on the touch points' midpoint, so it still flows out of
-        // both straights but bends more (steeper) or less (shallower).
-        const mid = (ang0 + ang1) / 2;
-        const scale = roadCornerAngle / 90;
-        const sweptSpan = span * scale;
-        const sAng0 = mid - sweptSpan / 2;
-        const arcLen = Math.abs(sweptSpan) * R;
-        // One dash at each end sits ON the touch point so it meets the
-        // straight's dashes; the rest fill the arc at the shared PITCH.
+        const arcLen = Math.abs(span) * R;
+        // The dashes sit on the fixed quarter-arc; each one's ORIENTATION is
+        // the arc tangent (a + 90°) PLUS the user-tunable extra rotation
+        // `cornerRot` (radians, 0 = tangent/default). This lets the player spin
+        // the corner dashes without moving them off the curve.
         const N = Math.max(2, Math.round(arcLen / PITCH) + 1);
         for (let i = 0; i < N; i++) {
-          const a = sAng0 + (sweptSpan * i) / (N - 1); // include both endpoints
-          // Tangent direction = a ± 90°; dash long axis follows it.
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, DASH);
+          const a = ang0 + (span * i) / (N - 1); // include both endpoints
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2 + cornerRot, DASH);
         }
       } else {
         // T-junction (3) or crossroad (4): a dashed line toward each arm, same

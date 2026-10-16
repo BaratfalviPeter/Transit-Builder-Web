@@ -30,6 +30,7 @@ import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
 import { TerraformSelection } from './TerraformSelection';
 import {
+  CellType,
   TOOLS,
   useCityDevelopment,
   useGame,
@@ -216,7 +217,10 @@ function Scene() {
   // zig-zag staircases that free snaking produced.
   const lineStart = useRef<{ x: number; z: number } | null>(null);
   const lineAxis = useRef<'x' | 'z' | null>(null);
-  const lineAnchor = useRef<{ x: number; z: number } | null>(null);
+  // Cells built THIS gesture, in order from the start. Dragging back over the
+  // previous cell pops the tip (undo): we only ever bulldoze + refund cells we
+  // placed in this same drag, never pre-existing road.
+  const lineBuilt = useRef<Array<{ x: number; z: number; placed: boolean; cost: number }>>([]);
 
   const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
@@ -227,27 +231,31 @@ function Scene() {
       const tool = TOOLS[game.getActiveTool()];
       const isLine = tool.id === 'road' || tool.id === 'rail';
 
-      // Axis-locked straight-line build for road + rail.
-      const buildLine = (build: (x: number, z: number) => boolean): void => {
-        // First paint of a gesture: this cell is the line's start (and anchor).
+      // Axis-locked straight-line build for road + rail, with drag-back undo.
+      const buildLine = (
+        build: (x: number, z: number) => boolean,
+        type: CellType,
+      ): void => {
+        const stack = lineBuilt.current;
+
+        // First paint of a gesture: this cell is the line's start.
         if (!lineStart.current) {
           lineStart.current = { x, z };
           lastCell.current = `${x},${z}`;
-          if (terrain.inBounds(x, z) && game.canAfford(tool.cost) && build(x, z)) {
-            game.spend(tool.cost);
-            lineAnchor.current = { x, z };
-          }
+          if (!terrain.inBounds(x, z)) return;
+          const fresh = terrain.cellAt(x, z) !== type; // was it empty/not ours?
+          const placed = fresh && game.canAfford(tool.cost) && build(x, z);
+          if (placed) game.spend(tool.cost);
+          // Record the tip whether or not we placed, so retreat logic has an
+          // anchor; `placed` tells undo whether to bulldoze + refund.
+          stack.push({ x, z, placed, cost: tool.cost });
           return;
         }
         const start = lineStart.current;
 
         // Lock the axis on the first cell that differs from the start.
-        if (!lineAxis.current) {
-          if (x === start.x && z === start.z) {
-            // Still on the start cell: (re)build it, don't lock yet.
-          } else {
-            lineAxis.current = Math.abs(x - start.x) >= Math.abs(z - start.z) ? 'x' : 'z';
-          }
+        if (!lineAxis.current && !(x === start.x && z === start.z)) {
+          lineAxis.current = Math.abs(x - start.x) >= Math.abs(z - start.z) ? 'x' : 'z';
         }
         // Constrain the cursor to the locked line (project onto the row/col),
         // so diagonal wiggle keeps extending straight instead of stalling.
@@ -259,13 +267,31 @@ function Scene() {
         lastCell.current = key;
         if (!terrain.inBounds(x, z)) return;
 
-        // Each step must be the anchor's direct neighbour along the locked axis.
-        const a = lineAnchor.current;
-        if (a && Math.abs(a.x - x) + Math.abs(a.z - z) !== 1) return;
-        if (!game.canAfford(tool.cost)) return;
-        if (build(x, z)) {
-          game.spend(tool.cost);
-          lineAnchor.current = { x, z };
+        const tip = stack[stack.length - 1];
+
+        // DRAG BACK (undo): cursor landed on the cell just before the tip. Pop
+        // the tip — bulldoze + refund it, but only if WE placed it this drag.
+        if (stack.length >= 2) {
+          const prev = stack[stack.length - 2];
+          if (prev.x === x && prev.z === z) {
+            if (tip.placed && terrain.bulldoze(tip.x, tip.z)) game.earn(tip.cost);
+            stack.pop();
+            // If we backed onto the start cell, unlock the axis so the player
+            // can re-extend in a fresh direction without releasing.
+            if (stack.length === 1) lineAxis.current = null;
+            return;
+          }
+        }
+
+        // EXTEND: must be the tip's direct neighbour on the locked axis.
+        if (Math.abs(tip.x - x) + Math.abs(tip.z - z) !== 1) return;
+        const fresh = terrain.cellAt(x, z) !== type;
+        const placed = fresh && game.canAfford(tool.cost) && build(x, z);
+        if (placed) game.spend(tool.cost);
+        // Only advance the tip if the cell is now ours (placed, or already was
+        // a road/rail we ran into) — otherwise a blocked step must not advance.
+        if (placed || terrain.cellAt(x, z) === type) {
+          stack.push({ x, z, placed, cost: tool.cost });
         }
       };
 
@@ -282,10 +308,10 @@ function Scene() {
           terrain.bulldoze(x, z);
           return;
         case 'road':
-          buildLine((cx, cz) => terrain.buildRoad(cx, cz));
+          buildLine((cx, cz) => terrain.buildRoad(cx, cz), CellType.Road);
           return;
         case 'rail':
-          buildLine((cx, cz) => terrain.buildRail(cx, cz));
+          buildLine((cx, cz) => terrain.buildRail(cx, cz), CellType.Rail);
           return;
         case 'raise':
         case 'lower': {
@@ -308,8 +334,8 @@ function Scene() {
   const handleDragChange = useCallback((dragging: boolean) => {
     lastCell.current = null;
     lineAxis.current = null;
-    lineAnchor.current = null;
     lineStart.current = null;
+    lineBuilt.current = [];
     void dragging;
   }, []);
 

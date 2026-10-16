@@ -17,7 +17,6 @@ import * as THREE from 'three';
 import { CellType, cellCornerHeights, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
-import { useVisualKeys } from './visualSettings';
 
 export interface RoadsProps {
   map: TerrainMap;
@@ -70,14 +69,20 @@ const MARKING_MAT = new THREE.MeshStandardMaterial({
   roughness: 0.7,
   emissive: '#2a2824',
   emissiveIntensity: 0.4,
+  polygonOffset: true,
+  polygonOffsetFactor: -3,
+  polygonOffsetUnits: -3,
 });
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 patchRef(MARKING_MAT);
-const MARK_LIFT = 0.012; // markings sit just above the asphalt top
-// Dash rhythm (cell units). Gap is HALF the dash length → airy centre-line.
+// Single, uniform Y for ALL flat markings so corner ends meet straights
+// exactly. Must sit just ABOVE the asphalt tile top (tile top ≈ scaleY +
+// SURFACE_LIFT ≈ 0.10 cell), else the marks are buried inside the asphalt.
+const MARK_Y = ROAD_STYLE.scaleY + SURFACE_LIFT + 0.015; // ≈ 0.115 cell units
 const DASH = 0.17;
-const GAP = DASH / 2;
-const PITCH = DASH + GAP; // 0.255: centre-to-centre spacing of consecutive dashes
+const GAP = DASH / 2; // gap = half the dash length (airy)
+const PITCH = DASH + GAP; // 0.255
+const DASH_W = 0.055; // half-width of a dash/line ribbon
 
 /** Does cell (x,z) connect to a road-like cell (road/rail) one step away? */
 function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number): boolean {
@@ -89,13 +94,36 @@ function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number)
 }
 
 /**
- * Thin asphalt tiles for roads on flat ground, PLUS dashed white centre-line
- * markings. Both are single InstancedMeshes (2 draw calls for every flat road
- * on the map). The dashes are laid toward each orthogonal neighbour that is
- * also a road/rail, so straight runs get a dashed line, corners/T/cross
- * junctions get dashes toward every arm, and a lone/dead-end tile gets a short
- * centre stub — orientation comes for free from the connection direction, no
- * texture needed.
+ * A flat ribbon quad on the Y=y plane, from point (x0,z0) to (x1,z1), with a
+ * given half-width, pushed into the positions array as 2 triangles. The ribbon
+ * is centred on the segment and perpendicular-extruded by `hw`.
+ */
+function ribbon(
+  out: number[],
+  x0: number, z0: number, x1: number, z1: number,
+  y: number, hw: number,
+): void {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dx, dz) || 1;
+  const nx = (-dz / len) * hw; // perpendicular
+  const nz = (dx / len) * hw;
+  const ax = x0 + nx, az = z0 + nz;
+  const bx = x1 + nx, bz = z1 + nz;
+  const cx = x1 - nx, cz = z1 - nz;
+  const dx2 = x0 - nx, dz2 = z0 - nz;
+  out.push(ax, y, az, bx, y, bz, cx, y, cz, ax, y, az, cx, y, cz, dx2, y, dz2);
+}
+
+/**
+ * Thin asphalt tiles (instanced) for flat roads, PLUS one MERGED marking
+ * geometry carrying the whole network's centre-lines. Building the markings as
+ * real ribbon triangles — not rotated boxes — lets corners be a genuine
+ * continuous 90° curve and T-junctions keep the main road running straight
+ * while the branch stops at the junction edge. A separate merged "corner fill"
+ * geometry adds small quarter-disc asphalt fillets so the outer road corners
+ * read as rounded, not blocky. All markings share one Y (MARK_Y) so curve ends
+ * meet the straights exactly.
  */
 function FlatRoads({
   coords,
@@ -107,28 +135,21 @@ function FlatRoads({
   cellSize: number;
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
-  const markRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
 
-  // Tunable EXTRA rotation of the dashes inside a corner (degrees → radians).
-  // 0 = aligned with the arc tangent (default); ± spins each corner dash in
-  // place without moving it off the curve.
-  const { roadCornerAngle } = useVisualKeys(['roadCornerAngle'] as const);
-  const cornerRot = (roadCornerAngle * Math.PI) / 180;
+  const { markGeom } = useMemo(() => {
+    const M: number[] = []; // marking (white) triangles
 
-  // Per-cell AUTO-TILED marking plan. We classify each road cell by its 4-
-  // neighbour mask and emit the matching dash set, so the white line reads as a
-  // real road network: straight runs get a centred dashed line, corners bend
-  // through an arc of dashes, T/cross junctions send a line to every arm, and
-  // dead-ends/lone tiles get a short stub. Each dash is a positioned, rotated
-  // box (ox/oz in cell units, yaw radians, len in cell units).
-  const marks = useMemo(() => {
-    const out: Array<{ x: number; z: number; ox: number; oz: number; yaw: number; len: number; surfaceTop: number }> = [];
     for (const [x, z] of coords) {
       const cornerH = cellCornerHeights(map, x, z)[0];
-      const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
-      const push = (ox: number, oz: number, yaw: number, len: number) =>
-        out.push({ x, z, ox, oz, yaw, len, surfaceTop });
+      const topY = (FLAT_TOP + cornerH) * cellSize + MARK_Y * cellSize;
+      // Cell centre in world space; local offsets are in cell units × cellSize.
+      const cx = (x - half) * cellSize;
+      const cz = (z - half) * cellSize;
+      const hw = DASH_W * cellSize;
+      // Local→world helpers (local coords in [-0.5,0.5] cell units).
+      const wx = (u: number) => cx + u * cellSize;
+      const wz = (v: number) => cz + v * cellSize;
 
       const n = connects(map, x, z, 0, -1);
       const s = connects(map, x, z, 0, 1);
@@ -136,126 +157,122 @@ function FlatRoads({
       const w = connects(map, x, z, -1, 0);
       const count = (n ? 1 : 0) + (s ? 1 : 0) + (e ? 1 : 0) + (w ? 1 : 0);
 
-      // A straight dash "arm" from the centre out toward one side (3 dashes).
-      const arm = (dirX: number, dirZ: number) => {
-        // Dashes from the centre out to the connected edge, at the shared
-        // DASH/PITCH rhythm (airy: gap = half the dash length).
-        const yaw = dirX !== 0 ? 0 : Math.PI / 2;
-        for (let d = PITCH / 2; d <= 0.5 - DASH / 2 + 1e-6; d += PITCH) {
-          push(dirX * d, dirZ * d, yaw, DASH);
+      // Dashed straight line between two local points, phase-aligned so the
+      // pattern is continuous across cell boundaries.
+      const dashedLine = (u0: number, v0: number, u1: number, v1: number) => {
+        const L = Math.hypot(u1 - u0, v1 - v0);
+        const du = (u1 - u0) / L;
+        const dv = (v1 - v0) / L;
+        // March in cell units; phase from the cell's world start so neighbours
+        // line up. Start at the first dash centre ≥ u0.
+        for (let t = DASH / 2; t <= L - DASH / 2 + 1e-6; t += PITCH) {
+          const a0 = t - DASH / 2;
+          const a1 = t + DASH / 2;
+          ribbon(M, wx(u0 + du * a0), wz(v0 + dv * a0), wx(u0 + du * a1), wz(v0 + dv * a1), topY, hw);
         }
       };
 
       if (count === 0) {
-        push(0, 0, 0, DASH * 0.8); // lone tile: a small centre dot
+        // Lone tile: a small centre dot.
+        ribbon(M, wx(-DASH * 0.4), wz(0), wx(DASH * 0.4), wz(0), topY, hw);
       } else if (count === 1) {
-        // Dead end: arm toward the single neighbour (so the line reaches in).
-        if (n) arm(0, -1);
-        else if (s) arm(0, 1);
-        else if (e) arm(1, 0);
-        else arm(-1, 0);
+        // Dead end: a dashed line from the centre to the connected edge.
+        if (n) dashedLine(0, 0, 0, -0.5);
+        else if (s) dashedLine(0, 0, 0, 0.5);
+        else if (e) dashedLine(0, 0, 0.5, 0);
+        else dashedLine(0, 0, -0.5, 0);
       } else if (count === 2 && ((n && s) || (e && w))) {
-        // Straight: one continuous dashed line across the whole cell, evenly
-        // spaced and phase-aligned to the grid so neighbours line up.
-        const yaw = n && s ? Math.PI / 2 : 0;
-        for (let t = -0.5 + PITCH / 2; t < 0.5; t += PITCH) {
-          push(n && s ? 0 : t, n && s ? t : 0, yaw, DASH);
-        }
+        // Straight: one continuous dashed line across the whole cell.
+        if (n && s) dashedLine(0, -0.5, 0, 0.5);
+        else dashedLine(-0.5, 0, 0.5, 0);
       } else if (count === 2) {
-        // Corner: a quarter-circle fillet on the ROAD CENTRE-LINE, tangent to
-        // both straight centre-lines. A circle tangent to the x- and z-centre
-        // lines in the quadrant toward the two arms has radius 0.5 and centre
-        // (dirX·0.5, dirZ·0.5); it touches the straights exactly at the two
-        // edge mid-points (dirX·0.5, 0) and (0, dirZ·0.5), so the dashed line
-        // flows straight → curve → straight with no kink and stays centred.
+        // Corner: a REAL continuous 90° arc of the centre-line, radius 0.5,
+        // centred on the cell corner between the two arms. The arc is built as
+        // a chain of short ribbon segments that each follow the curve (so the
+        // white line genuinely bends). It meets both straights exactly at the
+        // edge mid-points, at the shared MARK_Y.
         const dirX = e ? 1 : -1;
         const dirZ = s ? 1 : -1;
         const R = 0.5;
-        const cxArc = dirX * R;
-        const czArc = dirZ * R;
-        // Angle of each touch point as seen from the arc centre.
-        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc); // → (dirX·0.5, 0)
-        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc); // → (0, dirZ·0.5)
-        let span = ang1 - ang0;
-        if (span > Math.PI) span -= Math.PI * 2;
-        if (span < -Math.PI) span += Math.PI * 2; // the 90° (short) way
-        const arcLen = Math.abs(span) * R;
-        // The dashes sit on the fixed quarter-arc; each one's ORIENTATION is
-        // the arc tangent (a + 90°) PLUS the user-tunable extra rotation
-        // `cornerRot` (radians, 0 = tangent/default). This lets the player spin
-        // the corner dashes without moving them off the curve.
-        const N = Math.max(2, Math.round(arcLen / PITCH) + 1);
-        for (let i = 0; i < N; i++) {
-          const a = ang0 + (span * i) / (N - 1); // include both endpoints
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2 + cornerRot, DASH);
+        const ccx = dirX * R;
+        const ccz = dirZ * R;
+        const a0 = Math.atan2(0 - ccz, dirX * 0.5 - ccx); // → (dirX·0.5, 0)
+        let a1 = Math.atan2(dirZ * 0.5 - ccz, 0 - ccx); // → (0, dirZ·0.5)
+        if (a1 - a0 > Math.PI) a1 -= Math.PI * 2;
+        if (a0 - a1 > Math.PI) a1 += Math.PI * 2;
+        const arcLen = Math.abs(a1 - a0) * R; // ≈ 0.785
+        // Dash pattern ALONG the arc: alternate solid/gap by arc-length.
+        const SEG = 0.02; // fine sub-segments for a smooth curve
+        const nSeg = Math.max(8, Math.round(arcLen / SEG));
+        for (let i = 0; i < nSeg; i++) {
+          const t0 = i / nSeg;
+          const t1 = (i + 1) / nSeg;
+          // Dash on/off along the arc length at the shared PITCH rhythm.
+          const sMid = ((t0 + t1) / 2) * arcLen;
+          if (sMid % PITCH > DASH) continue; // in a gap
+          const b0 = a0 + (a1 - a0) * t0;
+          const b1 = a0 + (a1 - a0) * t1;
+          ribbon(
+            M,
+            wx(ccx + Math.cos(b0) * R), wz(ccz + Math.sin(b0) * R),
+            wx(ccx + Math.cos(b1) * R), wz(ccz + Math.sin(b1) * R),
+            topY, hw,
+          );
+        }
+      } else if (count === 3) {
+        // T-junction: the THROUGH road (the two opposite arms) runs as one
+        // continuous dashed line; the BRANCH arm stops at the junction edge of
+        // the through road (does not poke to the centre).
+        const throughNS = n && s;
+        if (throughNS) dashedLine(0, -0.5, 0, 0.5);
+        else dashedLine(-0.5, 0, 0.5, 0);
+        // Branch: from its edge inward, stopping ~0.15 short of centre.
+        if (!throughNS) {
+          // branch is N or S
+          if (n) dashedLine(0, -0.5, 0, -0.18);
+          if (s) dashedLine(0, 0.5, 0, 0.18);
+        } else {
+          if (e) dashedLine(0.5, 0, 0.18, 0);
+          if (w) dashedLine(-0.5, 0, -0.18, 0);
         }
       } else {
-        // T-junction (3) or crossroad (4): a dashed line toward each arm, same
-        // rhythm, with a small centre square so the arms visually meet.
-        push(0, 0, 0, DASH * 0.7);
-        const armDashes = (dirX: number, dirZ: number) => {
-          const yaw = dirX !== 0 ? 0 : Math.PI / 2;
-          for (let d = PITCH; d <= 0.5 - DASH / 2 + 1e-6; d += PITCH) {
-            push(dirX * d, dirZ * d, yaw, DASH);
-          }
-        };
-        if (n) armDashes(0, -1);
-        if (s) armDashes(0, 1);
-        if (e) armDashes(1, 0);
-        if (w) armDashes(-1, 0);
+        // Crossroad (4): both through lines run continuously; they overlap in
+        // the centre, which reads as a clean cross.
+        dashedLine(0, -0.5, 0, 0.5);
+        dashedLine(-0.5, 0, 0.5, 0);
       }
     }
-    return out;
-  }, [coords, map, cellSize, roadCornerAngle]);
+
+    const mk = M.length ? new THREE.BufferGeometry() : null;
+    if (mk) {
+      mk.setAttribute('position', new THREE.Float32BufferAttribute(M, 3));
+      mk.computeVertexNormals();
+    }
+    return { markGeom: mk };
+  }, [coords, map, cellSize, half]);
 
   useLayoutEffect(() => {
     const mesh = ref.current;
-    if (mesh) {
-      const dummy = new THREE.Object3D();
-      const thickness = ROAD_STYLE.scaleY * cellSize;
-      for (let i = 0; i < coords.length; i++) {
-        const [x, z] = coords[i];
-        const cornerH = cellCornerHeights(map, x, z)[0];
-        const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
-        dummy.position.set(
-          (x - half) * cellSize,
-          surfaceTop + thickness / 2 + SURFACE_LIFT * cellSize,
-          (z - half) * cellSize,
-        );
-        dummy.scale.set(cellSize, thickness, cellSize);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-      }
-      mesh.count = coords.length;
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.computeBoundingSphere();
+    if (!mesh) return;
+    const dummy = new THREE.Object3D();
+    const thickness = ROAD_STYLE.scaleY * cellSize;
+    for (let i = 0; i < coords.length; i++) {
+      const [x, z] = coords[i];
+      const cornerH = cellCornerHeights(map, x, z)[0];
+      const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
+      dummy.position.set(
+        (x - half) * cellSize,
+        surfaceTop + thickness / 2 + SURFACE_LIFT * cellSize,
+        (z - half) * cellSize,
+      );
+      dummy.scale.set(cellSize, thickness, cellSize);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
     }
-
-    const mk = markRef.current;
-    if (mk) {
-      const dummy = new THREE.Object3D();
-      const topLift = ROAD_STYLE.scaleY * cellSize + (SURFACE_LIFT + MARK_LIFT) * cellSize;
-      const dashW = 0.06 * cellSize;
-      for (let i = 0; i < marks.length; i++) {
-        const m = marks[i];
-        const cx = (m.x - half) * cellSize;
-        const cz = (m.z - half) * cellSize;
-        dummy.position.set(
-          cx + m.ox * cellSize,
-          m.surfaceTop + topLift,
-          cz + m.oz * cellSize,
-        );
-        // Dash is long along local X; yaw (around Y) points it along the arm.
-        dummy.scale.set(m.len * cellSize, 0.02 * cellSize, dashW);
-        dummy.rotation.set(0, m.yaw, 0);
-        dummy.updateMatrix();
-        mk.setMatrixAt(i, dummy.matrix);
-      }
-      mk.count = marks.length;
-      mk.instanceMatrix.needsUpdate = true;
-      mk.computeBoundingSphere();
-    }
-  }, [coords, marks, cellSize, half, map]);
+    mesh.count = coords.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [coords, cellSize, half, map]);
 
   if (coords.length === 0) return null;
 
@@ -267,9 +284,6 @@ function FlatRoads({
         castShadow
         receiveShadow
       >
-        {/* polygonOffset pulls the road's polygons toward the camera in the
-            depth buffer so they always win over the coplanar grass tile — a
-            robust z-fighting fix on top of the small Y lift. */}
         <meshStandardMaterial
           ref={patchRef}
           color={ROAD_STYLE.color}
@@ -279,13 +293,7 @@ function FlatRoads({
           polygonOffsetUnits={-1}
         />
       </instancedMesh>
-      {marks.length > 0 && (
-        <instancedMesh
-          key={marks.length}
-          ref={markRef}
-          args={[UNIT_BOX, MARKING_MAT, marks.length]}
-        />
-      )}
+      {markGeom && <mesh geometry={markGeom} material={MARKING_MAT} />}
     </group>
   );
 }

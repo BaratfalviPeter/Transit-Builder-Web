@@ -81,11 +81,6 @@ export const VISUAL_DEFAULTS = {
   cloudShadows: true,
   /** Darkness of the (shader-projected) cloud shadows, 0..1. */
   cloudShadowStrength: 0.45,
-  /**
-   * Extra rotation (degrees) of the dash marks inside a road corner. 0 keeps
-   * them aligned with the curve (tangent); ± spins each corner dash in place.
-   */
-  roadCornerAngle: 0,
 
   // --- Birds ---
   birdsVisible: true,

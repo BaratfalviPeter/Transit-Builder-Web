@@ -85,6 +85,24 @@ function isGrass(map: TerrainMap, x: number, z: number): boolean {
   );
 }
 
+/**
+ * Whether cell (x, z) belongs to a Mine's 3×3 lot (the Mine centre or an
+ * IndustryLot ring cell next to one). Those cells are rendered as a hole.
+ */
+export function isMineLot(map: TerrainMap, x: number, z: number): boolean {
+  const t = map.cells[x][z];
+  if (t === CellType.Mine) return true;
+  if (t !== CellType.IndustryLot) return false;
+  for (let dx = -1; dx <= 1; dx++)
+    for (let dz = -1; dz <= 1; dz++) {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (nx >= 0 && nz >= 0 && nx < map.size && nz < map.size && map.cells[nx][nz] === CellType.Mine)
+        return true;
+    }
+  return false;
+}
+
 /** Jitter of corner (cx, cz) — only if all four cells around it are grass. */
 function cornerJitter(map: TerrainMap, cx: number, cz: number): number {
   if (
@@ -262,10 +280,16 @@ function writeCell(
   // Water renders its TOP as one flat, uniform surface (so a dug basin fills
   // back up to the common water level — no holes). Non-water uses the real
   // corner-max heightmap.
+  // Mine lots are cut OUT of the terrain (top collapsed to the floor): the
+  // MineModel supplies its own deck + a quarry pit that reaches below ground,
+  // and the neighbours' side walls line the hole.
+  const hole = isMineLot(map, x, z);
   const y = (cx: number, cz: number) =>
-    isWater
-      ? WATER_LEVEL * cellSize
-      : cornerY(map, cx, cz, cellSize) + cornerJitter(map, cx, cz) * cellSize;
+    hole
+      ? floorY
+      : isWater
+        ? WATER_LEVEL * cellSize
+        : cornerY(map, cx, cz, cellSize) + cornerJitter(map, cx, cz) * cellSize;
 
   // 4 top corners.
   const x0 = wx(x);
@@ -295,7 +319,7 @@ function writeCell(
   const cxW = (x0 + x1) / 2;
   const czW = (z0 + z1) / 2;
   let cy = (y00 + y11) / 2;
-  if (isGrass(map, x, z)) {
+  if (!hole && isGrass(map, x, z)) {
     cy += (hash01(x, z, map.seed + 101) * 2 - 1) * GRASS_CENTER_AMP * cellSize;
   }
   const tc = TMP_COLOR;

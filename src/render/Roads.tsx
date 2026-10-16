@@ -155,28 +155,31 @@ function FlatRoads({
           push(n && s ? 0 : t, n && s ? t : 0, yaw, DASH);
         }
       } else if (count === 2) {
-        // Corner: a smooth 90° arc of dashes bending between the two arms.
-        // Radius 0.5 centred on the cell corner BETWEEN the two arms, so the
-        // arc joins the two edge mid-points and meets both straights flush.
+        // Corner: a quarter-circle fillet on the ROAD CENTRE-LINE, tangent to
+        // both straight centre-lines. A circle tangent to the x- and z-centre
+        // lines in the quadrant toward the two arms has radius 0.5 and centre
+        // (dirX·0.5, dirZ·0.5); it touches the straights exactly at the two
+        // edge mid-points (dirX·0.5, 0) and (0, dirZ·0.5), so the dashed line
+        // flows straight → curve → straight with no kink and stays centred.
         const dirX = e ? 1 : -1;
         const dirZ = s ? 1 : -1;
         const R = 0.5;
-        const cxArc = dirX * 0.5;
-        const czArc = dirZ * 0.5;
-        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc);
-        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc);
+        const cxArc = dirX * R;
+        const czArc = dirZ * R;
+        // Angle of each touch point as seen from the arc centre.
+        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc); // → (dirX·0.5, 0)
+        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc); // → (0, dirZ·0.5)
         let span = ang1 - ang0;
         if (span > Math.PI) span -= Math.PI * 2;
-        if (span < -Math.PI) span += Math.PI * 2;
-        // Space dashes by arc-length so they match the straight rhythm (gap =
-        // half the dash). Each dash is oriented along the arc's TANGENT (yaw =
-        // a, not a+90°) so the segments flow around the curve instead of
-        // sticking out across it.
+        if (span < -Math.PI) span += Math.PI * 2; // the 90° (short) way
         const arcLen = Math.abs(span) * R; // ≈ 0.785
-        const N = Math.max(2, Math.round(arcLen / PITCH));
+        // One dash at each end sits ON the touch point so it meets the
+        // straight's dashes; the rest fill the arc at the shared PITCH.
+        const N = Math.max(2, Math.round(arcLen / PITCH) + 1);
         for (let i = 0; i < N; i++) {
-          const a = ang0 + (span * (i + 0.5)) / N;
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a, DASH);
+          const a = ang0 + (span * i) / (N - 1); // include both endpoints
+          // Tangent direction = a ± 90°; dash long axis follows it.
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, DASH);
         }
       } else {
         // T-junction (3) or crossroad (4): a dashed line toward each arm, same
@@ -279,19 +282,117 @@ function FlatRoads({
   );
 }
 
-/** Slope-conforming surface for roads sitting on hills. */
+/** Slope-conforming surface for roads sitting on hills, with centre-lines. */
 function HillRoads({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   const geometry = useMemo(
     () => buildHillRoadSurface(map, cellSize),
     [map, cellSize],
   );
+  const markGeom = useMemo(
+    () => buildHillRoadMarkings(map, cellSize),
+    [map, cellSize],
+  );
   if (!geometry) return null;
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial
-        ref={patchRef} color={ROAD_STYLE.color} roughness={0.85} />
-    </mesh>
+    <group>
+      <mesh geometry={geometry} castShadow receiveShadow>
+        <meshStandardMaterial ref={patchRef} color={ROAD_STYLE.color} roughness={0.85} />
+      </mesh>
+      {markGeom && (
+        <mesh geometry={markGeom}>
+          <meshStandardMaterial
+            color="#e8e4d6"
+            roughness={0.7}
+            emissive="#2a2824"
+            emissiveIntensity={0.4}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
+        </mesh>
+      )}
+    </group>
   );
+}
+
+/**
+ * Dashed centre-line for the SLOPED road cells. For each such cell we read its
+ * four corner heights (same corner-max map the surface uses), then lay a run of
+ * dashes along the cell's dominant down-slope axis, bilinearly sampling the
+ * surface height and lifting each dash a touch along the face so it hugs the
+ * incline. One merged geometry (a handful of quads) — hill roads are few.
+ */
+function buildHillRoadMarkings(
+  map: TerrainMap,
+  cellSize: number,
+): THREE.BufferGeometry | null {
+  const { size, heights, cells } = map;
+  const half = (size - 1) / 2;
+  const cellHeight = (x: number, z: number): number =>
+    x < 0 || z < 0 || x >= size || z >= size ? 0 : heights[x][z];
+  const cornerHeight = (cx: number, cz: number): number =>
+    Math.max(
+      cellHeight(cx - 1, cz - 1),
+      cellHeight(cx, cz - 1),
+      cellHeight(cx - 1, cz),
+      cellHeight(cx, cz),
+    );
+  const base = FLAT_TOP * cellSize + (SURFACE_LIFT + 0.015) * cellSize;
+
+  const isRoadLike = (x: number, z: number): boolean => {
+    if (x < 0 || z < 0 || x >= size || z >= size) return false;
+    const t = cells[x][z];
+    return t === CellType.Road || t === CellType.Rail;
+  };
+
+  const positions: number[] = [];
+  const DASH_W = 0.06;
+  let any = false;
+
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) {
+      if (cells[x][z] !== CellType.Road) continue;
+      const h00 = cornerHeight(x, z);
+      const h10 = cornerHeight(x + 1, z);
+      const h11 = cornerHeight(x + 1, z + 1);
+      const h01 = cornerHeight(x, z + 1);
+      if (h00 === h10 && h10 === h11 && h11 === h01) continue; // flat → FlatRoads
+
+      // Surface point at local (u,v) in [0,1]² within the cell.
+      const px = (x - half - 0.5) * cellSize;
+      const pz = (z - half - 0.5) * cellSize;
+      const surf = (u: number, v: number): [number, number, number] => {
+        const h = (h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v;
+        return [px + u * cellSize, base + h * cellSize, pz + v * cellSize];
+      };
+
+      // Dominant axis = whichever direction has road neighbours (so the line
+      // runs along the road), else the steeper slope direction.
+      const alongX = isRoadLike(x - 1, z) || isRoadLike(x + 1, z);
+      const dashLen = 0.17;
+      const gap = dashLen / 2;
+      const pitch = dashLen + gap;
+      // March dashes from 0..1 along the axis, centred on the cell mid-line.
+      for (let c = pitch / 2; c <= 1 - dashLen / 2 + 1e-6; c += pitch) {
+        const a0 = c - dashLen / 2;
+        const a1 = c + dashLen / 2;
+        // Quad corners in (u,v): long axis = dominant, width = DASH_W.
+        const w0 = 0.5 - DASH_W / 2;
+        const w1 = 0.5 + DASH_W / 2;
+        const quad = alongX
+          ? [surf(a0, w0), surf(a1, w0), surf(a1, w1), surf(a0, w1)]
+          : [surf(w0, a0), surf(w0, a1), surf(w1, a1), surf(w1, a0)];
+        const [q0, q1, q2, q3] = quad;
+        positions.push(...q0, ...q1, ...q2, ...q0, ...q2, ...q3);
+        any = true;
+      }
+    }
+  }
+  if (!any) return null;
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  return geom;
 }
 
 function buildHillRoadSurface(

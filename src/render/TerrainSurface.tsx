@@ -30,7 +30,6 @@ import {
   type VisualSettings,
 } from './visualSettings';
 import { patchCloudShadows } from './cloudShadows';
-import { CROP_GROUND, farmCrop, type Crop } from './farmland';
 import type { PointerBuildHandlers } from './usePointerBuild';
 
 export interface TerrainSurfaceProps {
@@ -83,15 +82,9 @@ function hash01(a: number, b: number, salt: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** "Crumpled" grass: plain Empty ground that is NOT a farm field (fields stay flat). */
 function isGrass(map: TerrainMap, x: number, z: number): boolean {
   return (
-    x >= 0 &&
-    z >= 0 &&
-    x < map.size &&
-    z < map.size &&
-    map.cells[x][z] === CellType.Empty &&
-    farmCrop(map, x, z) === null
+    x >= 0 && z >= 0 && x < map.size && z < map.size && map.cells[x][z] === CellType.Empty
   );
 }
 
@@ -145,7 +138,6 @@ const PAL = {
   sand: new THREE.Color(),
   rock: new THREE.Color(),
   snow: new THREE.Color(),
-  crops: {} as Record<Crop, THREE.Color>,
   wobble: 0.06,
 };
 /** Signature of the palette-relevant settings (to detect real changes). */
@@ -164,7 +156,6 @@ function refreshPalette(v: VisualSettings): void {
   PAL.sand.set(v.sand);
   PAL.rock.set(v.mountainRock);
   PAL.snow.set(v.snow);
-  for (const [k, c] of Object.entries(CROP_GROUND)) PAL.crops[k as Crop] = new THREE.Color(c);
   SIDE_COLOR.set(v.cliff);
   PAL.wobble = v.grassWobble;
 }
@@ -175,7 +166,6 @@ const TMP_MIX = new THREE.Color();
 /**
  * Top colour of one top triangle (i = 0..3) of cell (x, z). Besides the base
  * palettes this paints the landscape zones:
- *   - farm fields: their crop's ground colour (flat, rows drawn by Farms),
  *   - beaches: grass right beside water turns to sand,
  *   - mountains: by height level — grassy foothills, rocky flanks on slopes,
  *     bare rock higher up, and snow caps on the highest peaks.
@@ -184,8 +174,6 @@ function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.C
   const type = map.cells[x][z];
   const wob = 1 - PAL.wobble / 2 + hash01(x * 4 + i, z, map.seed + 31) * PAL.wobble;
   if (type === CellType.Empty) {
-    const crop = farmCrop(map, x, z);
-    if (crop) return out.copy(PAL.crops[crop]).multiplyScalar(wob);
     if (besideWater(map, x, z) && cornerHeightAt(map, x, z) === 0)
       return out.copy(PAL.sand).multiplyScalar(wob);
   }

@@ -73,6 +73,10 @@ const MARKING_MAT = new THREE.MeshStandardMaterial({
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 patchRef(MARKING_MAT);
 const MARK_LIFT = 0.012; // markings sit just above the asphalt top
+// Dash rhythm (cell units). Gap is HALF the dash length → airy centre-line.
+const DASH = 0.17;
+const GAP = DASH / 2;
+const PITCH = DASH + GAP; // 0.255: centre-to-centre spacing of consecutive dashes
 
 /** Does cell (x,z) connect to a road-like cell (road/rail) one step away? */
 function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number): boolean {
@@ -127,15 +131,16 @@ function FlatRoads({
 
       // A straight dash "arm" from the centre out toward one side (3 dashes).
       const arm = (dirX: number, dirZ: number) => {
+        // Dashes from the centre out to the connected edge, at the shared
+        // DASH/PITCH rhythm (airy: gap = half the dash length).
         const yaw = dirX !== 0 ? 0 : Math.PI / 2;
-        for (let i = 0; i < 3; i++) {
-          const t = ((i + 0.5) / 3) * 0.5; // 0.08..0.42 from centre
-          push(dirX * t, dirZ * t, yaw, 0.17);
+        for (let d = PITCH / 2; d <= 0.5 - DASH / 2 + 1e-6; d += PITCH) {
+          push(dirX * d, dirZ * d, yaw, DASH);
         }
       };
 
       if (count === 0) {
-        push(0, 0, 0, 0.14); // lone tile: a centre dot
+        push(0, 0, 0, DASH * 0.8); // lone tile: a small centre dot
       } else if (count === 1) {
         // Dead end: arm toward the single neighbour (so the line reaches in).
         if (n) arm(0, -1);
@@ -143,45 +148,48 @@ function FlatRoads({
         else if (e) arm(1, 0);
         else arm(-1, 0);
       } else if (count === 2 && ((n && s) || (e && w))) {
-        // Straight: one continuous dashed line across the whole cell.
+        // Straight: one continuous dashed line across the whole cell, evenly
+        // spaced and phase-aligned to the grid so neighbours line up.
         const yaw = n && s ? Math.PI / 2 : 0;
-        for (let i = 0; i < 5; i++) {
-          const t = (i - 2) * 0.2; // -0.4..0.4
-          push(n && s ? 0 : t, n && s ? t : 0, yaw, 0.17);
+        for (let t = -0.5 + PITCH / 2; t < 0.5; t += PITCH) {
+          push(n && s ? 0 : t, n && s ? t : 0, yaw, DASH);
         }
       } else if (count === 2) {
-        // Corner: a smooth 90° arc of dashes bending between the two arms. The
-        // arc is centred on the OUTER cell corner (the quadrant with no
-        // neighbour) with radius 0.5, so it starts exactly at one edge
-        // mid-point and ends at the other — meeting the straight lines of both
-        // neighbours flush.
-        const dirX = e ? 1 : -1; // which side has the horizontal neighbour
-        const dirZ = s ? 1 : -1; // which side has the vertical neighbour
+        // Corner: a smooth 90° arc of dashes bending between the two arms.
+        // Radius 0.5 centred on the cell corner BETWEEN the two arms, so the
+        // arc joins the two edge mid-points and meets both straights flush.
+        const dirX = e ? 1 : -1;
+        const dirZ = s ? 1 : -1;
         const R = 0.5;
-        // The quarter-circle that joins the two edge mid-points — (dirX·0.5, 0)
-        // and (0, dirZ·0.5) — tangent to both arms is radius 0.5 centred on the
-        // cell corner that sits BETWEEN the two arms: (dirX·0.5, dirZ·0.5).
         const cxArc = dirX * 0.5;
         const czArc = dirZ * 0.5;
-        // Sweep from the horizontal edge-point to the vertical edge-point.
-        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc); // points to (dirX·0.5, 0)
-        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc); // points to (0, dirZ·0.5)
+        const ang0 = Math.atan2(0 - czArc, dirX * 0.5 - cxArc);
+        const ang1 = Math.atan2(dirZ * 0.5 - czArc, 0 - cxArc);
         let span = ang1 - ang0;
         if (span > Math.PI) span -= Math.PI * 2;
         if (span < -Math.PI) span += Math.PI * 2;
-        const N = 7;
+        // Space dashes by arc-length so they match the straight rhythm; longer
+        // dashes along the arc read as a smooth curve, not tiny fragments.
+        const arcLen = Math.abs(span) * R; // ≈ 0.785
+        const N = Math.max(2, Math.round(arcLen / PITCH));
         for (let i = 0; i < N; i++) {
           const a = ang0 + (span * (i + 0.5)) / N;
-          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, 0.14);
+          push(cxArc + Math.cos(a) * R, czArc + Math.sin(a) * R, a + Math.PI / 2, DASH);
         }
       } else {
-        // T-junction (3) or crossroad (4): a short dash toward each arm, with a
-        // small centre square so the arms visually meet.
-        push(0, 0, 0, 0.1);
-        if (n) { push(0, -0.3, Math.PI / 2, 0.17); push(0, -0.44, Math.PI / 2, 0.12); }
-        if (s) { push(0, 0.3, Math.PI / 2, 0.17); push(0, 0.44, Math.PI / 2, 0.12); }
-        if (e) { push(0.3, 0, 0, 0.17); push(0.44, 0, 0, 0.12); }
-        if (w) { push(-0.3, 0, 0, 0.17); push(-0.44, 0, 0, 0.12); }
+        // T-junction (3) or crossroad (4): a dashed line toward each arm, same
+        // rhythm, with a small centre square so the arms visually meet.
+        push(0, 0, 0, DASH * 0.7);
+        const armDashes = (dirX: number, dirZ: number) => {
+          const yaw = dirX !== 0 ? 0 : Math.PI / 2;
+          for (let d = PITCH; d <= 0.5 - DASH / 2 + 1e-6; d += PITCH) {
+            push(dirX * d, dirZ * d, yaw, DASH);
+          }
+        };
+        if (n) armDashes(0, -1);
+        if (s) armDashes(0, 1);
+        if (e) armDashes(1, 0);
+        if (w) armDashes(-1, 0);
       }
     }
     return out;

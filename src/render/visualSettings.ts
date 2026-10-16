@@ -25,6 +25,12 @@ export const VISUAL_DEFAULTS = {
   sunElevation: 48,
   shadowBias: -0.0004,
   shadowNormalBias: 0.04,
+  /**
+   * Live shadow updates every frame. OFF = the shadow map is computed once
+   * (huge FPS win with ~1700 trees); moving cloud/bird shadows then stay put.
+   * ON = clouds/birds cast moving shadows at a 60 fps cost.
+   */
+  liveShadows: false,
   /** Tone-mapping exposure (overall brightness). */
   exposure: 1,
   background: '#bccdd8',

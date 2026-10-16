@@ -13,7 +13,7 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { sunPosition, useVisual } from './visualSettings';
+import { sunPosition, useVisual, useVisualKeys } from './visualSettings';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
@@ -131,6 +131,54 @@ function Lights() {
   );
 }
 
+/**
+ * ShadowController — the key FPS fix.
+ *
+ * The scene's static shadow casters (≈1700 trees, rocks, terrain, buildings)
+ * never move, so re-rendering the shadow map 60×/s is pure waste. We turn OFF
+ * the renderer's automatic shadow updates and only recompute the shadow map
+ * when something actually changed:
+ *   - once on mount and whenever the map (cellsVersion/seed/size) changes,
+ *   - whenever a sun/shadow setting in the tuner changes,
+ *   - every frame ONLY while the user opted into moving cloud/bird shadows.
+ *
+ * This is the same idea as drei's <BakeShadows> (freeze the shadow map), but
+ * driven so that moving shadow-casters (clouds/birds) still work when enabled,
+ * instead of being frozen forever.
+ */
+function ShadowController({
+  mapSig,
+  live,
+  sunSig,
+}: {
+  mapSig: string;
+  live: boolean;
+  sunSig: string;
+}) {
+  const gl = useThree((s) => s.gl);
+
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = live;
+    gl.shadowMap.needsUpdate = true; // recompute once now
+  }, [gl, live, mapSig, sunSig]);
+
+  // While not live, nudge one extra update on the next frame so geometry that
+  // streams in (instanced trees fill their matrices in a layout effect) is
+  // captured even if it lands a tick after mount.
+  const framesLeft = useRef(2);
+  useEffect(() => {
+    framesLeft.current = 2;
+  }, [mapSig, sunSig, live]);
+  useFrame(() => {
+    if (live) return;
+    if (framesLeft.current > 0) {
+      framesLeft.current--;
+      gl.shadowMap.needsUpdate = true;
+    }
+  });
+  return null;
+}
+
 /** Game tick interval in ms (auto-spawn / growth cadence). */
 const TICK_MS = 2500;
 
@@ -224,10 +272,38 @@ function Scene() {
     return () => window.removeEventListener('pointerup', onUp);
   }, []);
 
+  // Shadow-map updates: static by default (compute once), live only when the
+  // user turns on moving cloud/bird shadows. Sun settings trigger a recompute.
+  const shadowVis = useVisualKeys([
+    'cloudShadows',
+    'cloudsVisible',
+    'birdsVisible',
+    'sunAzimuth',
+    'sunElevation',
+    'sunIntensity',
+    'shadowBias',
+    'shadowNormalBias',
+  ] as const);
+  const { liveShadows: liveOptIn } = useVisualKeys(['liveShadows'] as const);
+  // Only pay for 60 fps shadow updates when the user opts in AND something that
+  // moves actually casts a shadow. Otherwise the shadow map is computed once.
+  const liveShadows =
+    liveOptIn &&
+    ((shadowVis.cloudShadows && shadowVis.cloudsVisible) || shadowVis.birdsVisible);
+  const sunSig = [
+    shadowVis.sunAzimuth,
+    shadowVis.sunElevation,
+    shadowVis.sunIntensity,
+    shadowVis.shadowBias,
+    shadowVis.shadowNormalBias,
+  ].join('|');
+  const mapSig = `${map.seed}:${map.size}:${map.cellsVersion}`;
+
   return (
     <>
       <CameraRig />
       <GameClock />
+      <ShadowController mapSig={mapSig} live={liveShadows} sunSig={sunSig} />
 
       {/* Lighting — warm "diorama" look: soft warm ambient, a cool sky / green
           ground bounce, and one strong shadow-casting sun. */}

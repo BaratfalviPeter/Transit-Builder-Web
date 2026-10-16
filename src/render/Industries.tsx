@@ -21,6 +21,7 @@ import { CELL_STYLE } from './terrainStyle';
 import { PowerPlantModel } from './PowerPlantModel';
 import { MineModel } from './MineModel';
 import { LumberMillModel } from './LumberMillModel';
+import { FactoryModel } from './FactoryModel';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -85,47 +86,19 @@ export function Industries({ map, cellSize }: IndustriesProps) {
               />
             );
           case CellType.Factory:
-            return <Factory key={key} x={wx} y={wy} z={wz} cellSize={cellSize} />;
+            return (
+              <FactoryModel
+                key={key}
+                position={[wx, wy, wz]}
+                scale={cellSize}
+                rotationY={(((x * 11 + z * 5) % 4) * Math.PI) / 2}
+                phase={(x * 0.31 + z * 0.47) % 5}
+              />
+            );
           default:
             return null;
         }
       })}
-    </group>
-  );
-}
-
-/** Grey factory with two chimney stacks. */
-function Factory({
-  x,
-  y,
-  z,
-  cellSize,
-}: {
-  x: number;
-  y: number;
-  z: number;
-  cellSize: number;
-}) {
-  const s = cellSize;
-  const color = CELL_STYLE[CellType.Factory].color;
-  const bodyW = 0.75 * s;
-  const bodyH = 0.5 * s;
-  return (
-    <group position={[x, y, z]}>
-      {/* Main hall */}
-      <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[bodyW, bodyH, bodyW]} />
-        <meshStandardMaterial color={color} roughness={0.8} />
-      </mesh>
-      {/* Two chimney stacks */}
-      <mesh position={[-0.18 * s, bodyH + 0.25 * s, -0.18 * s]} castShadow>
-        <cylinderGeometry args={[0.07 * s, 0.07 * s, 0.5 * s, 12]} />
-        <meshStandardMaterial color="#4a4e55" roughness={0.9} />
-      </mesh>
-      <mesh position={[0.02 * s, bodyH + 0.32 * s, -0.18 * s]} castShadow>
-        <cylinderGeometry args={[0.07 * s, 0.07 * s, 0.64 * s, 12]} />
-        <meshStandardMaterial color="#4a4e55" roughness={0.9} />
-      </mesh>
     </group>
   );
 }

@@ -207,6 +207,11 @@ function Scene() {
   // Remember the last cell acted on during a drag so we don't re-process the
   // same cell many times as the pointer wiggles within it.
   const lastCell = useRef<string | null>(null);
+  // Anchor cell of a road/rail drag: the most recently BUILT line cell. New
+  // cells only extend the line if they're its direct N/S/E/W neighbour, so the
+  // road "snakes" one cell at a time (Mini-Motorways style) instead of jumping
+  // across gaps when the pointer moves fast or diagonally.
+  const lineAnchor = useRef<{ x: number; z: number } | null>(null);
 
   const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
@@ -218,25 +223,38 @@ function Scene() {
       lastCell.current = key;
 
       const tool = TOOLS[game.getActiveTool()];
+
+      // Shared snake logic for road + rail: the first cell of the gesture is
+      // placed freely; after that, only a straight orthogonal step from the
+      // last built cell is allowed (no diagonals, no gaps). The anchor only
+      // advances to cells we actually built, so a blocked step (water, slope,
+      // occupied) doesn't let the line skip ahead.
+      const buildLine = (build: (x: number, z: number) => boolean): void => {
+        if (!terrain.inBounds(x, z)) return;
+        const a = lineAnchor.current;
+        if (a) {
+          const dist = Math.abs(a.x - x) + Math.abs(a.z - z);
+          if (dist !== 1) return; // not a direct up/down/left/right neighbour
+        }
+        if (!game.canAfford(tool.cost)) return;
+        if (build(x, z)) {
+          game.spend(tool.cost);
+          lineAnchor.current = { x, z };
+        }
+      };
+
       switch (tool.id) {
         case 'select':
           return; // no-op
         case 'bulldoze':
           terrain.bulldoze(x, z);
           return;
-        case 'road': {
-          // Only charge if the build actually succeeds and we can afford it.
-          if (!terrain.inBounds(x, z)) return;
-          if (!game.canAfford(tool.cost)) return;
-          if (terrain.buildRoad(x, z)) game.spend(tool.cost);
+        case 'road':
+          buildLine((cx, cz) => terrain.buildRoad(cx, cz));
           return;
-        }
-        case 'rail': {
-          if (!terrain.inBounds(x, z)) return;
-          if (!game.canAfford(tool.cost)) return;
-          if (terrain.buildRail(x, z)) game.spend(tool.cost);
+        case 'rail':
+          buildLine((cx, cz) => terrain.buildRail(cx, cz));
           return;
-        }
         case 'raise':
         case 'lower': {
           // Terraforming is now batched: clicks/drag only SELECT cells (shown
@@ -252,10 +270,11 @@ function Scene() {
     [terrain, game, plan, cellSize, half],
   );
 
-  // Reset the dedupe key whenever a drag starts/ends so the first cell of the
-  // next gesture is always processed.
+  // Reset the dedupe key + line anchor whenever a drag starts/ends so the first
+  // cell of the next gesture is always processed and placed freely.
   const handleDragChange = useCallback(() => {
     lastCell.current = null;
+    lineAnchor.current = null;
   }, []);
 
   // Shared click + drag handlers, attached to BOTH the flat pick-plane and the

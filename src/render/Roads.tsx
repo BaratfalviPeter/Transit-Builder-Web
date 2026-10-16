@@ -63,7 +63,35 @@ export function Roads({ map, cellSize }: RoadsProps) {
   );
 }
 
-/** Thin tiles for roads on flat ground. */
+// White lane-marking material (bright, unlit-ish so it reads on dark asphalt).
+const MARKING_MAT = new THREE.MeshStandardMaterial({
+  color: '#e8e4d6',
+  roughness: 0.7,
+  emissive: '#2a2824',
+  emissiveIntensity: 0.4,
+});
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+patchRef(MARKING_MAT);
+const MARK_LIFT = 0.012; // markings sit just above the asphalt top
+
+/** Does cell (x,z) connect to a road-like cell (road/rail) one step away? */
+function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number): boolean {
+  const nx = x + dx;
+  const nz = z + dz;
+  if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) return false;
+  const t = map.cells[nx][nz];
+  return t === CellType.Road || t === CellType.Rail;
+}
+
+/**
+ * Thin asphalt tiles for roads on flat ground, PLUS dashed white centre-line
+ * markings. Both are single InstancedMeshes (2 draw calls for every flat road
+ * on the map). The dashes are laid toward each orthogonal neighbour that is
+ * also a road/rail, so straight runs get a dashed line, corners/T/cross
+ * junctions get dashes toward every arm, and a lone/dead-end tile gets a short
+ * centre stub — orientation comes for free from the connection direction, no
+ * texture needed.
+ */
 function FlatRoads({
   coords,
   map,
@@ -74,57 +102,124 @@ function FlatRoads({
   cellSize: number;
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
+  const markRef = useRef<THREE.InstancedMesh>(null);
   const half = (map.size - 1) / 2;
+
+  // Per-cell surface top + a flat dash plan, computed once per road set.
+  const marks = useMemo(() => {
+    const out: Array<{ x: number; z: number; dir: 'x' | 'z'; frac: number; surfaceTop: number }> = [];
+    const DASHES = 3; // dashes along a full edge→centre arm
+    for (const [x, z] of coords) {
+      const cornerH = cellCornerHeights(map, x, z)[0];
+      const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
+      const n = connects(map, x, z, 0, -1);
+      const s = connects(map, x, z, 0, 1);
+      const e = connects(map, x, z, 1, 0);
+      const w = connects(map, x, z, -1, 0);
+      const arms: Array<['x' | 'z', number]> = [];
+      // Each arm: dashes from the cell centre out toward that neighbour.
+      if (n) arms.push(['z', -1]);
+      if (s) arms.push(['z', 1]);
+      if (e) arms.push(['x', 1]);
+      if (w) arms.push(['x', -1]);
+      if (arms.length === 0) {
+        out.push({ x, z, dir: 'x', frac: 0, surfaceTop }); // lone tile: centre dot
+        continue;
+      }
+      for (const [dir, sign] of arms) {
+        for (let i = 0; i < DASHES; i++) {
+          // Positions 0 (centre) .. ~0.45 (near the edge), skipping the very
+          // centre on straight runs so the dashes read as one continuous line.
+          const frac = sign * ((i + 0.5) / DASHES) * 0.5;
+          out.push({ x, z, dir, frac, surfaceTop });
+        }
+      }
+    }
+    return out;
+  }, [coords, map, cellSize]);
 
   useLayoutEffect(() => {
     const mesh = ref.current;
-    if (!mesh) return;
-    const dummy = new THREE.Object3D();
-    const thickness = ROAD_STYLE.scaleY * cellSize;
-    // Rest the road ON TOP of the surface. For a flat cell all corners are
-    // equal, so the uniform corner height gives the tile's elevation (0 on flat
-    // ground, or the hill top for a flat hilltop). Previously it was pinned to
-    // grass level, so hilltop roads sank into the hill.
-    for (let i = 0; i < coords.length; i++) {
-      const [x, z] = coords[i];
-      const cornerH = cellCornerHeights(map, x, z)[0]; // all equal => any corner
-      const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
-      dummy.position.set(
-        (x - half) * cellSize,
-        surfaceTop + thickness / 2 + SURFACE_LIFT * cellSize,
-        (z - half) * cellSize,
-      );
-      dummy.scale.set(cellSize, thickness, cellSize);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+    if (mesh) {
+      const dummy = new THREE.Object3D();
+      const thickness = ROAD_STYLE.scaleY * cellSize;
+      for (let i = 0; i < coords.length; i++) {
+        const [x, z] = coords[i];
+        const cornerH = cellCornerHeights(map, x, z)[0];
+        const surfaceTop = (FLAT_TOP + cornerH) * cellSize;
+        dummy.position.set(
+          (x - half) * cellSize,
+          surfaceTop + thickness / 2 + SURFACE_LIFT * cellSize,
+          (z - half) * cellSize,
+        );
+        dummy.scale.set(cellSize, thickness, cellSize);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.count = coords.length;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
     }
-    mesh.count = coords.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [coords, cellSize, half]);
+
+    const mk = markRef.current;
+    if (mk) {
+      const dummy = new THREE.Object3D();
+      const topLift = ROAD_STYLE.scaleY * cellSize + (SURFACE_LIFT + MARK_LIFT) * cellSize;
+      const dashLen = 0.16 * cellSize;
+      const dashW = 0.06 * cellSize;
+      for (let i = 0; i < marks.length; i++) {
+        const m = marks[i];
+        const cx = (m.x - half) * cellSize;
+        const cz = (m.z - half) * cellSize;
+        const along = m.frac * cellSize;
+        dummy.position.set(
+          cx + (m.dir === 'x' ? along : 0),
+          m.surfaceTop + topLift,
+          cz + (m.dir === 'z' ? along : 0),
+        );
+        // Long axis points along the arm direction.
+        if (m.dir === 'x') dummy.scale.set(dashLen, 0.02 * cellSize, dashW);
+        else dummy.scale.set(dashW, 0.02 * cellSize, dashLen);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        mk.setMatrixAt(i, dummy.matrix);
+      }
+      mk.count = marks.length;
+      mk.instanceMatrix.needsUpdate = true;
+      mk.computeBoundingSphere();
+    }
+  }, [coords, marks, cellSize, half, map]);
 
   if (coords.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={ref}
-      args={[undefined, undefined, coords.length]}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[1, 1, 1]} />
-      {/* polygonOffset pulls the road's polygons toward the camera in the depth
-          buffer so they always win over the coplanar grass tile — a robust
-          z-fighting fix on top of the small Y lift. */}
-      <meshStandardMaterial
-        ref={patchRef}
-        color={ROAD_STYLE.color}
-        roughness={0.8}
-        polygonOffset
-        polygonOffsetFactor={-1}
-        polygonOffsetUnits={-1}
-      />
-    </instancedMesh>
+    <group>
+      <instancedMesh
+        ref={ref}
+        args={[UNIT_BOX, undefined, coords.length]}
+        castShadow
+        receiveShadow
+      >
+        {/* polygonOffset pulls the road's polygons toward the camera in the
+            depth buffer so they always win over the coplanar grass tile — a
+            robust z-fighting fix on top of the small Y lift. */}
+        <meshStandardMaterial
+          ref={patchRef}
+          color={ROAD_STYLE.color}
+          roughness={0.8}
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+        />
+      </instancedMesh>
+      {marks.length > 0 && (
+        <instancedMesh
+          key={marks.length}
+          ref={markRef}
+          args={[UNIT_BOX, MARKING_MAT, marks.length]}
+        />
+      )}
+    </group>
   );
 }
 

@@ -13,65 +13,72 @@ import { useSyncExternalStore } from 'react';
 
 export const VISUAL_DEFAULTS = {
   // --- Lights ---
-  ambientIntensity: 0.4,
-  ambientColor: '#fdf6e3',
-  hemiIntensity: 0.35,
-  hemiSky: '#cfe3ff',
-  hemiGround: '#5d7a45',
-  sunIntensity: 2.2,
-  sunColor: '#fff3d6',
+  ambientIntensity: 0.55,
+  ambientColor: '#fff4ee',
+  hemiIntensity: 0.42,
+  hemiSky: '#bcd0e6',
+  hemiGround: '#6d7a4a',
+  sunIntensity: 2.15,
+  sunColor: '#ffeccc',
   /** Sun direction: compass angle (deg) and height above the horizon (deg). */
   sunAzimuth: 27,
-  sunElevation: 53,
+  sunElevation: 48,
   shadowBias: -0.0004,
   shadowNormalBias: 0.04,
   /** Tone-mapping exposure (overall brightness). */
   exposure: 1,
-  background: '#bcd6e6',
+  background: '#bccdd8',
 
   // --- Terrain ---
-  grass1: '#7e9a45',
-  grass2: '#76923f',
-  grass3: '#86a24b',
-  grass4: '#7a9642',
+  grass1: '#7f8a48',
+  grass2: '#788540',
+  grass3: '#869250',
+  grass4: '#7b8844',
   /** Per-facet brightness wobble on grass/hills (0 = none). */
-  grassWobble: 0.06,
-  hill1: '#8b9a52',
-  hill2: '#83924b',
-  hill3: '#93a259',
-  forestFloor: '#5f7f3b',
-  water: '#5e9fc2',
-  cliff: '#7a5536',
-  city: '#cfc8b2',
+  grassWobble: 0.05,
+  hill1: '#8a9150',
+  hill2: '#7f8847',
+  hill3: '#9a9a58',
+  forestFloor: '#5f7035',
+  water: '#78a0ba',
+  cliff: '#7b4b36',
+  city: '#cdc8bc',
   /** Terrain roughness (0 = shiny, 1 = matte). */
   terrainRoughness: 0.95,
 
   // --- Grid lines ---
   gridVisible: true,
-  gridCell: '#6c8a3a',
-  gridSection: '#62803a',
+  gridCell: '#70803d',
+  gridSection: '#667637',
 
   // --- Trees & rocks ---
-  tree1: '#3f6a33',
-  tree2: '#4a7a3a',
-  tree3: '#365d2e',
-  tree4: '#567f3c',
-  tree5: '#2f5529',
+  tree1: '#4a6232',
+  tree2: '#566d36',
+  tree3: '#3f5a2c',
+  tree4: '#5f7a3c',
+  tree5: '#3a5226',
   /** Extra brightness per higher tree tier (sun-lit tips). */
-  treeTipLight: 0.08,
-  trunk: '#6b4a2b',
-  rock1: '#6e6c69',
-  rock2: '#7c7a76',
-  rock3: '#5f5e5c',
-  rock4: '#86847f',
+  treeTipLight: 0.06,
+  trunk: '#5a3f28',
+  rock1: '#8c8a86',
+  rock2: '#9a9792',
+  rock3: '#76736f',
+  rock4: '#a3a09a',
 
   // --- Clouds ---
   cloudsVisible: true,
-  cloudColor: '#ffffff',
-  cloudGlow: 0.25,
-  cloudCount: 8,
-  cloudSpeed: 0.8,
+  cloudColor: '#f4eef2',
+  cloudGlow: 0.2,
+  cloudCount: 12,
+  cloudSpeed: 0.65,
   cloudShadows: true,
+
+  // --- Birds ---
+  birdsVisible: true,
+  /** Number of flocks circling over forests. */
+  birdFlocks: 5,
+  birdColor: '#2e2b29',
+  birdSpeed: 1,
 };
 
 export type VisualSettings = typeof VISUAL_DEFAULTS;

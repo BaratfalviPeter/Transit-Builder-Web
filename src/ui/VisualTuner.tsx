@@ -108,6 +108,15 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
       r('cloudSpeed', 'Sebesség', 0, 5, 0.05),
     ],
   },
+  {
+    title: 'Madarak',
+    ctls: [
+      b('birdsVisible', 'Madarak látszanak'),
+      r('birdFlocks', 'Csapatok száma', 0, 20, 1),
+      c('birdColor', 'Szín'),
+      r('birdSpeed', 'Sebesség', 0, 3, 0.05),
+    ],
+  },
 ];
 
 function fmt(v: number, step: number): string {

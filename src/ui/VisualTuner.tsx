@@ -83,6 +83,10 @@ const SECTIONS: Array<{ title: string; ctls: Ctl[] }> = [
     ctls: [b('gridVisible', 'Rács látszik'), c('gridCell', 'Cella vonal'), c('gridSection', 'Szekció vonal')],
   },
   {
+    title: 'Utak',
+    ctls: [r('roadCornerAngle', 'Kanyarvonal szöge (°)', 20, 140, 1)],
+  },
+  {
     title: 'Fák és sziklák',
     ctls: [
       c('tree1', 'Fa 1'),

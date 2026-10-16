@@ -207,41 +207,73 @@ function Scene() {
   // Remember the last cell acted on during a drag so we don't re-process the
   // same cell many times as the pointer wiggles within it.
   const lastCell = useRef<string | null>(null);
-  // Anchor cell of a road/rail drag: the most recently BUILT line cell. New
-  // cells only extend the line if they're its direct N/S/E/W neighbour, so the
-  // road "snakes" one cell at a time (Mini-Motorways style) instead of jumping
-  // across gaps when the pointer moves fast or diagonally.
+  // Road/rail drag state. A gesture builds ONE straight line:
+  //   - `start`  : the cell where the drag began (locks the perpendicular axis),
+  //   - `axis`   : locked to 'x' or 'z' on the first move off the start cell,
+  //   - `anchor` : the furthest cell built so far along the line; steps must be
+  //                its direct neighbour on `axis` (no gaps, no diagonals).
+  // To turn, the player releases and starts a new drag. This kills the ugly
+  // zig-zag staircases that free snaking produced.
+  const lineStart = useRef<{ x: number; z: number } | null>(null);
+  const lineAxis = useRef<'x' | 'z' | null>(null);
   const lineAnchor = useRef<{ x: number; z: number } | null>(null);
 
   const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
       // World point -> terrain cell index (grid is centered on origin).
-      const x = Math.round(worldX / cellSize + half);
-      const z = Math.round(worldZ / cellSize + half);
-      const key = `${x},${z}`;
-      if (key === lastCell.current) return; // same cell as last event
-      lastCell.current = key;
+      let x = Math.round(worldX / cellSize + half);
+      let z = Math.round(worldZ / cellSize + half);
 
       const tool = TOOLS[game.getActiveTool()];
+      const isLine = tool.id === 'road' || tool.id === 'rail';
 
-      // Shared snake logic for road + rail: the first cell of the gesture is
-      // placed freely; after that, only a straight orthogonal step from the
-      // last built cell is allowed (no diagonals, no gaps). The anchor only
-      // advances to cells we actually built, so a blocked step (water, slope,
-      // occupied) doesn't let the line skip ahead.
+      // Axis-locked straight-line build for road + rail.
       const buildLine = (build: (x: number, z: number) => boolean): void => {
-        if (!terrain.inBounds(x, z)) return;
-        const a = lineAnchor.current;
-        if (a) {
-          const dist = Math.abs(a.x - x) + Math.abs(a.z - z);
-          if (dist !== 1) return; // not a direct up/down/left/right neighbour
+        // First paint of a gesture: this cell is the line's start (and anchor).
+        if (!lineStart.current) {
+          lineStart.current = { x, z };
+          lastCell.current = `${x},${z}`;
+          if (terrain.inBounds(x, z) && game.canAfford(tool.cost) && build(x, z)) {
+            game.spend(tool.cost);
+            lineAnchor.current = { x, z };
+          }
+          return;
         }
+        const start = lineStart.current;
+
+        // Lock the axis on the first cell that differs from the start.
+        if (!lineAxis.current) {
+          if (x === start.x && z === start.z) {
+            // Still on the start cell: (re)build it, don't lock yet.
+          } else {
+            lineAxis.current = Math.abs(x - start.x) >= Math.abs(z - start.z) ? 'x' : 'z';
+          }
+        }
+        // Constrain the cursor to the locked line (project onto the row/col),
+        // so diagonal wiggle keeps extending straight instead of stalling.
+        if (lineAxis.current === 'x') z = start.z;
+        else if (lineAxis.current === 'z') x = start.x;
+
+        const key = `${x},${z}`;
+        if (key === lastCell.current) return;
+        lastCell.current = key;
+        if (!terrain.inBounds(x, z)) return;
+
+        // Each step must be the anchor's direct neighbour along the locked axis.
+        const a = lineAnchor.current;
+        if (a && Math.abs(a.x - x) + Math.abs(a.z - z) !== 1) return;
         if (!game.canAfford(tool.cost)) return;
         if (build(x, z)) {
           game.spend(tool.cost);
           lineAnchor.current = { x, z };
         }
       };
+
+      if (!isLine) {
+        const key = `${x},${z}`;
+        if (key === lastCell.current) return;
+        lastCell.current = key;
+      }
 
       switch (tool.id) {
         case 'select':
@@ -270,11 +302,15 @@ function Scene() {
     [terrain, game, plan, cellSize, half],
   );
 
-  // Reset the dedupe key + line anchor whenever a drag starts/ends so the first
-  // cell of the next gesture is always processed and placed freely.
-  const handleDragChange = useCallback(() => {
+  // Reset drag state whenever a drag starts/ends. On start we seed the line
+  // start/anchor from the first painted cell (done in the effect below via the
+  // first handlePaint call), so here we just clear everything.
+  const handleDragChange = useCallback((dragging: boolean) => {
     lastCell.current = null;
+    lineAxis.current = null;
     lineAnchor.current = null;
+    lineStart.current = null;
+    void dragging;
   }, []);
 
   // Shared click + drag handlers, attached to BOTH the flat pick-plane and the

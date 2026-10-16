@@ -17,6 +17,7 @@ import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
 import { MapGrid } from './MapGrid';
+import { Clouds } from './CloudLayer';
 import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
 import { Rails } from './Rails';
@@ -223,8 +224,10 @@ function Scene() {
       {/* Overlays below are memoized on cellsVersion, so a pure terraform
           (height) edit doesn't rebuild their geometry — only the terrain
           surface patches itself. They refresh when a cell TYPE changes. */}
-      {/* Forest decoration blocks on top of the surface. */}
+      {/* Instanced low-poly pine trees (forests + scattered) and rocks. */}
       <MapGridM map={map} cellSize={cellSize} />
+      {/* Drifting low-poly clouds (cast soft shadows on the map). */}
+      <Clouds extent={(map.size / 2) * cellSize + 14} count={8} seed={map.seed} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <IndustriesM map={map} cellSize={cellSize} />
       {/* Floating UI icons above special buildings (for easy identification). */}

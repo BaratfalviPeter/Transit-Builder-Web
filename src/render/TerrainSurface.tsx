@@ -362,3 +362,44 @@ function patchChangedCells(
   geom.computeVertexNormals();
   geom.computeBoundingSphere();
 }
+
+// --- Surface sampling (for props resting on the crumpled terrain) -----------
+
+/**
+ * World Y of the rendered top surface of cell (x, z) at local offset (u, v),
+ * each in [-0.5, 0.5] cell units from the cell centre. Matches the exact
+ * 4-triangle top built by writeCell (corner jitter + grass centre bump), so
+ * trees and rocks sit flush on the crumpled ground.
+ */
+export function surfaceYAt(
+  map: TerrainMap,
+  x: number,
+  z: number,
+  u: number,
+  v: number,
+  cellSize: number,
+): number {
+  if (map.cells[x][z] === CellType.Water) return WATER_LEVEL * cellSize;
+  const cy = (cx: number, cz: number) =>
+    cornerY(map, cx, cz, cellSize) + cornerJitter(map, cx, cz) * cellSize;
+  const y00 = cy(x, z);
+  const y10 = cy(x + 1, z);
+  const y11 = cy(x + 1, z + 1);
+  const y01 = cy(x, z + 1);
+  let yc = (y00 + y11) / 2;
+  if (isGrass(map, x, z)) {
+    yc += (hash01(x, z, map.seed + 101) * 2 - 1) * GRASS_CENTER_AMP * cellSize;
+  }
+  // Pick the top triangle (apex at the centre) containing (u, v), then
+  // interpolate: p = a·(A − C) + b·(B − C).
+  let ax: number, az: number, ay: number, bx: number, bz: number, by: number;
+  if (Math.abs(u) >= Math.abs(v)) {
+    if (u < 0) [ax, az, ay, bx, bz, by] = [-0.5, -0.5, y00, -0.5, 0.5, y01];
+    else [ax, az, ay, bx, bz, by] = [0.5, 0.5, y11, 0.5, -0.5, y10];
+  } else if (v > 0) [ax, az, ay, bx, bz, by] = [-0.5, 0.5, y01, 0.5, 0.5, y11];
+  else [ax, az, ay, bx, bz, by] = [0.5, -0.5, y10, -0.5, -0.5, y00];
+  const det = ax * bz - az * bx;
+  const a = (u * bz - v * bx) / det;
+  const b = (ax * v - az * u) / det;
+  return yc + a * (ay - yc) + b * (by - yc);
+}

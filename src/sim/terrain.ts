@@ -289,10 +289,23 @@ export const HILL_STEP = 0.45;
 const REFERENCE_SIZE = 21;
 
 /**
+ * Grid subdivision factor. The map keeps its PHYSICAL size, but every former
+ * cell is now split into GRID_SCALE × GRID_SCALE finer cells (2 → each old cell
+ * becomes 4). All generation distances that are measured in cells (city size,
+ * buffers, industry spacing, resource radius) are multiplied by this so the
+ * physical layout stays the same; only the resolution gets finer. Noise
+ * frequency already scales with map size, so biomes keep their physical size.
+ */
+export const GRID_SCALE = 2;
+
+/** Default map size: (61 − 1) · GRID_SCALE + 1 = 121 (odd keeps a centre cell). */
+export const DEFAULT_MAP_SIZE = 60 * GRID_SCALE + 1;
+
+/**
  * Protective buffer (in cells, Chebyshev radius) around the city center in
  * which no hills may spawn — guarantees flat, buildable room to expand.
  */
-const CITY_BUFFER = 5;
+const CITY_BUFFER = 5 * GRID_SCALE;
 
 /**
  * Industry placement tuning.
@@ -302,16 +315,16 @@ const CITY_BUFFER = 5;
  *    industry buildings, so they stay scattered and never clump/stack.
  *  - INDUSTRY_PER_TYPE: how many of each industry type to try to place.
  */
-const INDUSTRY_CITY_GAP = 8;
-const INDUSTRY_MIN_SPACING = 6;
+const INDUSTRY_CITY_GAP = 8 * GRID_SCALE;
+const INDUSTRY_MIN_SPACING = 6 * GRID_SCALE;
 const INDUSTRY_PER_TYPE = 3;
 
 export interface GenerateOptions {
-  /** Grid dimension (size × size). Default 61 (large play area). */
+  /** Grid dimension (size × size). Default DEFAULT_MAP_SIZE (121). */
   size?: number;
   /** Deterministic seed. Default: random. */
   seed?: number;
-  /** Half-width of the central CityCenter square (2 => 5×5). Default 2. */
+  /** Half-width of the central CityCenter square. Default 2·GRID_SCALE+1 (=5 → 11×11, ≈ the old 5×5 physically). */
   cityHalf?: number;
 }
 
@@ -375,9 +388,9 @@ function makeValueNoise(rng: () => number, latticeSize: number) {
  * guaranteed buffer of Empty around the city so the town has room to grow.
  */
 export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
-  const size = options.size ?? 61;
+  const size = options.size ?? DEFAULT_MAP_SIZE;
   const seed = options.seed ?? (Math.random() * 2 ** 32) >>> 0;
-  const cityHalf = options.cityHalf ?? 2;
+  const cityHalf = options.cityHalf ?? 2 * GRID_SCALE + 1;
 
   const rng = mulberry32(seed);
 
@@ -531,7 +544,7 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
  * A lumber mill wants trees nearby, a mine wants hills, a power plant wants
  * water. The factory has no resource and may go anywhere.
  */
-const RESOURCE_RADIUS = 2;
+const RESOURCE_RADIUS = 2 * GRID_SCALE;
 
 interface IndustrySpec {
   type: CellType;

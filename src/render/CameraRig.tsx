@@ -133,7 +133,7 @@ export function CameraRig() {
       // Keep the camera above the horizon so you always look down onto the map.
       minPolarAngle={0}
       maxPolarAngle={Math.PI / 2.2}
-      minDistance={5}
+      minDistance={2.5}
       maxDistance={260}
       // Pan in the screen plane feels more natural for a top-down builder.
       screenSpacePanning={false}

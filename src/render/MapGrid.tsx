@@ -28,9 +28,11 @@ export interface MapGridProps {
 }
 
 /** Chance that a plain grass cell gets tree(s) / rock(s). */
-const GRASS_TREE_CHANCE = 0.05;
-const GRASS_ROCK_CHANCE = 0.035;
-const HILL_ROCK_CHANCE = 0.06;
+// Per-cell chances. The grid is now 2× finer (4 cells per old cell), so these
+// are ~¼ of the old values to keep the same physical density of lone props.
+const GRASS_TREE_CHANCE = 0.015;
+const GRASS_ROCK_CHANCE = 0.011;
+const HILL_ROCK_CHANCE = 0.02;
 
 /** Tree shape in cellSize units (scaled per tree). */
 const TRUNK_H = 0.22;
@@ -183,17 +185,14 @@ function scatter(map: TerrainMap, cellSize: number): { trees: Tree[]; rocks: Roc
     for (let z = 0; z < map.size; z++) {
       const t = map.cells[x][z];
       if (t === CellType.Forest) {
-        // Dense cluster: 3–4 trees on a jittered 2×2 layout.
-        const n = 3 + (hash01(x, z, seed + 1) < 0.5 ? 1 : 0);
-        const slots: Array<[number, number]> = [
-          [-0.22, -0.22],
-          [0.22, -0.2],
-          [-0.2, 0.22],
-          [0.22, 0.22],
-        ];
+        // Forest cells are now ¼ of the old area, so 1–2 trees each (≈1.5× the
+        // old physical density, with trees half the size → a finer, denser,
+        // more natural forest without exploding the instance count).
+        const n = 1 + (hash01(x, z, seed + 1) < 0.4 ? 1 : 0);
+        const slots: Array<[number, number]> = n === 1 ? [[0, 0]] : [[-0.18, -0.15], [0.2, 0.17]];
         for (let k = 0; k < n; k++) {
-          const [ju, jv] = spot(x, z, k, 0.16);
-          const s = 0.85 + hash01(x, z, seed + 300 + k) * 0.55;
+          const [ju, jv] = spot(x, z, k, n === 1 ? 0.3 : 0.16);
+          const s = 0.95 + hash01(x, z, seed + 300 + k) * 0.55;
           addTree(x, z, k, slots[k][0] + ju, slots[k][1] + jv, s);
         }
       } else if (t === CellType.Empty) {

@@ -20,6 +20,7 @@
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 import { CellType, cornerHeightAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import {
@@ -38,6 +39,8 @@ export interface TerrainSurfaceProps {
 }
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
+
+type BVHGeometry = THREE.BufferGeometry & { boundsTree?: MeshBVH };
 const WATER_SINK = 0.2;
 /**
  * Uniform water surface height (cellSize units). ALL water cells render their
@@ -182,6 +185,11 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
   );
   const prevMapRef = useRef<TerrainMap | null>(null);
 
+  // Use the BVH-accelerated raycast on this mesh only.
+  useLayoutEffect(() => {
+    if (meshRef.current) meshRef.current.raycast = acceleratedRaycast;
+  }, []);
+
   useLayoutEffect(() => {
     const needsFullBuild =
       !geomRef.current ||
@@ -193,6 +201,9 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
     if (needsFullBuild) {
       geomRef.current?.dispose();
       geomRef.current = buildTerrainGeometry(map, cellSize);
+      // BVH for fast picking: the finer 121×121 grid has ~175k triangles, and a
+      // brute-force raycast on every pointer-move during a drag is too slow.
+      (geomRef.current as BVHGeometry).boundsTree = new MeshBVH(geomRef.current);
       builtForRef.current = { seed: map.seed, size: map.size, cellSize };
       prevMapRef.current = map;
       if (meshRef.current) meshRef.current.geometry = geomRef.current;
@@ -202,6 +213,8 @@ export function TerrainSurface({ map, cellSize, handlers }: TerrainSurfaceProps)
     const prev = prevMapRef.current;
     if (prev && prev !== map) {
       patchChangedCells(geomRef.current!, prev, map, cellSize);
+      // Same topology, moved vertices → a cheap refit keeps picking exact.
+      (geomRef.current as BVHGeometry).boundsTree?.refit();
       prevMapRef.current = map;
     }
   }, [map, cellSize]);

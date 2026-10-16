@@ -86,7 +86,7 @@ const RailsM = memo(Rails, sameCells);
 const BirdsM = memo(Birds, sameCells);
 
 /**
- * Half-extent of the orthographic shadow frustum. The map is 61 cells × 2 =
+ * Half-extent of the orthographic shadow frustum. The map is 121 cells × 1 =
  * 122 units; its half-diagonal (~86) plus margin covers it from any angle.
  */
 const SHADOW_EXTENT = 92;

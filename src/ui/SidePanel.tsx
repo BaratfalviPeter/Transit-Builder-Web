@@ -111,7 +111,7 @@ export function SidePanel() {
           />
         )}
 
-        {tab === 'dev' && <DevTab />}
+        {tab === 'dev' && <DevTab onEditorOn={() => game.setActiveTool('select')} />}
 
         {tab === 'economy' && (
           <>

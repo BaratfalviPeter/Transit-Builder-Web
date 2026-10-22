@@ -108,6 +108,7 @@
   color: #e9ebf0;
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
 }
 
 .panel__tool:hover {

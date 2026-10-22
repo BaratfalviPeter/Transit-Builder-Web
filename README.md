@@ -94,6 +94,12 @@ A jobb oldali **panel** három füle:
     szülő/gyerek, Esc kijelölés törlése, Ctrl+Z az utolsó mentés visszavonása.
     Működése: `dev/modelEditorPlugin.ts` (Babel-címkézés + író végpont) és
     `src/dev/` (kijelölés, fogantyú).
+  - **Modellnéző** (`?model=MineModel`, a Dev fülről új lapon nyílik): egyetlen
+    modell közelről, a 3×3-as telek rácsán, a Látvány-beállítások fényeivel.
+    Modellválasztó, fix nézetek (Átlós / Elöl / Oldalt / Hátul / Felül, egérrel
+    szabadon forgatható), és itt is működik a modellszerkesztő. URL-paraméterek:
+    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel`,
+    `view=iso|front|side|back|top`, `ui=0` (panel nélkül, tiszta képekhez).
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:
 ⏸ szünet · ▶ normál · ⏩ gyorsított. Normál tempónál 1 valós másodperc ≈ 1 nap.

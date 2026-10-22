@@ -5,7 +5,6 @@
  * src/dev/ModelEditor.tsx and dev/modelEditorPlugin.ts).
  */
 
-import { useGame } from '../sim';
 import { nudge } from '../dev/ModelEditor';
 import {
   EDITOR_AVAILABLE,
@@ -27,15 +26,16 @@ const MODES: Array<{ id: GizmoMode; label: string; key: string }> = [
   { id: 'scale', label: 'Méretezés', key: '3' },
 ];
 
-export function DevTab() {
+/** `onEditorOn`: called when the editor is switched on (the game uses it to
+ *  switch to the select tool, so picking clicks don't build anything). */
+export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
   const dev = useDev();
-  const game = useGame();
   const info = dev.chain[dev.index];
+  const inViewer = new URLSearchParams(window.location.search).has('model');
 
   const toggleEditor = () => {
     const on = !dev.editorOn;
-    // Clicks on the map must not build anything while picking models.
-    if (on) game.setActiveTool('select');
+    if (on) onEditorOn?.();
     setEditorOn(on);
   };
 
@@ -61,6 +61,15 @@ export function DevTab() {
         <span className="panel__tool-label">Látvány beállítás</span>
       </button>
 
+      {!inViewer && (
+        <a className="panel__tool" href="?model=MineModel" target="_blank" rel="noreferrer">
+          <span className="panel__tool-icon" aria-hidden>
+            🔍
+          </span>
+          <span className="panel__tool-label">Modellnéző (új lapon)</span>
+        </a>
+      )}
+
       <button
         type="button"
         className={'panel__tool' + (dev.editorOn ? ' is-active' : '') + (EDITOR_AVAILABLE ? '' : ' is-disabled')}
@@ -78,7 +87,7 @@ export function DevTab() {
 
       {dev.editorOn && (
         <div className="dev">
-          {!info && <div className="panel__hint">Kattints egy ipari épület egy elemére a kijelöléshez.</div>}
+          {!info && <div className="panel__hint">Kattints a modell egy elemére a kijelöléshez.</div>}
 
           {info && (
             <>

@@ -40,6 +40,7 @@ const ICON: Partial<Record<CellType, string>> = {
   [CellType.Mine]: '⛏️',
   [CellType.LumberMill]: '🪓',
   [CellType.Factory]: '⚙️',
+  [CellType.OilRig]: '🛢️',
 };
 
 /** Extra CSS size modifier per type (factories get a larger badge). */

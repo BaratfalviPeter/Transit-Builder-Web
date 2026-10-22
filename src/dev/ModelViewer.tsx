@@ -9,7 +9,7 @@
  * the dev model editor works here too.
  *
  * URL parameters:
- *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel
+ *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel
  *   view  = iso | front | side | back | top   (starting camera view)
  *   ui=0  → no panel (clean screenshots)
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
@@ -25,6 +25,7 @@ import { MineModel } from '../render/MineModel';
 import { LumberMillModel } from '../render/LumberMillModel';
 import { PowerPlantModel } from '../render/PowerPlantModel';
 import { FactoryModel } from '../render/FactoryModel';
+import { OilRigModel } from '../render/OilRigModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -33,11 +34,25 @@ import './modelViewer.css';
 
 type V3 = [number, number, number];
 
-export const VIEWER_MODELS: Array<{ id: string; label: string; Comp: ComponentType<{ phase?: number }> }> = [
+/**
+ * `water`: the model stands in a lake (origin = water surface), so it gets
+ * open water around it instead of a lawn. `zoom`: camera distance factor for
+ * tall models.
+ */
+export const VIEWER_MODELS: Array<{
+  id: string;
+  label: string;
+  Comp: ComponentType<{ phase?: number }>;
+  water?: boolean;
+  zoom?: number;
+  /** Height the camera looks at (default TARGET's). */
+  lookY?: number;
+}> = [
   { id: 'MineModel', label: 'Bánya', Comp: MineModel },
   { id: 'LumberMillModel', label: 'Fatelep', Comp: LumberMillModel },
   { id: 'PowerPlantModel', label: 'Erőmű', Comp: PowerPlantModel },
   { id: 'FactoryModel', label: 'Gyár', Comp: FactoryModel },
+  { id: 'OilRigModel', label: 'Olajfúró', Comp: OilRigModel, water: true, zoom: 1.2, lookY: 0.9 },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */
@@ -111,9 +126,9 @@ function gridLines(hole: boolean): THREE.BufferGeometry {
  * such a lot is cut out of the terrain — the lot is a hole in the lawn, lined
  * with earth walls down to that depth.
  */
-function Ground({ depth }: { depth: number }) {
+function Ground({ depth, water }: { depth: number; water: boolean }) {
   const v = useVisual();
-  const hole = depth > 0;
+  const hole = depth > 0 && !water;
   const lawn = useMemo(() => {
     const shape = new THREE.Shape();
     shape.moveTo(-LAWN, -LAWN).lineTo(LAWN, -LAWN).lineTo(LAWN, LAWN).lineTo(-LAWN, LAWN).closePath();
@@ -130,10 +145,10 @@ function Ground({ depth }: { depth: number }) {
   return (
     <group>
       <mesh geometry={lawn} rotation-x={-Math.PI / 2} position={[0, -0.002, 0]} receiveShadow>
-        <meshStandardMaterial color={v.grass1} roughness={1} />
+        <meshStandardMaterial color={water ? v.water : v.grass1} roughness={water ? 0.6 : 1} />
       </mesh>
       <lineSegments geometry={grid} position={[0, 0.001, 0]}>
-        <lineBasicMaterial color="#6e7840" />
+        <lineBasicMaterial color={water ? '#6a90a8' : '#6e7840'} />
       </lineSegments>
       <lineSegments geometry={lot} position={[0, 0.003, 0]}>
         <lineBasicMaterial color="#f2e6b8" />
@@ -172,16 +187,16 @@ function MeasureDepth({ target, sig, onDepth }: { target: RefObject<THREE.Group>
 }
 
 /** Moves the camera to a preset view whenever `view` changes. */
-function CameraViews({ view }: { view: string }) {
+function CameraViews({ view, zoom, lookY }: { view: string; zoom: number; lookY: number }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
   useEffect(() => {
     const p = (VIEWS.find((x) => x.id === view) ?? VIEWS[0]).pos;
-    camera.position.set(...p);
-    camera.lookAt(...TARGET);
-    controls?.target.set(...TARGET);
+    camera.position.set(p[0] * zoom, p[1] * zoom + lookY - TARGET[1], p[2] * zoom);
+    camera.lookAt(TARGET[0], lookY, TARGET[2]);
+    controls?.target.set(TARGET[0], lookY, TARGET[2]);
     controls?.update();
-  }, [view, camera, controls]);
+  }, [view, zoom, lookY, camera, controls]);
   return null;
 }
 
@@ -220,7 +235,7 @@ export function ModelViewer() {
     <>
       <Canvas shadows="soft" camera={{ fov: 40, near: 0.05, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <ViewerLights />
-        <Ground depth={depth} />
+        <Ground depth={depth} water={!!entry.water} />
         <group ref={modelRef}>
           <EditorPick>
             <Comp key={entry.id} phase={0} />
@@ -229,7 +244,7 @@ export function ModelViewer() {
         <MeasureDepth target={modelRef} sig={entry.id} onDepth={setDepth} />
         <EditorGizmo />
         <OrbitControls makeDefault target={TARGET} maxPolarAngle={Math.PI / 2 - 0.02} minDistance={1} maxDistance={20} />
-        <CameraViews view={view} />
+        <CameraViews view={view} zoom={entry.zoom ?? 1} lookY={entry.lookY ?? TARGET[1]} />
         <ReadyFlag sig={`${entry.id}:${view}`} />
       </Canvas>
 

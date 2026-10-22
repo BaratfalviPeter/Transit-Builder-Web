@@ -98,7 +98,7 @@ A jobb oldali **panel** három füle:
     modell közelről, a 3×3-as telek rácsán, a Látvány-beállítások fényeivel.
     Modellválasztó, fix nézetek (Átlós / Elöl / Oldalt / Hátul / Felül, egérrel
     szabadon forgatható), és itt is működik a modellszerkesztő. URL-paraméterek:
-    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel`,
+    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel|OilRigModel`,
     `view=iso|front|side|back|top`, `ui=0` (panel nélkül, tiszta képekhez).
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:
@@ -149,5 +149,12 @@ tematikusan a **nyersanyaga közelébe** kerül (fatelep az erdőhöz, bánya a
 dombhoz, erőmű a vízhez; a gyár bárhová), de **szétszórva**: a várostól legalább
 `INDUSTRY_CITY_GAP` cellára, és egymástól is legalább `INDUSTRY_MIN_SPACING`
 távolságra — így sosem tornyosul egymásra vagy áll sorban, és a játékosnak
-utakkal kell összekötnie őket. A speciális épületek fölött **lebegő UI ikon** jelenik meg
+utakkal kell összekötnie őket.
+
+Minden térképen pontosan **egy olajfúró torony** (OilRig 🛢️) is generálódik,
+egy nagyobb tó **közepén**: a 6×6-os telek körül minden irányban legalább 4
+cella nyílt víz van, sosem a parton áll. Ha a térképen nincs ekkora víz, a
+generátor egy sík, alacsony területen kiváj egy nagyobb tavat
+(`RIG_MARGIN`, `RIG_LAKE_RADIUS` a `terrain.ts`-ben). A telek vízként
+rajzolódik, a modell (`OilRigModel.tsx`) a vízfelszínen áll. A speciális épületek fölött **lebegő UI ikon** jelenik meg
 (drei `<Html>`), finom bobbing animációval, a könnyű azonosításhoz.

@@ -76,6 +76,12 @@ A jobb oldali **panel** három füle:
 - **Infrastruktúra (Transport):** **Út** ($10) és **Sín** ($20). Mindkettő üres
   (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
   magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
+  A sín **rácshoz kötött**: az egyenesek 8 irányban (tengely mentén vagy
+  átlósan) cellaközéptől cellaközépig futnak, a kanyarok pedig 45°-os
+  ív-darabok (sugár ≈ 2,4 / 4,8 / 7,2 cella), amelyek szintén cellaközépen
+  végződnek. A 90°-os kanyar két ilyen darab, így S-kanyar is építhető.
+  Leágazni / becsatlakozni egy meglévő sín **egyenes** szakaszának
+  cellaközepén lehet (váltó), egy holtvég pedig egyenesen folytatható.
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:

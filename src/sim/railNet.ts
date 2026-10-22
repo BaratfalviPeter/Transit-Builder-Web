@@ -36,16 +36,18 @@ export interface RailNet {
 
 export const EMPTY_NET: RailNet = { edges: [], nextId: 1 };
 
-/** Smallest curve radius a train can take (cells). Tighter = refused (red). */
-export const RAIL_R_MIN = 5;
-/** Radius used whenever there is room (cells) — wide, sweeping curves. */
-export const RAIL_R_PREF = 10;
+/**
+ * Smallest curve radius (cells): 1 + √2, the radius at which a 45° arc
+ * leaving a cell centre along an axis runs out onto a diagonal through cell
+ * centres. Curves come in whole multiples of it (see railRoute.ts).
+ */
+export const RAIL_R_MIN = 1 + Math.SQRT2;
 /** Half-width of a track's cell footprint (cells). */
 export const TRACK_HALF = 0.32;
 /** Cursor distance (cells) within which a click snaps onto an existing track. */
 export const SNAP_DIST = 0.9;
 /** Switches stay at least this far (along the track) from an edge's ends. */
-const SWITCH_CLEAR = 1.5;
+export const SWITCH_CLEAR = 1.5;
 
 // ---------------------------------------------------------------- geometry
 

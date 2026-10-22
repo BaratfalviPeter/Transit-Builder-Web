@@ -28,6 +28,7 @@ import { TerrainSurface } from './TerrainSurface';
 import { Roads } from './Roads';
 import { Rails } from './Rails';
 import { Industries } from './Industries';
+import { EditorGizmo, EditorPick } from '../dev/ModelEditor';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
@@ -478,7 +479,11 @@ function Scene() {
       {/* Little flocks circling over the forests. */}
       <BirdsM map={map} cellSize={cellSize} />
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
-      <IndustriesM map={map} cellSize={cellSize} />
+      <EditorPick>
+        <IndustriesM map={map} cellSize={cellSize} />
+      </EditorPick>
+      {/* Dev model editor: selection outline + move / rotate / scale gizmo. */}
+      <EditorGizmo />
       {/* Floating UI icons above special buildings (for easy identification). */}
       <BuildingIconsM map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}

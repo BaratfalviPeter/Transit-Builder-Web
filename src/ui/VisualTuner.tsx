@@ -1,6 +1,7 @@
 /**
  * VisualTuner — in-game "Látvány" panel with sliders / colour pickers for every
- * light and colour value (see render/visualSettings.ts).
+ * light and colour value (see render/visualSettings.ts). Opened from the
+ * side panel's Dev tab.
  *
  * Changes apply live. Values persist in localStorage. "Másolás" copies all
  * values as JSON (paste it back to the developer to bake in as defaults);
@@ -17,6 +18,7 @@ import {
   type VisualKey,
   type VisualSettings,
 } from '../render/visualSettings';
+import { setVisualOpen, useDev } from '../dev/modelEditorStore';
 import './visualTuner.css';
 
 type Ctl =
@@ -139,7 +141,7 @@ function fmt(v: number, step: number): string {
 }
 
 export function VisualTuner() {
-  const [open, setOpen] = useState(false);
+  const open = useDev().visualOpen;
   const [openSec, setOpenSec] = useState<Record<string, boolean>>({ Nap: true });
   const [msg, setMsg] = useState('');
   const v = useVisual();
@@ -169,19 +171,13 @@ export function VisualTuner() {
     }
   };
 
-  if (!open) {
-    return (
-      <button className="vt__toggle" onClick={() => setOpen(true)}>
-        🎨 Látvány
-      </button>
-    );
-  }
+  if (!open) return null;
 
   return (
     <div className="vt" onWheel={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <div className="vt__head">
         <span>🎨 Látvány beállítás</span>
-        <button className="vt__x" onClick={() => setOpen(false)} title="Bezárás">
+        <button className="vt__x" onClick={() => setVisualOpen(false)} title="Bezárás">
           ✕
         </button>
       </div>

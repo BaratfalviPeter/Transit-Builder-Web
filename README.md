@@ -83,6 +83,17 @@ A jobb oldali **panel** három füle:
   Leágazni / becsatlakozni egy meglévő sín **egyenes** szakaszának
   cellaközepén lehet (váltó), egy holtvég pedig egyenesen folytatható.
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
+- **Dev:** fejlesztői eszközök.
+  - **Látvány beállítás:** a fény- és színcsúszkák panelje.
+  - **Modellszerkesztő** (csak `npm run dev` alatt): kattints egy ipari épület
+    egy elemére, és a fogantyúval (vagy a −/+ gombokkal) mozgasd, forgasd,
+    méretezd. Elengedéskor a változás **közvetlenül a modell `.tsx`
+    fájljába** íródik (pl. `p={[0.4, 0.2, -1]}` → `p={[0.45, 0.2, -1]}`), és
+    a modell azonnal újratöltődik. ▲ Szülő / ▼ Gyerek: a kijelölés a
+    befoglaló / belső elemre lép. Gyorsbillentyűk: 1/2/3 mód, PageUp/PageDown
+    szülő/gyerek, Esc kijelölés törlése, Ctrl+Z az utolsó mentés visszavonása.
+    Működése: `dev/modelEditorPlugin.ts` (Babel-címkézés + író végpont) és
+    `src/dev/` (kijelölés, fogantyú).
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:
 ⏸ szünet · ▶ normál · ⏩ gyorsított. Normál tempónál 1 valós másodperc ≈ 1 nap.

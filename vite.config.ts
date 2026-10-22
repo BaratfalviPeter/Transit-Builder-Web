@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { modelEditorServer, srcTagBabel } from './dev/modelEditorPlugin';
 
 // https://vite.dev/config/
 //
@@ -8,7 +9,12 @@ import react from '@vitejs/plugin-react';
 // production. In dev we keep '/'. Override via the BASE_PATH env var if needed.
 const base = process.env.BASE_PATH ?? '/';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base,
-  plugins: [react()],
-});
+  plugins: [
+    // Dev only: tag model elements with their source location and serve the
+    // model editor's read/write endpoints (see dev/modelEditorPlugin.ts).
+    react(command === 'serve' ? { babel: { plugins: [srcTagBabel] } } : {}),
+    modelEditorServer(),
+  ],
+}));

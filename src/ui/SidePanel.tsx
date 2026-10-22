@@ -1,6 +1,6 @@
 /**
- * SidePanel — the main UI: a fixed side panel with a date/time bar and three
- * tabs (Terraforming / Infrastructure / Economy). Replaces the old bottom
+ * SidePanel — the main UI: a fixed side panel with a date/time bar and four
+ * tabs (Terraforming / Infrastructure / Economy / Dev). Replaces the old bottom
  * toolbar.
  *
  * Reads the active tool, money, economy stats and the clock from GameState; all
@@ -17,9 +17,10 @@ import {
   type GameSpeed,
   type ToolId,
 } from '../sim';
+import { DevTab } from './DevTab';
 import './sidePanel.css';
 
-type Tab = 'terraform' | 'transport' | 'economy';
+type Tab = 'terraform' | 'transport' | 'economy' | 'dev';
 
 const ICON: Record<ToolId, string> = {
   select: '🖱️',
@@ -34,6 +35,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'terraform', label: 'Földmunka' },
   { id: 'transport', label: 'Infrastruktúra' },
   { id: 'economy', label: 'Pénzügyek' },
+  { id: 'dev', label: 'Dev' },
 ];
 
 function formatDate(ms: number): string {
@@ -56,7 +58,7 @@ export function SidePanel() {
   ];
 
   return (
-    <div className="panel">
+    <div className={'panel' + (tab === 'dev' ? ' panel--wide' : '')}>
       {/* Clock + speed controls */}
       <div className="panel__clock">
         <span className="panel__date">{formatDate(snap.dateMs)}</span>
@@ -108,6 +110,8 @@ export function SidePanel() {
             onPick={(id) => game.setActiveTool(id)}
           />
         )}
+
+        {tab === 'dev' && <DevTab />}
 
         {tab === 'economy' && (
           <>

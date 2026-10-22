@@ -38,6 +38,11 @@ export enum CellType {
   /** Auto-generated factory (gyár). Spawns near the city for testing. */
   Factory = 'Factory',
   /**
+   * Auto-generated offshore oil rig (olajfúró). Exactly one per map, in the
+   * middle of a large lake; its lot is water, not ground.
+   */
+  OilRig = 'OilRig',
+  /**
    * A cell occupied by the footprint of a large (3×3) industry, around its
    * center cell. Nothing can be built, sculpted or bulldozed here.
    */
@@ -53,6 +58,7 @@ export const SPECIAL_BUILDINGS: ReadonlySet<CellType> = new Set([
   CellType.Mine,
   CellType.PowerPlant,
   CellType.Factory,
+  CellType.OilRig,
 ]);
 
 /** Industries that occupy a large INDUSTRY_LOT_SIZE² footprint (6×6). */
@@ -61,6 +67,7 @@ export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
   CellType.LumberMill,
   CellType.Mine,
   CellType.Factory,
+  CellType.OilRig,
 ]);
 
 /** Edge length (in cells) of a large industry's square lot. */
@@ -389,6 +396,14 @@ const INDUSTRY_CITY_GAP = 8 * GRID_SCALE;
 const INDUSTRY_MIN_SPACING = 7 * GRID_SCALE; // > lot size, so lots never touch
 const INDUSTRY_PER_TYPE = 3;
 
+/**
+ * Oil rig placement: open water (in cells) required on every side of its
+ * 6×6 lot, so it stands in the middle of a lake, never by the shore; and the
+ * radius of the lake carved when the map has no water that big.
+ */
+const RIG_MARGIN = 2 * GRID_SCALE;
+const RIG_LAKE_RADIUS = 6 * GRID_SCALE;
+
 export interface GenerateOptions {
   /** Grid dimension (size × size). Default DEFAULT_MAP_SIZE (121). */
   size?: number;
@@ -526,6 +541,12 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     return h00 === h10 && h10 === h11 && h11 === h01;
   };
 
+  // --- Pass 1c: the offshore oil rig -----------------------------------------
+  // Exactly one, in the middle of the largest open water; a lake is carved
+  // first when no water body is big enough. Done before forests and land
+  // industry, so the lake never cuts through them.
+  placeOilRig();
+
   // --- Pass 2: forests (trees) on top of the terrain ----------------------
   // Trees grow on grass OR on flat hill tops (raised), on moist ground, but
   // never on a sloped corner cell. The cell keeps its height, so hill forests
@@ -552,6 +573,110 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   spawnScatteredIndustry(base, rng, isFlatCell, distFromCity);
 
   return base;
+
+  /**
+   * Best spot for the rig: the anchor whose 6×6 lot is all water and furthest
+   * from any shore (or the map edge). `margin` = water cells between the lot
+   * and the nearest land.
+   */
+  function bestOffshoreSite(): { x: number; z: number; margin: number } | null {
+    // Chebyshev distance of every water cell to the nearest non-water cell.
+    const dist = Array.from({ length: size }, () => new Int32Array(size));
+    const q: Array<[number, number]> = [];
+    for (let x = 0; x < size; x++)
+      for (let z = 0; z < size; z++) {
+        if (cells[x][z] !== CellType.Water) continue;
+        const edge = Math.min(x, z, size - 1 - x, size - 1 - z) + 1;
+        let shore = false;
+        for (let dx = -1; dx <= 1 && !shore; dx++)
+          for (let dz = -1; dz <= 1 && !shore; dz++) {
+            const nx = x + dx, nz = z + dz;
+            if (nx >= 0 && nz >= 0 && nx < size && nz < size && cells[nx][nz] !== CellType.Water) shore = true;
+          }
+        dist[x][z] = shore ? 1 : edge;
+        if (shore) q.push([x, z]);
+      }
+    for (let h = 0; h < q.length; h++) {
+      const [x, z] = q[h];
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dz = -1; dz <= 1; dz++) {
+          const nx = x + dx, nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= size || nz >= size || cells[nx][nz] !== CellType.Water) continue;
+          if (dist[nx][nz] > dist[x][z] + 1) {
+            dist[nx][nz] = dist[x][z] + 1;
+            q.push([nx, nz]);
+          }
+        }
+    }
+    const { lo, hi } = industryFootprint(CellType.OilRig);
+    let best: { x: number; z: number; margin: number } | null = null;
+    for (let x = -lo; x < size - hi; x++)
+      for (let z = -lo; z < size - hi; z++) {
+        let m = Infinity;
+        for (let dx = lo; dx <= hi && m > 0; dx++)
+          for (let dz = lo; dz <= hi && m > 0; dz++) {
+            if (cells[x + dx][z + dz] !== CellType.Water) m = 0;
+            else m = Math.min(m, dist[x + dx][z + dz] - 1);
+          }
+        if (m > 0 && (!best || m > best.margin)) best = { x, z, margin: m };
+      }
+    return best;
+  }
+
+  /**
+   * Carve a large, roughly round lake on flat lowland away from the city —
+   * preferring spots that already hold water, so it reads as a widened lake.
+   */
+  function carveRigLake(): void {
+    const R = RIG_LAKE_RADIUS;
+    let best: [number, number] | null = null;
+    let bestScore = Infinity;
+    for (let x = R + 2; x < size - R - 2; x += 2)
+      for (let z = R + 2; z < size - R - 2; z += 2) {
+        if (distFromCity(x, z) <= cityHalf + CITY_BUFFER + R) continue;
+        let hills = 0;
+        let water = 0;
+        for (let dx = -R; dx <= R; dx++)
+          for (let dz = -R; dz <= R; dz++) {
+            if (dx * dx + dz * dz > R * R) continue;
+            if (levels[x + dx][z + dz] > 0) hills++;
+            if (cells[x + dx][z + dz] === CellType.Water) water++;
+          }
+        const score = hills * 10 - water + rng() * 0.5;
+        if (score < bestScore) {
+          bestScore = score;
+          best = [x, z];
+        }
+      }
+    if (!best) return;
+    const [cx, cz] = best;
+    for (let dx = -R - 2; dx <= R + 2; dx++)
+      for (let dz = -R - 2; dz <= R + 2; dz++) {
+        const x = cx + dx, z = cz + dz;
+        if (x < 0 || z < 0 || x >= size || z >= size) continue;
+        // Wobbly shoreline: the radius varies a little around the lake.
+        const wob = (detail(x * 0.21 + 7, z * 0.21 + 3) - 0.5) * 3;
+        if (Math.hypot(dx, dz) > R + wob) continue;
+        if (distFromCity(x, z) <= cityHalf + 3) continue;
+        cells[x][z] = CellType.Water;
+        heights[x][z] = 0;
+        levels[x][z] = 0;
+      }
+  }
+
+  /** Place the one oil rig (see Pass 1c). */
+  function placeOilRig(): void {
+    let site = bestOffshoreSite();
+    if (!site || site.margin < RIG_MARGIN) {
+      carveRigLake();
+      site = bestOffshoreSite();
+    }
+    if (!site) return;
+    const { lo, hi } = industryFootprint(CellType.OilRig);
+    for (let dx = lo; dx <= hi; dx++)
+      for (let dz = lo; dz <= hi; dz++) cells[site.x + dx][site.z + dz] = CellType.IndustryLot;
+    cells[site.x][site.z] = CellType.OilRig;
+  }
 
   /** Chebyshev distance (in cells) from the city center. */
   function distFromCity(x: number, z: number): number {

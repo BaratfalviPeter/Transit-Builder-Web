@@ -25,6 +25,8 @@ import { PowerPlantModel } from './PowerPlantModel';
 import { MineModel } from './MineModel';
 import { LumberMillModel } from './LumberMillModel';
 import { FactoryModel } from './FactoryModel';
+import { OilRigModel } from './OilRigModel';
+import { WATER_LEVEL } from './TerrainSurface';
 
 export interface IndustriesProps {
   map: TerrainMap;
@@ -101,6 +103,17 @@ export function Industries({ map, cellSize }: IndustriesProps) {
                 scale={ms}
                 rotationY={(((x * 11 + z * 5) % 4) * Math.PI) / 2}
                 phase={(x * 0.31 + z * 0.47) % 5}
+              />
+            );
+          case CellType.OilRig:
+            // Stands in a lake: its origin is the water surface.
+            return (
+              <OilRigModel
+                key={key}
+                position={[wx, WATER_LEVEL * cellSize, wz]}
+                scale={ms}
+                rotationY={(((x * 13 + z * 3) % 4) * Math.PI) / 2}
+                phase={(x * 0.43 + z * 0.19) % 5}
               />
             );
           default:

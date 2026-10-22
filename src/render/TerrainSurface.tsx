@@ -48,7 +48,7 @@ const WATER_SINK = 0.2;
  * body of water reads as one flat, filled surface (never a see-through hole).
  * It sits just below the grass base so shorelines look right.
  */
-const WATER_LEVEL = FLAT_TOP - WATER_SINK;
+export const WATER_LEVEL = FLAT_TOP - WATER_SINK;
 /** How far below the grass base the solid block's floor sits (cellSize units). */
 // Deep enough for the (now 6×6, 2× scaled) mine pit to fit inside the block.
 const FLOOR_DROP = 3.2;
@@ -91,8 +91,7 @@ function isGrass(map: TerrainMap, x: number, z: number): boolean {
 
 /** Is a direct (4-)neighbour of (x, z) water? (beach detection) */
 function besideWater(map: TerrainMap, x: number, z: number): boolean {
-  const w = (a: number, b: number) =>
-    a >= 0 && b >= 0 && a < map.size && b < map.size && map.cells[a][b] === CellType.Water;
+  const w = (a: number, b: number) => a >= 0 && b >= 0 && a < map.size && b < map.size && isWaterSurface(map, a, b);
   return w(x - 1, z) || w(x + 1, z) || w(x, z - 1) || w(x, z + 1);
 }
 
@@ -103,6 +102,22 @@ function besideWater(map: TerrainMap, x: number, z: number): boolean {
 export function isMineLot(map: TerrainMap, x: number, z: number): boolean {
   const a = industryAnchorOf(map, x, z);
   return a !== null && map.cells[a[0]][a[1]] === CellType.Mine;
+}
+
+/**
+ * Whether cell (x, z) belongs to the oil rig's lot. The rig stands in a lake,
+ * so its lot is drawn as open water.
+ */
+export function isOffshoreLot(map: TerrainMap, x: number, z: number): boolean {
+  const t = map.cells[x][z];
+  if (t !== CellType.OilRig && t !== CellType.IndustryLot) return false;
+  const a = industryAnchorOf(map, x, z);
+  return a !== null && map.cells[a[0]][a[1]] === CellType.OilRig;
+}
+
+/** Water, or the oil rig's lot (drawn as water). */
+function isWaterSurface(map: TerrainMap, x: number, z: number): boolean {
+  return map.cells[x][z] === CellType.Water || isOffshoreLot(map, x, z);
 }
 
 /** Jitter of corner (cx, cz) — only if all four cells around it are grass. */
@@ -164,6 +179,7 @@ const TMP_MIX = new THREE.Color();
  */
 function topColor(map: TerrainMap, x: number, z: number, i: number, out: THREE.Color): THREE.Color {
   const type = map.cells[x][z];
+  if (isOffshoreLot(map, x, z)) return out.copy(PAL.water);
   const wob = 1 - PAL.wobble / 2 + hash01(x * 4 + i, z, map.seed + 31) * PAL.wobble;
   if (type === CellType.Empty) {
     if (besideWater(map, x, z) && cornerHeightAt(map, x, z) === 0)
@@ -327,7 +343,7 @@ function writeCell(
   const { size } = map;
   const half = (size - 1) / 2;
   const floorY = FLAT_TOP * cellSize - FLOOR_DROP * cellSize;
-  const isWater = map.cells[x][z] === CellType.Water;
+  const isWater = isWaterSurface(map, x, z);
 
   const wx = (cx: number) => (cx - half - 0.5) * cellSize;
   const wz = (cz: number) => (cz - half - 0.5) * cellSize;
@@ -523,7 +539,7 @@ export function surfaceYAt(
   v: number,
   cellSize: number,
 ): number {
-  if (map.cells[x][z] === CellType.Water) return WATER_LEVEL * cellSize;
+  if (isWaterSurface(map, x, z)) return WATER_LEVEL * cellSize;
   const cy = (cx: number, cz: number) =>
     cornerY(map, cx, cz, cellSize) + cornerJitter(map, cx, cz) * cellSize;
   const y00 = cy(x, z);

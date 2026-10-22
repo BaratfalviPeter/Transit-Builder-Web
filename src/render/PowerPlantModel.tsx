@@ -407,7 +407,7 @@ function TallChimney({ phase }: { phase: number }) {
   const segs = 8;
   const h = 0.26;
   return (
-    <group position={[1.1, 0.1, -1.05]}>
+    <group position={[1.02, 0.1, -1.05]}>
       <Box p={[0, 0.06, 0]} s={[0.42, 0.12, 0.42]} m={M.pad} cast />
       {Array.from({ length: segs }).map((_, i) => (
         <mesh
@@ -533,7 +533,7 @@ function Piping() {
       {/* Main hall -> boiler house: short rust bridge between the two walls */}
       <Pipe from={[0.6, 0.55, 0.42]} to={[0.77, 0.55, 0.42]} r={0.05} m={M.rust} />
       {/* Tower B -> chimney: long grey run on supports */}
-      <Pipe from={[0.12, 0.3, -1.05]} to={[0.89, 0.3, -1.05]} r={0.045} m={M.pipeGrey} />
+      <Pipe from={[0.14, 0.3, -1.05]} to={[0.91, 0.3, -1.05]} r={0.045} m={M.pipeGrey} />
       <Box p={[0.3, 0.2, -1.05]} s={[0.05, 0.2, 0.05]} m={M.frame} />
       <Box p={[0.6, 0.2, -1.05]} s={[0.05, 0.2, 0.05]} m={M.frame} />
     </group>
@@ -652,7 +652,7 @@ function Props() {
       <Railing from={[-0.3, 1.38]} to={[0.6, 1.38]} />
       <Railing from={[0.8, 0.28]} to={[1.38, 0.28]} />
       <Transformer x={0.6} z={-1.35} />
-      <Transformer x={0.78} z={-0.75} />
+      <Transformer x={0.78} z={-0.72} />
       {/* Crates in the back-left corner */}
       <Box p={[-1.28, 0.18, -1.3]} s={[0.16, 0.16, 0.16]} m={M.crateBlue} cast />
       <Box p={[-1.28, 0.32, -1.3]} s={[0.12, 0.12, 0.12]} m={M.crateBlue} />

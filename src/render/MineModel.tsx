@@ -418,7 +418,7 @@ function PitRubble() {
       <instancedMesh ref={ref} args={[STONE, M.boulder, stones.length]} castShadow receiveShadow />
       {slabs.map((sl, i) => (
         <group key={i} position={sl.p} rotation={[0, sl.ry, 0]}>
-          <Box p={[0, 0, 0]} s={sl.s} m={sl.m} cast />
+          <Box p={[0, -0.1, 0]} s={sl.s} m={sl.m} cast />
         </group>
       ))}
     </group>
@@ -573,12 +573,12 @@ function Platform() {
           [0.07, 0.07],
           [-0.07, 0.07],
         ].map(([lx, lz]) => (
-          <Box key={`${lx}${lz}`} p={[lx, 0.08, lz]} s={[0.02, 0.16, 0.02]} m={M.frame} />
+          <Box key={`${lx}${lz}`} p={[lx, 0.08, lz]} s={[0.02, 0.4047, 0.02]} m={M.frame} />
         ))}
         <mesh material={M.rust} position={[0, 0.22, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
           <cylinderGeometry args={[0.15, 0.06, 0.14, 4]} />
         </mesh>
-        <mesh material={M.ore} position={[0, 0.28, 0]}>
+        <mesh material={M.ore} position={[0, 0.31, 0]}>
           <coneGeometry args={[0.08, 0.04, 5]} />
         </mesh>
       </group>
@@ -675,7 +675,7 @@ function Crane({ phase }: { phase: number }) {
   };
   const boomPts = 9;
   return (
-    <group position={[CRANE.x, 0, CRANE.z]}>
+    <group scale={[1.05, 1, 1]} position={[CRANE.x, 0, CRANE.z]}>
       <Box p={[0, PLAT.top + 0.02, 0]} s={[B * 2 + 0.1, 0.04, B * 2 + 0.1]} m={M.frame} />
       {legs.map(([sx, sz]) => (
         <Rod key={`l${sx}${sz}`} from={at(sx, sz, 0)} to={at(sx, sz, 1)} w={0.04} m={M.frame} />
@@ -800,7 +800,7 @@ function Silos() {
               <Box
                 key={i}
                 p={[Math.cos(a) * SILO_R * 0.8, SILO_BASE / 2, Math.sin(a) * SILO_R * 0.8]}
-                s={[0.025, SILO_BASE, 0.025]}
+                s={[0.025, SILO_BASE * 1.85, 0.025]}
                 m={M.frame}
               />
             );
@@ -885,7 +885,7 @@ function Processing({ phase }: { phase: number }) {
       </mesh>
       <Steam origin={[P.x - 0.08, 0.2, P.z + 0.12]} count={3} rise={0.35} spread={0.1} size={0.05} color="#9c9184" phase={phase} />
       {/* Big rust pipe from the house dropping to the deck */}
-      <Pipe from={[P.x + 0.15, 0.04, P.z + 0.25]} to={[P.x + 0.15, P.y0 + 0.15, P.z + 0.25]} r={0.03} m={M.rust} />
+      <Pipe from={[P.x + 0.15, 0.04, P.z + 0.01]} to={[P.x + 0.15, P.y0 + 0.15, P.z + 0.01]} r={0.03} m={M.rust} />
       {/* Grey tanks */}
       {[
         [1.3, 0.3],

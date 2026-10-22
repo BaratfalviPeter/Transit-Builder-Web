@@ -440,7 +440,7 @@ function Valve({ p }: { p: V3 }) {
 function PipesAndTanks() {
   const wall = HALL.x1;
   return (
-    <group>
+    <group position={[0, 0, -0.14]}>
       {TANKS.map(([x, z]) => (
         <group key={x} position={[x, 0.1, z]}>
           {[
@@ -481,7 +481,7 @@ function PipesAndTanks() {
       <Pipe from={[0.82, 0.74, -0.3]} to={[0.82, 0.88, -0.3]} r={0.03} m={M.rust} />
       {/* Grey run front of the hall to the side door */}
       <Pipe from={[wall, 0.45, 0.05]} to={[0.75, 0.45, 0.05]} r={0.028} m={M.steel} />
-      <Pipe from={[0.75, 0.1, 0.05]} to={[0.75, 0.45, 0.05]} r={0.028} m={M.steel} />
+      <Pipe from={[0.72, 0.1, 0.05]} to={[0.72, 0.45, 0.05]} r={0.028} m={M.steel} />
       {/* Pipe supports + valves */}
       <Valve p={[0.56, 0.56, -0.3]} />
       <Valve p={[0.62, 0.3, -0.1]} />

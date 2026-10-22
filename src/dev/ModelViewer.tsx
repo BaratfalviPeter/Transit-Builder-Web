@@ -4,7 +4,8 @@
  *
  * The model sits at the origin in its own design units (a 3×3-cell lot, base
  * slab on Y = 0) on a plain lawn with the lot grid, lit with the "Látvány"
- * settings at a fixed time of day. Fixed camera views make shots repeatable;
+ * settings at a fixed time of day. A model that reaches below ground (the
+ * mine's pit) gets its lot cut out of the lawn, as in the game. Fixed camera views make shots repeatable;
  * the dev model editor works here too.
  *
  * URL parameters:
@@ -14,7 +15,7 @@
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
  */
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -82,22 +83,92 @@ function ViewerLights() {
   );
 }
 
-/** Lawn with the 3×3 lot outlined and a light 0.5-cell grid. */
-function Ground() {
+/** Half the lot size (the models are designed on a 3×3-cell lot). */
+const LOT = 1.5;
+/** Lawn / grid extent (half-width). */
+const LAWN = 7;
+const GRID = 4.5;
+
+/** Grid lines every 0.5 cell, skipping the lot when it is a hole. */
+function gridLines(hole: boolean): THREE.BufferGeometry {
+  const v: number[] = [];
+  const seg = (a: number, b: number, c: number, alongX: boolean) =>
+    alongX ? v.push(a, 0, c, b, 0, c) : v.push(c, 0, a, c, 0, b);
+  for (let i = -GRID; i <= GRID + 1e-6; i += 0.5) {
+    for (const alongX of [true, false]) {
+      if (hole && Math.abs(i) < LOT - 1e-6) {
+        seg(-GRID, -LOT, i, alongX);
+        seg(LOT, GRID, i, alongX);
+      } else seg(-GRID, GRID, i, alongX);
+    }
+  }
+  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+}
+
+/**
+ * Lawn with a light 0.5-cell grid and the 3×3 lot outlined. `depth` > 0: the
+ * model reaches below ground (the mine's pit), so — like in the game, where
+ * such a lot is cut out of the terrain — the lot is a hole in the lawn, lined
+ * with earth walls down to that depth.
+ */
+function Ground({ depth }: { depth: number }) {
   const v = useVisual();
-  const lot = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(3, 0, 3)), []);
+  const hole = depth > 0;
+  const lawn = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-LAWN, -LAWN).lineTo(LAWN, -LAWN).lineTo(LAWN, LAWN).lineTo(-LAWN, LAWN).closePath();
+    if (hole) {
+      const h = new THREE.Path();
+      h.moveTo(-LOT, -LOT).lineTo(-LOT, LOT).lineTo(LOT, LOT).lineTo(LOT, -LOT).closePath();
+      shape.holes.push(h);
+    }
+    return new THREE.ShapeGeometry(shape);
+  }, [hole]);
+  const grid = useMemo(() => gridLines(hole), [hole]);
+  const lot = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(LOT * 2, 0, LOT * 2)), []);
+  const T = 0.05; // wall thickness, just outside the lot
   return (
     <group>
-      <mesh rotation-x={-Math.PI / 2} position={[0, -0.002, 0]} receiveShadow>
-        <planeGeometry args={[14, 14]} />
+      <mesh geometry={lawn} rotation-x={-Math.PI / 2} position={[0, -0.002, 0]} receiveShadow>
         <meshStandardMaterial color={v.grass1} roughness={1} />
       </mesh>
-      <gridHelper args={[9, 18, '#5d6634', '#6e7840']} position={[0, 0.001, 0]} />
+      <lineSegments geometry={grid} position={[0, 0.001, 0]}>
+        <lineBasicMaterial color="#6e7840" />
+      </lineSegments>
       <lineSegments geometry={lot} position={[0, 0.003, 0]}>
         <lineBasicMaterial color="#f2e6b8" />
       </lineSegments>
+      {hole &&
+        ([
+          [0, LOT + T / 2, LOT * 2 + T * 2, T],
+          [0, -LOT - T / 2, LOT * 2 + T * 2, T],
+          [LOT + T / 2, 0, T, LOT * 2],
+          [-LOT - T / 2, 0, T, LOT * 2],
+        ] as const).map(([x, z, w, d], i) => (
+          <mesh key={i} position={[x, -depth / 2 - 0.002, z]} receiveShadow>
+            <boxGeometry args={[w, depth, d]} />
+            <meshStandardMaterial color="#6b5843" roughness={1} />
+          </mesh>
+        ))}
+      {hole && (
+        <mesh rotation-x={-Math.PI / 2} position={[0, -depth - 0.002, 0]} receiveShadow>
+          <planeGeometry args={[LOT * 2, LOT * 2]} />
+          <meshStandardMaterial color="#5a4a38" roughness={1} />
+        </mesh>
+      )}
     </group>
   );
+}
+
+/** Reports how far below ground (Y = 0) the model reaches (0 = it doesn't). */
+function MeasureDepth({ target, sig, onDepth }: { target: RefObject<THREE.Group>; sig: string; onDepth: (d: number) => void }) {
+  useEffect(() => {
+    const g = target.current;
+    if (!g) return;
+    const minY = new THREE.Box3().setFromObject(g).min.y;
+    onDepth(minY < -0.02 ? -minY + 0.08 : 0);
+  }, [target, sig, onDepth]);
+  return null;
 }
 
 /** Moves the camera to a preset view whenever `view` changes. */
@@ -142,15 +213,20 @@ export function ModelViewer() {
     window.history.replaceState(null, '', `?${p.toString()}`);
   }, [entry.id, view]);
 
+  const [depth, setDepth] = useState(0);
+  const modelRef = useRef<THREE.Group>(null);
   const { Comp } = entry;
   return (
     <>
       <Canvas shadows="soft" camera={{ fov: 40, near: 0.05, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <ViewerLights />
-        <Ground />
-        <EditorPick>
-          <Comp key={entry.id} phase={0} />
-        </EditorPick>
+        <Ground depth={depth} />
+        <group ref={modelRef}>
+          <EditorPick>
+            <Comp key={entry.id} phase={0} />
+          </EditorPick>
+        </group>
+        <MeasureDepth target={modelRef} sig={entry.id} onDepth={setDepth} />
         <EditorGizmo />
         <OrbitControls makeDefault target={TARGET} maxPolarAngle={Math.PI / 2 - 0.02} minDistance={1} maxDistance={20} />
         <CameraViews view={view} />

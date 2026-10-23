@@ -5,7 +5,7 @@
  * single source of truth so costs/labels stay consistent.
  *
  * Tools are grouped into panel tabs: Terraforming (raise/lower/bulldoze),
- * Infrastructure (road/rail). "Select" is the neutral default.
+ * Infrastructure (road/rail/station). "Select" is the neutral default.
  */
 
 import { CellType } from './terrain';
@@ -16,7 +16,8 @@ export type ToolId =
   | 'lower'
   | 'bulldoze'
   | 'road'
-  | 'rail';
+  | 'rail'
+  | 'station';
 
 export interface ToolDef {
   id: ToolId;
@@ -40,9 +41,11 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   // Infrastructure
   road: { id: 'road', label: 'Út', cost: 10, builds: CellType.Road },
   rail: { id: 'rail', label: 'Sín', cost: 20, builds: CellType.Rail },
+  // Rail station on an industry's side (flat price per station).
+  station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },
 };
 
 /** Terraforming tab tools. */
 export const TERRAFORM_TOOLS: ToolId[] = ['raise', 'lower', 'bulldoze'];
 /** Infrastructure tab tools. */
-export const TRANSPORT_TOOLS: ToolId[] = ['road', 'rail'];
+export const TRANSPORT_TOOLS: ToolId[] = ['road', 'rail', 'station'];

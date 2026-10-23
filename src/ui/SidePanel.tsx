@@ -29,6 +29,7 @@ const ICON: Record<ToolId, string> = {
   bulldoze: '🚜',
   road: '🛣️',
   rail: '🚆',
+  station: '🚉',
 };
 
 const TABS: Array<{ id: Tab; label: string }> = [

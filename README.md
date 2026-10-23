@@ -73,7 +73,7 @@ A jobb oldali **panel** három füle:
   **sárga** „under construction" jelet kapnak, végül egy rövid (valós idejű,
   **nem** in-game) késleltetés után **egyszerre** megépülnek. (A batch-elés
   miatt bármennyi cella is **egyetlen** gyors geometria-frissítés.)
-- **Infrastruktúra (Transport):** **Út** ($10) és **Sín** ($20). Mindkettő üres
+- **Infrastruktúra (Transport):** **Út** ($10), **Sín** ($20) és **Vasútállomás** ($500). Mindkettő üres
   (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
   magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
   A sín **rácshoz kötött**: az egyenesek 8 irányban (tengely mentén vagy
@@ -82,7 +82,50 @@ A jobb oldali **panel** három füle:
   végződnek. A 90°-os kanyar két ilyen darab, így S-kanyar is építhető.
   Leágazni / becsatlakozni egy meglévő sín **egyenes** szakaszának
   cellaközepén lehet (váltó), egy holtvég pedig egyenesen folytatható.
+  - **Vasútállomás** ($500): az ipar telkének egyik oldalára illeszthető
+    csatlakozási pont (az ipar és a szállítás közti kapu). Vidd az egeret egy
+    ipar oldala fölé (vagy magára az épületre — a legközelebbi oldalt
+    választja): zöld/piros előnézet mutatja a helyét, a címke az árat vagy
+    azt, miért nem építhető. Az állomás 6 cella hosszú: a telek mellett peron
+    rakodóhangárral, mögötte egy átmenő, egyenes vágány, amelyre a sínépítő
+    mindkét végén rácsatlakozhat. Oldalanként legfeljebb egy; szabad, sík,
+    a telekkel egy szintű terep kell; az olajfúróhoz nem építhető. Bontáskor
+    az egész állomás (vágánnyal együtt) eltűnik. (`src/sim/stations.ts`,
+    `StationModel.tsx`, `Stations.tsx`)
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
+
+### Belső nézet (mikro nézet)
+
+**Kijelölés** eszközzel egy iparra kattintva (kattintás, nem húzás) megnyílik
+a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
+
+- **Gépek ipartípusonként:** bánya — ásógép (érclelőhelyre), zúzó; fatelep —
+  favágó (fás területre), fűrész; olajfúró — szivattyú (olajkútra), tartály;
+  gyár — szerelőgép; erőmű — kazán; mindenhol futószalag. A nyersanyag-mezők
+  az ipar helyéből generálódnak (mindig ugyanazok).
+- **Kapuk:** ahol kint vasútállomás van, ott bent a rács azon szélén kapu
+  (kék mezők + felirat). Ide kell vezetni a futószalagot.
+- **Kezelés:** alsó sáv vagy 1–9 gép választása, **R** forgatás, futószalag
+  **húzva** is (a sarkokon magától fordul), **Bontás** (Del/X, az ár felét
+  visszaadja), **Esc** szerszám elengedése / vissza a térképre. Jobb gomb
+  húzás: forgatás, görgő: zoom.
+- Amíg a belső nézet nyitva van, a térkép nem renderel (a játékidő is áll).
+- **Termelés** (`src/sim/production.ts`): a kitermelők (ásógép, favágó,
+  szivattyú) annál gyorsabban termelnek, minél több nyersanyag-mezőt fednek
+  le; a feldolgozók (zúzó: érc → zúzott érc, fűrész: rönk → deszka,
+  szerelőgép: deszka → áru, tartály: olajpuffer, kazán: érc/olaj égetése) a
+  bemenetből készítik a kimenetet. A gép a **kimeneti oldalára** (nyíl) ad le:
+  futószalagra vagy közvetlenül a következő gépbe. A futószalag egyesével
+  viszi az árut (1,5 mező/s), és megáll, ha előtte foglalt. Ha egy szalag a
+  **kapun kifelé** visz, az áru a kinti **állomás raktárába** kerül
+  (100 egység).
+- **Látszik bent és kint is:** a szalagokon mennek a tárgyak, a gépek fölött
+  státuszlámpa (zöld = dolgozik, sárga = alapanyagra vár, piros = nem tudja
+  leadni); a kapukon a raktár tartalma. A térképen az állomás peronján nő a
+  rakomány, fölötte címke mutatja a mennyiséget.
+- A termelés a játékidővel fut (szünetben áll, gyorsítva 3×), akkor is, ha a
+  belső nézet zárva van. (`src/sim/interior.ts`, `InteriorStore.ts`,
+  `production.ts`, `src/interior/`)
 - **Dev:** fejlesztői eszközök.
   - **Látvány beállítás:** a fény- és színcsúszkák panelje.
   - **Modellszerkesztő** (csak `npm run dev` alatt): kattints egy ipari épület
@@ -98,7 +141,7 @@ A jobb oldali **panel** három füle:
     modell közelről, a 3×3-as telek rácsán, a Látvány-beállítások fényeivel.
     Modellválasztó, fix nézetek (Átlós / Elöl / Oldalt / Hátul / Felül, egérrel
     szabadon forgatható), és itt is működik a modellszerkesztő. URL-paraméterek:
-    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel|OilRigModel`,
+    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel|OilRigModel|StationModel`,
     `view=iso|front|side|back|top`, `ui=0` (panel nélkül, tiszta képekhez).
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:

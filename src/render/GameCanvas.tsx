@@ -15,7 +15,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { sunPosition, useVisual, useVisualKeys } from './visualSettings';
 import { applyNight, setSkyClock, setSunDir, skyAt, type Sky } from './dayNight';
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_CONFIG } from './config';
 import { CameraRig } from './CameraRig';
 import { GridFloor } from './GridFloor';
@@ -29,6 +29,7 @@ import { Roads } from './Roads';
 import { Rails } from './Rails';
 import { Industries } from './Industries';
 import { EditorGizmo, EditorPick } from '../dev/ModelEditor';
+import { StationPreview, Stations, type StationHover } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
@@ -37,6 +38,9 @@ import { PathPreview } from './PathPreview';
 import {
   CellType,
   canStartRoute,
+  industryAnchorOf,
+  sideAt,
+  stationProblem,
   TOOLS,
   usePathPlan,
   usePathPlanSnapshot,
@@ -47,8 +51,11 @@ import {
   useTerraformSnapshot,
   useTerrainMap,
   useTerrainStore,
+  useInteriorSnapshot,
+  useInteriorStore,
   type TerrainMap,
 } from '../sim';
+import { getDev } from '../dev/modelEditorStore';
 
 /**
  * GameClock — advances the in-game date from the render loop, scaled by the
@@ -88,6 +95,7 @@ function sameCells(
 
 const MapGridM = memo(MapGrid, sameCells);
 const IndustriesM = memo(Industries, sameCells);
+const StationsM = memo(Stations, sameCells);
 const BuildingIconsM = memo(BuildingIcons, sameCells);
 const RoadsM = memo(Roads, sameCells);
 const RailsM = memo(Rails, sameCells);
@@ -256,6 +264,7 @@ function Scene() {
   const planSnap = useTerraformSnapshot();
   const pathPlan = usePathPlan();
   const pathSnap = usePathPlanSnapshot();
+  const interiors = useInteriorStore();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
 
@@ -323,6 +332,22 @@ function Scene() {
     lastCell.current = null;
   }, []);
 
+  // ---- Station tool: hover an industry side, click to dock a station ------
+  const [stationHover, setStationHover] = useState<StationHover | null>(null);
+  const stationTarget = useCallback(
+    (wx: number, wz: number): StationHover | null => {
+      const { x, z } = cellOf(wx, wz);
+      if (!terrain.inBounds(x, z)) return null;
+      const m = terrain.getMap();
+      const t = sideAt(m, x, z);
+      return t ? { ...t, problem: stationProblem(m, t.anchor, t.side) } : null;
+    },
+    [terrain, cellOf],
+  );
+  useEffect(() => {
+    if (activeTool !== 'station') setStationHover(null);
+  }, [activeTool]);
+
   // ---- Two-click (Point A → Point B) road/rail planner -------------------
   //   idle          --click valid cell-->  selecting_end (A = startNode)
   //   selecting_end --hover-->             A* preview (green / red hologram)
@@ -330,8 +355,21 @@ function Scene() {
   //   selecting_end --right-click / Esc--> cancel, -> idle
   const clickMode = useMemo(
     () => ({
-      active: () => trackOf(game.getActiveTool()) !== null,
+      // Select: a click (not a drag — that pans) on an industry opens its interior.
+      active: () => {
+        const t = game.getActiveTool();
+        return trackOf(t) !== null || t === 'station' || (t === 'select' && !getDev().editorOn);
+      },
       onHover: (wx: number, wz: number) => {
+        if (game.getActiveTool() === 'station') {
+          const h = stationTarget(wx, wz);
+          setStationHover((cur) =>
+            cur && h && cur.anchor[0] === h.anchor[0] && cur.anchor[1] === h.anchor[1] && cur.side === h.side && cur.problem === h.problem
+              ? cur
+              : h,
+          );
+          return;
+        }
         if (pathPlan.getSnapshot().pathbuildingState !== 'selecting_end') return;
         const g = gridOf(wx, wz);
         if (!terrain.inBounds(Math.round(g.x), Math.round(g.z))) return;
@@ -339,6 +377,21 @@ function Scene() {
       },
       onClick: (wx: number, wz: number) => {
         const tool = TOOLS[game.getActiveTool()];
+        if (tool.id === 'select') {
+          const { x, z } = cellOf(wx, wz);
+          if (!terrain.inBounds(x, z)) return;
+          const m = terrain.getMap();
+          const a = industryAnchorOf(m, x, z);
+          if (a) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
+        if (tool.id === 'station') {
+          const h = stationTarget(wx, wz);
+          if (!h || h.problem || !game.canAfford(tool.cost)) return;
+          if (terrain.buildStation(h.anchor, h.side)) game.spend(tool.cost);
+          setStationHover(stationTarget(wx, wz));
+          return;
+        }
         const type = trackOf(tool.id);
         if (type === null) return;
         const g = gridOf(wx, wz);
@@ -369,7 +422,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf],
+    [game, terrain, pathPlan, gridOf, stationTarget, cellOf, interiors],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -481,7 +534,18 @@ function Scene() {
       {/* Auto-generated special buildings (mills, mines, power plant, factory). */}
       <EditorPick>
         <IndustriesM map={map} cellSize={cellSize} />
+        {/* Stations docked onto industry sides (their track is in Rails). */}
+        <StationsM map={map} cellSize={cellSize} />
       </EditorPick>
+      {stationHover && (
+        <StationPreview
+          map={map}
+          cellSize={cellSize}
+          hover={stationHover}
+          cost={TOOLS.station.cost}
+          canAfford={money >= TOOLS.station.cost}
+        />
+      )}
       {/* Dev model editor: selection outline + move / rotate / scale gizmo. */}
       <EditorGizmo />
       {/* Floating UI icons above special buildings (for easy identification). */}
@@ -522,8 +586,12 @@ function Scene() {
 }
 
 export function GameCanvas() {
+  // While an interior (micro view) is open, the map isn't visible: stop
+  // rendering it (this also pauses the in-game clock).
+  const { open } = useInteriorSnapshot();
   return (
     <Canvas
+      frameloop={open ? 'never' : 'always'}
       shadows="soft"
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}

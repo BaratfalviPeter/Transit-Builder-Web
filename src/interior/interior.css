@@ -1,0 +1,149 @@
+.iv {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #2a2e36;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #e9ebf0;
+}
+
+.iv__top {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(18, 20, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.iv__title {
+  flex: 1;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.iv__money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.iv__close {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9ebf0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.iv__close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.iv__bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(18, 20, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.iv__tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.iv__tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 82px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9ebf0;
+  cursor: pointer;
+}
+
+.iv__tool:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.iv__tool.is-active {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: rgba(96, 165, 250, 0.85);
+}
+
+.iv__tool.is-danger {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.85);
+}
+
+.iv__tool.is-poor {
+  opacity: 0.5;
+}
+
+.iv__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.iv__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.iv__cost {
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.iv__hint {
+  font-size: 12px;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.iv-gate,
+.iv-tip {
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(18, 20, 28, 0.85);
+  border: 1px solid rgba(111, 143, 191, 0.9);
+  color: #e9ebf0;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  white-space: nowrap;
+}
+
+.iv-tip.is-bad {
+  border-color: rgba(248, 113, 113, 0.85);
+  color: #ffd1d1;
+}
+
+.iv-gate__stock {
+  margin-top: 2px;
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.9;
+  text-align: center;
+}

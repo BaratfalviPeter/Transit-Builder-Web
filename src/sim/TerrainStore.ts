@@ -24,6 +24,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
+import { stationAt, stationGeom, stationProblem, type Side } from './stations';
 
 type Listener = () => void;
 
@@ -183,6 +184,43 @@ export class TerrainStore {
   }
 
   /**
+   * Build a rail station on `side` of the industry at `anchor` (see
+   * stations.ts): platform cells become Station, the through-track is added to
+   * the rail network. One commit. Returns false if the rules forbid it.
+   */
+  buildStation(anchor: readonly [number, number], side: Side): boolean {
+    if (stationProblem(this.map, anchor, side)) return false;
+    const g = stationGeom(anchor, side);
+    const cells = this.map.cells.slice();
+    for (const [x, z] of g.platform) {
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      cells[x][z] = CellType.Station;
+    }
+    const stations = this.map.stations ?? [];
+    const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
+    this.commit({ cells, stations: stations.concat({ id, anchor: [anchor[0], anchor[1]], side }) }, true);
+    // The track: a plain rail edge (its footprint cells turn Rail here).
+    this.setRailNet(addEdge(this.map.railNet ?? EMPTY_NET, g.trackPts.slice()), null);
+    return true;
+  }
+
+  /** Remove a whole station (platform + its track). */
+  private removeStation(id: number): void {
+    const st = this.map.stations?.find((s) => s.id === id);
+    if (!st) return;
+    const g = stationGeom(st.anchor, st.side);
+    const cells = this.map.cells.slice();
+    for (const [x, z] of g.platform) {
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      cells[x][z] = CellType.Empty;
+    }
+    this.commit({ cells, stations: (this.map.stations ?? []).filter((s) => s.id !== id) }, true);
+    let net = this.map.railNet ?? EMPTY_NET;
+    for (const [x, z] of g.track) net = cutAtCell(net, x, z);
+    this.setRailNet(net, null);
+  }
+
+  /**
    * Bulldoze `(x, z)` back to Empty if it holds something removable (road,
    * rail, or forest). Hills, water, city and industry are not bulldozable.
    * Returns true if something was cleared.
@@ -192,6 +230,13 @@ export class TerrainStore {
     const current = this.map.cells[x][z];
     const key = cellKey(this.map.size, x, z);
     const cleared = this.map.cleared ?? new Set<number>();
+
+    // A station's platform or track: the whole station goes.
+    const st = stationAt(this.map, x, z);
+    if (st) {
+      this.removeStation(st.id);
+      return true;
+    }
 
     // Track (incl. a level crossing — the road stays): cut it out here.
     if ((current === CellType.Rail || current === CellType.Road) && hasRailAt(this.map, x, z)) {
@@ -253,6 +298,7 @@ export class TerrainStore {
       t !== CellType.CityCenter &&
       !SPECIAL_BUILDINGS.has(t) &&
       t !== CellType.IndustryLot && // big-industry (6×6) footprint
+      t !== CellType.Station &&
       t !== CellType.Road &&
       t !== CellType.Rail
     );
@@ -359,6 +405,7 @@ export class TerrainStore {
       heights?: number[][];
       cleared?: ReadonlySet<number>;
       railNet?: RailNet;
+      stations?: TerrainMap['stations'];
     },
     typeChanged: boolean,
   ): void {

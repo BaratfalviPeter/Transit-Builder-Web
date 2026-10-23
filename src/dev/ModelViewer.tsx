@@ -9,7 +9,7 @@
  * the dev model editor works here too.
  *
  * URL parameters:
- *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel
+ *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | StationModel
  *   view  = iso | front | side | back | top   (starting camera view)
  *   ui=0  → no panel (clean screenshots)
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
@@ -26,6 +26,7 @@ import { LumberMillModel } from '../render/LumberMillModel';
 import { PowerPlantModel } from '../render/PowerPlantModel';
 import { FactoryModel } from '../render/FactoryModel';
 import { OilRigModel } from '../render/OilRigModel';
+import { StationModel } from '../render/StationModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -44,6 +45,8 @@ export const VIEWER_MODELS: Array<{
   label: string;
   Comp: ComponentType<{ phase?: number }>;
   water?: boolean;
+  /** Show a stand-in rail track along X at z = 0.25 (station models). */
+  track?: boolean;
   zoom?: number;
   /** Height the camera looks at (default TARGET's). */
   lookY?: number;
@@ -53,6 +56,7 @@ export const VIEWER_MODELS: Array<{
   { id: 'PowerPlantModel', label: 'Erőmű', Comp: PowerPlantModel },
   { id: 'FactoryModel', label: 'Gyár', Comp: FactoryModel },
   { id: 'OilRigModel', label: 'Olajfúró', Comp: OilRigModel, water: true, zoom: 1.2, lookY: 0.9 },
+  { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: true, zoom: 0.8, lookY: 0.15 },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */
@@ -126,6 +130,33 @@ function gridLines(hole: boolean): THREE.BufferGeometry {
  * such a lot is cut out of the terrain — the lot is a hole in the lawn, lined
  * with earth walls down to that depth.
  */
+/**
+ * Stand-in track for station models (the game's real track is drawn by
+ * Rails.tsx): ballast, sleepers, rails — in design units (½ cell).
+ */
+function ViewerTrack() {
+  return (
+    <group position={[0, 0, 0.25]}>
+      <mesh position={[0, 0.02, 0]} receiveShadow>
+        <boxGeometry args={[3.6, 0.04, 0.3]} />
+        <meshStandardMaterial color="#6b6256" roughness={1} />
+      </mesh>
+      {Array.from({ length: 30 }).map((_, i) => (
+        <mesh key={i} position={[-1.75 + i * 0.12, 0.045, 0]}>
+          <boxGeometry args={[0.045, 0.017, 0.31]} />
+          <meshStandardMaterial color="#5a3f27" />
+        </mesh>
+      ))}
+      {[-0.1, 0.1].map((z) => (
+        <mesh key={z} position={[0, 0.06, z]} castShadow>
+          <boxGeometry args={[3.6, 0.02, 0.025]} />
+          <meshStandardMaterial color="#a3a9b0" metalness={0.3} roughness={0.5} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function Ground({ depth, water }: { depth: number; water: boolean }) {
   const v = useVisual();
   const hole = depth > 0 && !water;
@@ -236,6 +267,7 @@ export function ModelViewer() {
       <Canvas shadows="soft" camera={{ fov: 40, near: 0.05, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <ViewerLights />
         <Ground depth={depth} water={!!entry.water} />
+        {entry.track && <ViewerTrack />}
         <group ref={modelRef}>
           <EditorPick>
             <Comp key={entry.id} phase={0} />

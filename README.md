@@ -73,7 +73,7 @@ A jobb oldali **panel** három füle:
   **sárga** „under construction" jelet kapnak, végül egy rövid (valós idejű,
   **nem** in-game) késleltetés után **egyszerre** megépülnek. (A batch-elés
   miatt bármennyi cella is **egyetlen** gyors geometria-frissítés.)
-- **Infrastruktúra (Transport):** **Út** ($10) és **Sín** ($20). Mindkettő üres
+- **Infrastruktúra (Transport):** **Út** ($10), **Sín** ($20) és **Vasútállomás** ($500). Mindkettő üres
   (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
   magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
   A sín **rácshoz kötött**: az egyenesek 8 irányban (tengely mentén vagy
@@ -82,6 +82,16 @@ A jobb oldali **panel** három füle:
   végződnek. A 90°-os kanyar két ilyen darab, így S-kanyar is építhető.
   Leágazni / becsatlakozni egy meglévő sín **egyenes** szakaszának
   cellaközepén lehet (váltó), egy holtvég pedig egyenesen folytatható.
+  - **Vasútállomás** ($500): az ipar telkének egyik oldalára illeszthető
+    csatlakozási pont (az ipar és a szállítás közti kapu). Vidd az egeret egy
+    ipar oldala fölé (vagy magára az épületre — a legközelebbi oldalt
+    választja): zöld/piros előnézet mutatja a helyét, a címke az árat vagy
+    azt, miért nem építhető. Az állomás 6 cella hosszú: a telek mellett peron
+    rakodóhangárral, mögötte egy átmenő, egyenes vágány, amelyre a sínépítő
+    mindkét végén rácsatlakozhat. Oldalanként legfeljebb egy; szabad, sík,
+    a telekkel egy szintű terep kell; az olajfúróhoz nem építhető. Bontáskor
+    az egész állomás (vágánnyal együtt) eltűnik. (`src/sim/stations.ts`,
+    `StationModel.tsx`, `Stations.tsx`)
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 - **Dev:** fejlesztői eszközök.
   - **Látvány beállítás:** a fény- és színcsúszkák panelje.
@@ -98,7 +108,7 @@ A jobb oldali **panel** három füle:
     modell közelről, a 3×3-as telek rácsán, a Látvány-beállítások fényeivel.
     Modellválasztó, fix nézetek (Átlós / Elöl / Oldalt / Hátul / Felül, egérrel
     szabadon forgatható), és itt is működik a modellszerkesztő. URL-paraméterek:
-    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel|OilRigModel`,
+    `model=MineModel|LumberMillModel|PowerPlantModel|FactoryModel|OilRigModel|StationModel`,
     `view=iso|front|side|back|top`, `ui=0` (panel nélkül, tiszta képekhez).
 
 A panel tetején a **dátum** (1970. 01. 01-ről indul) és az időkontroll:

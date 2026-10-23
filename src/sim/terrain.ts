@@ -47,6 +47,12 @@ export enum CellType {
    * center cell. Nothing can be built, sculpted or bulldozed here.
    */
   IndustryLot = 'IndustryLot',
+  /**
+   * Platform of a player-built station on an industry's side (see
+   * stations.ts). Its track row is ordinary Rail; bulldozing either removes
+   * the whole station.
+   */
+  Station = 'Station',
 }
 
 /**
@@ -331,6 +337,8 @@ export interface TerrainMap {
    * track are CellType.Rail (or Road at a level crossing). Undefined = none.
    */
   readonly railNet?: import('./railNet').RailNet;
+  /** Stations built on industry sides (see stations.ts). Undefined = none. */
+  readonly stations?: readonly import('./stations').Station[];
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.

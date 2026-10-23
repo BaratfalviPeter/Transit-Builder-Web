@@ -96,8 +96,9 @@ A jobb oldali **panel** három füle:
 
 ### Belső nézet (mikro nézet)
 
-**Kijelölés** eszközzel egy iparra kattintva (kattintás, nem húzás) megnyílik
-a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
+**Kijelölés / belépés** eszközzel (a Földmunka és az Infrastruktúra fül első
+gombja; **Esc**-kel is visszaválthatsz rá) egy iparra kattintva (kattintás,
+nem húzás) megnyílik a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
 
 - **Gépek ipartípusonként:** bánya — ásógép (érclelőhelyre), zúzó; fatelep —
   favágó (fás területre), fűrész; olajfúró — szivattyú (olajkútra), tartály;

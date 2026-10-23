@@ -87,6 +87,14 @@ export class GameState {
     return true;
   }
 
+  /** Give back part of a purchase (e.g. a demolished machine): lowers the spending total. */
+  refund(amount: number): void {
+    if (amount <= 0) return;
+    this.money += amount;
+    this.totalSpent = Math.max(0, this.totalSpent - amount);
+    this.publish();
+  }
+
   /** Add money (e.g. income). */
   earn(amount: number): void {
     if (amount <= 0) return;

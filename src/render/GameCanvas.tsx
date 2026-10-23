@@ -38,6 +38,7 @@ import { PathPreview } from './PathPreview';
 import {
   CellType,
   canStartRoute,
+  industryAnchorOf,
   sideAt,
   stationProblem,
   TOOLS,
@@ -50,8 +51,11 @@ import {
   useTerraformSnapshot,
   useTerrainMap,
   useTerrainStore,
+  useInteriorSnapshot,
+  useInteriorStore,
   type TerrainMap,
 } from '../sim';
+import { getDev } from '../dev/modelEditorStore';
 
 /**
  * GameClock — advances the in-game date from the render loop, scaled by the
@@ -260,6 +264,7 @@ function Scene() {
   const planSnap = useTerraformSnapshot();
   const pathPlan = usePathPlan();
   const pathSnap = usePathPlanSnapshot();
+  const interiors = useInteriorStore();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
 
@@ -350,7 +355,11 @@ function Scene() {
   //   selecting_end --right-click / Esc--> cancel, -> idle
   const clickMode = useMemo(
     () => ({
-      active: () => trackOf(game.getActiveTool()) !== null || game.getActiveTool() === 'station',
+      // Select: a click (not a drag — that pans) on an industry opens its interior.
+      active: () => {
+        const t = game.getActiveTool();
+        return trackOf(t) !== null || t === 'station' || (t === 'select' && !getDev().editorOn);
+      },
       onHover: (wx: number, wz: number) => {
         if (game.getActiveTool() === 'station') {
           const h = stationTarget(wx, wz);
@@ -368,6 +377,14 @@ function Scene() {
       },
       onClick: (wx: number, wz: number) => {
         const tool = TOOLS[game.getActiveTool()];
+        if (tool.id === 'select') {
+          const { x, z } = cellOf(wx, wz);
+          if (!terrain.inBounds(x, z)) return;
+          const m = terrain.getMap();
+          const a = industryAnchorOf(m, x, z);
+          if (a) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
         if (tool.id === 'station') {
           const h = stationTarget(wx, wz);
           if (!h || h.problem || !game.canAfford(tool.cost)) return;
@@ -405,7 +422,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget],
+    [game, terrain, pathPlan, gridOf, stationTarget, cellOf, interiors],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -569,8 +586,12 @@ function Scene() {
 }
 
 export function GameCanvas() {
+  // While an interior (micro view) is open, the map isn't visible: stop
+  // rendering it (this also pauses the in-game clock).
+  const { open } = useInteriorSnapshot();
   return (
     <Canvas
+      frameloop={open ? 'never' : 'always'}
       shadows="soft"
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}

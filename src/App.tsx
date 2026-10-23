@@ -9,6 +9,8 @@ import { Hud } from './ui/Hud';
 import { SidePanel } from './ui/SidePanel';
 import { TerraformConfirm } from './ui/TerraformConfirm';
 import { VisualTuner } from './ui/VisualTuner';
+import { InteriorProvider } from './sim/useInterior';
+import { InteriorView } from './interior/InteriorView';
 
 /**
  * App root. Providers own the single simulation instances, shared between the
@@ -19,6 +21,8 @@ import { VisualTuner } from './ui/VisualTuner';
  *     selection shared by the canvas grids and the confirm panel.
  *   - PathPlanProvider: the two-click (A → B) road/rail route planner shared
  *     by the canvas (input + hologram) and the cost/hint overlay.
+ *   - InteriorProvider: industry interiors (micro view) — opened from the map,
+ *     shown by <InteriorView>.
  * The canvas fills the viewport; the HUD, SidePanel and confirm panel overlay.
  */
 export default function App() {
@@ -27,12 +31,16 @@ export default function App() {
       <GameProvider startingMoney={100000}>
         <TerraformPlanProvider>
           <PathPlanProvider>
+            <InteriorProvider>
             <GameCanvas />
             <Hud />
             <SidePanel />
             <TerraformConfirm />
             <PathPlanInfo />
             <VisualTuner />
+            {/* Micro view: an industry's interior (opened by clicking it). */}
+            <InteriorView />
+            </InteriorProvider>
           </PathPlanProvider>
         </TerraformPlanProvider>
       </GameProvider>

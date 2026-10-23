@@ -93,6 +93,25 @@ A jobb oldali **panel** három füle:
     az egész állomás (vágánnyal együtt) eltűnik. (`src/sim/stations.ts`,
     `StationModel.tsx`, `Stations.tsx`)
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
+
+### Belső nézet (mikro nézet)
+
+**Kijelölés** eszközzel egy iparra kattintva (kattintás, nem húzás) megnyílik
+a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
+
+- **Gépek ipartípusonként:** bánya — ásógép (érclelőhelyre), zúzó; fatelep —
+  favágó (fás területre), fűrész; olajfúró — szivattyú (olajkútra), tartály;
+  gyár — szerelőgép; erőmű — kazán; mindenhol futószalag. A nyersanyag-mezők
+  az ipar helyéből generálódnak (mindig ugyanazok).
+- **Kapuk:** ahol kint vasútállomás van, ott bent a rács azon szélén kapu
+  (kék mezők + felirat). Ide kell vezetni a futószalagot.
+- **Kezelés:** alsó sáv vagy 1–9 gép választása, **R** forgatás, futószalag
+  **húzva** is (a sarkokon magától fordul), **Bontás** (Del/X, az ár felét
+  visszaadja), **Esc** szerszám elengedése / vissza a térképre. Jobb gomb
+  húzás: forgatás, görgő: zoom.
+- Amíg a belső nézet nyitva van, a térkép nem renderel (a játékidő is áll).
+- Termelés még nincs, az a következő lépés. (`src/sim/interior.ts`,
+  `InteriorStore.ts`, `src/interior/`)
 - **Dev:** fejlesztői eszközök.
   - **Látvány beállítás:** a fény- és színcsúszkák panelje.
   - **Modellszerkesztő** (csak `npm run dev` alatt): kattints egy ipari épület

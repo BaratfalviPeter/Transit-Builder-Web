@@ -441,7 +441,10 @@ function Scene() {
   useEffect(() => {
     let rightDown: { x: number; y: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') pathPlan.clear();
+      if (e.key !== 'Escape') return;
+      // Esc cancels an unfinished route; with none, it drops the tool.
+      if (pathPlan.getSnapshot().pathbuildingState !== 'idle') pathPlan.clear();
+      else game.setActiveTool('select');
     };
     const onDown = (e: PointerEvent) => {
       if (e.button === 2) rightDown = { x: e.clientX, y: e.clientY };
@@ -460,7 +463,7 @@ function Scene() {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [pathPlan]);
+  }, [pathPlan, game]);
 
   // Shared click + drag handlers, attached to the terrain surface so each hit
   // lands on the real geometry under the cursor.

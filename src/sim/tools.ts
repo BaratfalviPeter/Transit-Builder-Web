@@ -33,7 +33,8 @@ export interface ToolDef {
 }
 
 export const TOOLS: Record<ToolId, ToolDef> = {
-  select: { id: 'select', label: 'Kijelölés', cost: 0, builds: null },
+  // Neutral tool; a click on an industry opens its interior (micro view).
+  select: { id: 'select', label: 'Kijelölés / belépés', cost: 0, builds: null },
   // Terraforming
   raise: { id: 'raise', label: 'Emelés', cost: 50, builds: null },
   lower: { id: 'lower', label: 'Süllyesztés', cost: 50, builds: null },
@@ -46,6 +47,6 @@ export const TOOLS: Record<ToolId, ToolDef> = {
 };
 
 /** Terraforming tab tools. */
-export const TERRAFORM_TOOLS: ToolId[] = ['raise', 'lower', 'bulldoze'];
+export const TERRAFORM_TOOLS: ToolId[] = ['select', 'raise', 'lower', 'bulldoze'];
 /** Infrastructure tab tools. */
-export const TRANSPORT_TOOLS: ToolId[] = ['road', 'rail', 'station'];
+export const TRANSPORT_TOOLS: ToolId[] = ['select', 'road', 'rail', 'station'];

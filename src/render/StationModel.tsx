@@ -23,6 +23,8 @@ export interface StationModelProps {
   rotationY?: number;
   /** Animation offset — unused (the station is static), kept for a common model API. */
   phase?: number;
+  /** How full its storage is (0…1): stacks of goods grow on the platform. */
+  fill?: number;
 }
 
 const std = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -58,7 +60,7 @@ const PLAT = 0.06;
 /** Loading hangar: x span, posts height. */
 const HANG = { x0: -0.6, x1: 0.9, h: 0.42 };
 
-export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0 }: StationModelProps) {
+export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0, fill = 0 }: StationModelProps) {
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
       <Platform />
@@ -67,6 +69,7 @@ export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0 }:
       <Lamps />
       <Cargo />
       <Signal />
+      <Stock fill={fill} />
     </group>
   );
 }
@@ -205,6 +208,20 @@ function Cargo() {
       </group>
     </group>
   );
+}
+
+/** Stacked goods under the hangar: more of them as the storage fills. */
+function Stock({ fill }: { fill: number }) {
+  const n = Math.round(Math.min(1, Math.max(0, fill)) * 18);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const layer = Math.floor(i / 6);
+    const k = i % 6;
+    const x = HANG.x0 + 0.15 + (k % 3) * 0.13 + layer * 0.02;
+    const z = -0.38 + Math.floor(k / 3) * 0.12;
+    out.push(<Box key={i} p={[x, PLAT + 0.045 + layer * 0.085, z]} s={[0.11, 0.08, 0.1]} m={i % 2 ? M.crate : M.crateDark} cast />);
+  }
+  return <group>{out}</group>;
 }
 
 /** Signal mast at the far end, beside the track. */

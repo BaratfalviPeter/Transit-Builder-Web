@@ -9,7 +9,7 @@ import { Hud } from './ui/Hud';
 import { SidePanel } from './ui/SidePanel';
 import { TerraformConfirm } from './ui/TerraformConfirm';
 import { VisualTuner } from './ui/VisualTuner';
-import { InteriorProvider } from './sim/useInterior';
+import { InteriorProvider, ProductionDriver } from './sim/useInterior';
 import { InteriorView } from './interior/InteriorView';
 
 /**
@@ -32,6 +32,7 @@ export default function App() {
         <TerraformPlanProvider>
           <PathPlanProvider>
             <InteriorProvider>
+            <ProductionDriver />
             <GameCanvas />
             <Hud />
             <SidePanel />

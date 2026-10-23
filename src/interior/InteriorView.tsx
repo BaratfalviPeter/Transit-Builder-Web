@@ -15,18 +15,24 @@ import * as THREE from 'three';
 import {
   CATALOGUE,
   INDUSTRY_NAME,
+  ITEMS,
+  STATION_CAPACITY,
   InteriorStore,
   MACHINES,
   gatesOf,
   machineAt,
   placementProblem,
+  stationOn,
+  useProductionVersion,
   useGame,
   useGameSnapshot,
   useInteriorSnapshot,
   useInteriorStore,
   useTerrainMap,
+  type Item,
   type MachineKind,
   type Rot,
+  type Side,
 } from '../sim';
 import { InteriorScene, type Ghost } from './InteriorScene';
 import { useVisual, sunPosition } from '../render/visualSettings';
@@ -77,6 +83,20 @@ export function InteriorView() {
 
   const catalogue = interior ? (CATALOGUE[interior.type] ?? ['conveyor']) : [];
   const gates = useMemo(() => (interior ? gatesOf(map, interior.anchor) : []), [map, interior]);
+  // Station stock shown on the gates (refreshes ~2×/s while producing).
+  const version = useProductionVersion();
+  const gateStock = useMemo(() => {
+    const out: Partial<Record<Side, string>> = {};
+    if (!interior) return out;
+    for (const side of gates) {
+      const st = stationOn(map, interior.anchor, side);
+      if (!st) continue;
+      const stock = store.production.stationStock(st.id);
+      const parts = (Object.keys(stock) as Item[]).filter((k) => stock[k]).map((k) => `${ITEMS[k].icon} ${stock[k]}`);
+      out[side] = `${parts.length ? parts.join('  ') : 'üres'} · ${store.production.stationTotal(st.id)}/${STATION_CAPACITY}`;
+    }
+    return out;
+  }, [gates, map, interior, version, store]);
 
   // Reset the tool whenever another interior opens.
   useEffect(() => {
@@ -192,7 +212,7 @@ export function InteriorView() {
     <div className="iv" onContextMenu={(e) => e.preventDefault()}>
       <Canvas shadows="soft" camera={{ position: [0, 13, 12.5], fov: 45, near: 0.1, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <Lights />
-        <InteriorScene interior={interior} gates={gates} ghost={ghost} removeTarget={removeTarget} input={input} />
+        <InteriorScene interior={interior} gates={gates} gateStock={gateStock} sim={store.production} ghost={ghost} removeTarget={removeTarget} input={input} />
         <OrbitControls
           makeDefault
           target={[0, 0, 1.8]}

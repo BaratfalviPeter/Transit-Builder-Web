@@ -9,8 +9,13 @@ import {
   CellType,
   INDUSTRY_CENTER_OFFSET,
   INDUSTRY_MODEL_SCALE,
+  ITEMS,
+  STATION_CAPACITY,
   cornerHeightAt,
   stationGeom,
+  useInteriorStore,
+  useProductionVersion,
+  type Item,
   type Side,
   type TerrainMap,
 } from '../sim';
@@ -38,11 +43,28 @@ function placement(map: TerrainMap, cellSize: number, anchor: readonly [number, 
 }
 
 export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
+  // Stock comes from the interiors' production (re-rendered ~2×/s).
+  const prod = useInteriorStore().production;
+  useProductionVersion();
   return (
     <group>
       {(map.stations ?? []).map((s) => {
         const { pos, rot } = placement(map, cellSize, s.anchor, s.side);
-        return <StationModel key={s.id} position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} />;
+        const total = prod.stationTotal(s.id);
+        const stock = prod.stationStock(s.id);
+        const parts = (Object.keys(stock) as Item[]).filter((k) => stock[k]).map((k) => `${ITEMS[k].icon} ${stock[k]}`);
+        return (
+          <group key={s.id}>
+            <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+            {total > 0 && (
+              <Html position={[pos[0], pos[1] + cellSize * 1.3, pos[2]]} center style={{ pointerEvents: 'none' }}>
+                <div className={'station-tip station-stock' + (total >= STATION_CAPACITY ? ' is-bad' : '')}>
+                  {parts.join('  ')} · {total}/{STATION_CAPACITY}
+                </div>
+              </Html>
+            )}
+          </group>
+        );
       })}
     </group>
   );

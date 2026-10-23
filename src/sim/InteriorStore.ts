@@ -5,6 +5,7 @@
  */
 
 import type { CellType } from './terrain';
+import { ProductionSim } from './production';
 import { interiorKey, MACHINES, type Interior, type Machine, type MachineKind, type Rot } from './interior';
 
 type Listener = () => void;
@@ -15,6 +16,8 @@ export interface InteriorSnapshot {
 }
 
 export class InteriorStore {
+  /** Runs the production of every interior (see production.ts). */
+  readonly production = new ProductionSim();
   private interiors = new Map<string, Interior>();
   private openKey: string | null = null;
   private nextId = 1;
@@ -34,6 +37,11 @@ export class InteriorStore {
       this.interiors.set(key, it);
     }
     return it;
+  }
+
+  /** Every interior laid out so far (for the production tick). */
+  all(): Iterable<Interior> {
+    return this.interiors.values();
   }
 
   open(anchor: readonly [number, number], type: CellType): void {

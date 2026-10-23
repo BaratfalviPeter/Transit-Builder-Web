@@ -8,19 +8,23 @@
  * left-drag with the conveyor lays a belt line that turns to follow the drag.
  */
 
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Html } from '@react-three/drei';
-import type { ThreeEvent } from '@react-three/fiber';
+import { useFrame, type ThreeEvent } from '@react-three/fiber';
+import * as THREE from 'three';
 import {
   CellType,
   INTERIOR_SIZE,
+  ITEMS,
   MACHINES,
+  ROT_DIR,
   footprint,
   gateTiles,
   resourceTiles,
   type Interior,
   type Machine,
   type MachineKind,
+  type ProductionSim,
   type Rot,
   type Side,
 } from '../sim';
@@ -117,7 +121,7 @@ function Walls({ gates }: { gates: Side[] }) {
 }
 
 /** A gate: an arch over the opening, a blue band and a station label. */
-function Gate({ side }: { side: Side }) {
+function Gate({ side, stock }: { side: Side; stock?: string }) {
   const half = N / 2 + 0.1;
   const pos: [number, number, number] =
     side === 'N' ? [0, 0, -half] : side === 'S' ? [0, 0, half] : side === 'W' ? [-half, 0, 0] : [half, 0, 0];
@@ -140,9 +144,72 @@ function Gate({ side }: { side: Side }) {
         <meshStandardMaterial color="#e2b52c" />
       </mesh>
       <Html position={[0, 1.55, 0]} center style={{ pointerEvents: 'none' }}>
-        <div className="iv-gate">🚉 Állomás ({label})</div>
+        <div className="iv-gate">
+          🚉 Állomás ({label})
+          {stock && <div className="iv-gate__stock">{stock}</div>}
+        </div>
       </Html>
     </group>
+  );
+}
+
+/** Items riding the belts: one instanced mesh, placed every frame. */
+function BeltItems({ machines, sim }: { machines: readonly Machine[]; sim: ProductionSim }) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const MAX = N * N;
+  const tmp = useMemo(() => ({ o: new THREE.Object3D(), c: new THREE.Color() }), []);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    // Allocate the colour buffer up front.
+    for (let i = 0; i < MAX; i++) mesh.setColorAt(i, tmp.c.set('#ffffff'));
+  }, [MAX, tmp]);
+  useFrame(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    let i = 0;
+    for (const m of machines) {
+      if (m.kind !== 'conveyor') continue;
+      const b = sim.beltItem(m.id);
+      if (!b) continue;
+      const [wx, wz] = tileCenter(m.x, m.z);
+      const [dx, dz] = ROT_DIR[m.rot];
+      tmp.o.position.set(wx + dx * (b.progress - 0.5), 0.24, wz + dz * (b.progress - 0.5));
+      tmp.o.rotation.set(0, (-m.rot * Math.PI) / 2, 0);
+      tmp.o.scale.set(b.item === 'log' ? 0.42 : 0.24, 0.16, b.item === 'log' ? 0.16 : 0.24);
+      tmp.o.updateMatrix();
+      mesh.setMatrixAt(i, tmp.o.matrix);
+      mesh.setColorAt(i, tmp.c.set(ITEMS[b.item].color));
+      i++;
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  });
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, MAX]} castShadow frustumCulled={false}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial roughness={0.7} />
+    </instancedMesh>
+  );
+}
+
+const LAMP = { work: '#4ade80', wait: '#facc15', blocked: '#f87171', idle: '#6b7280' } as const;
+
+/** Status light over a machine: green works, yellow waits for input, red is blocked. */
+function StatusLamp({ m, sim }: { m: Machine; sim: ProductionSim }) {
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: LAMP.idle, emissive: LAMP.idle, emissiveIntensity: 0.8 }), []);
+  useFrame(() => {
+    const c = LAMP[sim.machineStatus(m.id)];
+    mat.color.set(c);
+    mat.emissive.set(c);
+  });
+  const n = MACHINES[m.kind].size;
+  const [wx, wz] = tileCenter(m.x, m.z);
+  return (
+    <mesh material={mat} position={[wx + (n - 1) / 2, n === 1 ? 1.15 : 1.6, wz + (n - 1) / 2]}>
+      <sphereGeometry args={[0.1, 10, 8]} />
+    </mesh>
   );
 }
 
@@ -234,12 +301,17 @@ function GhostView({ ghost }: { ghost: Ghost }) {
 export function InteriorScene({
   interior,
   gates,
+  gateStock,
+  sim,
   ghost,
   removeTarget,
   input,
 }: {
   interior: Interior;
   gates: Side[];
+  /** Station stock text per gate side. */
+  gateStock: Partial<Record<Side, string>>;
+  sim: ProductionSim;
   ghost: Ghost | null;
   removeTarget: Machine | null;
   input: SceneInput;
@@ -267,9 +339,11 @@ export function InteriorScene({
       })}
       <Walls gates={gates} />
       {gates.map((g) => (
-        <Gate key={g} side={g} />
+        <Gate key={g} side={g} stock={gateStock[g]} />
       ))}
       <Machines machines={interior.machines} hideUnder={removeTarget} />
+      <BeltItems machines={interior.machines} sim={sim} />
+      {interior.machines.map((m) => (MACHINES[m.kind].recipe ? <StatusLamp key={m.id} m={m} sim={sim} /> : null))}
       {ghost && <GhostView ghost={ghost} />}
       {/* Input plane over the whole grid */}
       <mesh

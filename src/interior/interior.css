@@ -139,3 +139,11 @@
   border-color: rgba(248, 113, 113, 0.85);
   color: #ffd1d1;
 }
+
+.iv-gate__stock {
+  margin-top: 2px;
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.9;
+  text-align: center;
+}

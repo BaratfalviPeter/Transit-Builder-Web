@@ -21,6 +21,29 @@ export const INTERIOR_SIZE = 12;
 /** What a resource tile holds. */
 export type Resource = 'ore' | 'tree' | 'oil';
 
+/** Goods that move through an interior (on belts, through gates). */
+export type Item = 'ore' | 'crushed' | 'log' | 'plank' | 'oil' | 'goods';
+
+export const ITEMS: Record<Item, { label: string; icon: string; color: string }> = {
+  ore: { label: 'Érc', icon: '🪨', color: '#4a90c2' },
+  crushed: { label: 'Zúzott érc', icon: '🧱', color: '#9cc2de' },
+  log: { label: 'Rönk', icon: '🪵', color: '#7a5233' },
+  plank: { label: 'Deszka', icon: '🟫', color: '#d6a868' },
+  oil: { label: 'Olaj', icon: '🛢️', color: '#24262c' },
+  goods: { label: 'Áru', icon: '📦', color: '#e0782f' },
+};
+
+/**
+ * What a machine makes. Extractors (no `input`) work faster the more
+ * resource tiles they cover: `seconds` is per item for ONE covered tile.
+ * A machine with no `output` just consumes (the boiler burns fuel).
+ */
+export interface Recipe {
+  input?: Item | Item[];
+  output?: Item;
+  seconds: number;
+}
+
 export type MachineKind =
   | 'conveyor'
   | 'excavator'
@@ -43,18 +66,20 @@ export interface MachineDef {
   needs?: Resource;
   /** Short help shown in the build bar. */
   hint: string;
+  /** Production (conveyors just carry). */
+  recipe?: Recipe;
 }
 
 export const MACHINES: Record<MachineKind, MachineDef> = {
   conveyor: { kind: 'conveyor', label: 'Futószalag', icon: '➡️', size: 1, cost: 10, hint: 'Anyagot szállít a nyíl irányába. Húzással is lerakható.' },
-  excavator: { kind: 'excavator', label: 'Ásógép', icon: '⛏️', size: 2, cost: 300, needs: 'ore', hint: 'Ércet bányászik — érclelőhelyre kell tenni.' },
-  crusher: { kind: 'crusher', label: 'Zúzó', icon: '🪨', size: 2, cost: 400, hint: 'Az ércből szállítható zúzalékot készít.' },
-  harvester: { kind: 'harvester', label: 'Favágó', icon: '🪓', size: 2, cost: 250, needs: 'tree', hint: 'Fát vág — fás területre kell tenni.' },
-  saw: { kind: 'saw', label: 'Fűrész', icon: '🪚', size: 2, cost: 350, hint: 'A rönkökből deszkát fűrészel.' },
-  pump: { kind: 'pump', label: 'Szivattyú', icon: '🛢️', size: 1, cost: 350, needs: 'oil', hint: 'Olajat szivattyúz — olajkútra kell tenni.' },
-  tank: { kind: 'tank', label: 'Tartály', icon: '🛢', size: 2, cost: 200, hint: 'Tárolja az olajat a hajók / vonatok érkezéséig.' },
-  assembler: { kind: 'assembler', label: 'Szerelőgép', icon: '⚙️', size: 2, cost: 500, hint: 'Alapanyagokból árut gyárt.' },
-  boiler: { kind: 'boiler', label: 'Kazán', icon: '🔥', size: 2, cost: 450, hint: 'Szénből / olajból áramot termel.' },
+  excavator: { kind: 'excavator', label: 'Ásógép', icon: '⛏️', size: 2, cost: 300, needs: 'ore', hint: 'Ércet bányászik — érclelőhelyre kell tenni.', recipe: { output: 'ore', seconds: 8 } },
+  crusher: { kind: 'crusher', label: 'Zúzó', icon: '🪨', size: 2, cost: 400, hint: 'Az ércből zúzott ércet készít.', recipe: { input: 'ore', output: 'crushed', seconds: 1.5 } },
+  harvester: { kind: 'harvester', label: 'Favágó', icon: '🪓', size: 2, cost: 250, needs: 'tree', hint: 'Fát vág — fás területre kell tenni.', recipe: { output: 'log', seconds: 8 } },
+  saw: { kind: 'saw', label: 'Fűrész', icon: '🪚', size: 2, cost: 350, hint: 'A rönkökből deszkát fűrészel.', recipe: { input: 'log', output: 'plank', seconds: 1.5 } },
+  pump: { kind: 'pump', label: 'Szivattyú', icon: '🛢️', size: 1, cost: 350, needs: 'oil', hint: 'Olajat szivattyúz — olajkútra kell tenni.', recipe: { output: 'oil', seconds: 3 } },
+  tank: { kind: 'tank', label: 'Tartály', icon: '🛢', size: 2, cost: 200, hint: 'Olajat gyűjt és ad tovább (puffer).', recipe: { input: 'oil', output: 'oil', seconds: 0.3 } },
+  assembler: { kind: 'assembler', label: 'Szerelőgép', icon: '⚙️', size: 2, cost: 500, hint: 'Deszkából árut gyárt.', recipe: { input: 'plank', output: 'goods', seconds: 3 } },
+  boiler: { kind: 'boiler', label: 'Kazán', icon: '🔥', size: 2, cost: 450, hint: 'Ércet vagy olajat éget (áramot termel).', recipe: { input: ['ore', 'oil'], seconds: 2 } },
 };
 
 /** Machines available per industry type (conveyor everywhere). */

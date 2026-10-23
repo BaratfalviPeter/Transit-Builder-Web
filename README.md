@@ -110,8 +110,22 @@ a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
   visszaadja), **Esc** szerszám elengedése / vissza a térképre. Jobb gomb
   húzás: forgatás, görgő: zoom.
 - Amíg a belső nézet nyitva van, a térkép nem renderel (a játékidő is áll).
-- Termelés még nincs, az a következő lépés. (`src/sim/interior.ts`,
-  `InteriorStore.ts`, `src/interior/`)
+- **Termelés** (`src/sim/production.ts`): a kitermelők (ásógép, favágó,
+  szivattyú) annál gyorsabban termelnek, minél több nyersanyag-mezőt fednek
+  le; a feldolgozók (zúzó: érc → zúzott érc, fűrész: rönk → deszka,
+  szerelőgép: deszka → áru, tartály: olajpuffer, kazán: érc/olaj égetése) a
+  bemenetből készítik a kimenetet. A gép a **kimeneti oldalára** (nyíl) ad le:
+  futószalagra vagy közvetlenül a következő gépbe. A futószalag egyesével
+  viszi az árut (1,5 mező/s), és megáll, ha előtte foglalt. Ha egy szalag a
+  **kapun kifelé** visz, az áru a kinti **állomás raktárába** kerül
+  (100 egység).
+- **Látszik bent és kint is:** a szalagokon mennek a tárgyak, a gépek fölött
+  státuszlámpa (zöld = dolgozik, sárga = alapanyagra vár, piros = nem tudja
+  leadni); a kapukon a raktár tartalma. A térképen az állomás peronján nő a
+  rakomány, fölötte címke mutatja a mennyiséget.
+- A termelés a játékidővel fut (szünetben áll, gyorsítva 3×), akkor is, ha a
+  belső nézet zárva van. (`src/sim/interior.ts`, `InteriorStore.ts`,
+  `production.ts`, `src/interior/`)
 - **Dev:** fejlesztői eszközök.
   - **Látvány beállítás:** a fény- és színcsúszkák panelje.
   - **Modellszerkesztő** (csak `npm run dev` alatt): kattints egy ipari épület

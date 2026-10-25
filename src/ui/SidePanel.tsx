@@ -30,6 +30,7 @@ const ICON: Record<ToolId, string> = {
   road: '🛣️',
   rail: '🚆',
   station: '🚉',
+  truckstop: '🚚',
 };
 
 const TABS: Array<{ id: Tab; label: string }> = [

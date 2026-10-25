@@ -23,6 +23,7 @@ import {
   machineAt,
   placementProblem,
   stationOn,
+  stopKind,
   useProductionVersion,
   useGame,
   useGameSnapshot,
@@ -83,6 +84,10 @@ export function InteriorView() {
 
   const catalogue = interior ? (CATALOGUE[interior.type] ?? ['conveyor']) : [];
   const gates = useMemo(() => (interior ? gatesOf(map, interior.anchor) : []), [map, interior]);
+  const truckGates = useMemo(
+    () => (interior ? gates.filter((g) => { const st = stationOn(map, interior.anchor, g); return st && stopKind(st) === 'truck'; }) : []),
+    [gates, map, interior],
+  );
   // Station stock shown on the gates (refreshes ~2×/s while producing).
   const version = useProductionVersion();
   const gateStock = useMemo(() => {
@@ -212,7 +217,7 @@ export function InteriorView() {
     <div className="iv" onContextMenu={(e) => e.preventDefault()}>
       <Canvas shadows="soft" camera={{ position: [0, 13, 12.5], fov: 45, near: 0.1, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <Lights />
-        <InteriorScene interior={interior} gates={gates} gateStock={gateStock} sim={store.production} ghost={ghost} removeTarget={removeTarget} input={input} />
+        <InteriorScene interior={interior} gates={gates} gateStock={gateStock} truckGates={truckGates} sim={store.production} ghost={ghost} removeTarget={removeTarget} input={input} />
         <OrbitControls
           makeDefault
           target={[0, 0, 1.8]}

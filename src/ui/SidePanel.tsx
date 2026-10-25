@@ -7,20 +7,22 @@
  * mutations go back through GameState so the canvas stays in sync.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   TERRAFORM_TOOLS,
   TRANSPORT_TOOLS,
   TOOLS,
   useGame,
   useGameSnapshot,
+  useTransport,
   type GameSpeed,
   type ToolId,
 } from '../sim';
 import { DevTab } from './DevTab';
+import { LinesPanel } from './LinesPanel';
 import './sidePanel.css';
 
-type Tab = 'terraform' | 'transport' | 'economy' | 'dev';
+type Tab = 'terraform' | 'transport' | 'lines' | 'economy' | 'dev';
 
 const ICON: Record<ToolId, string> = {
   select: '🖱️',
@@ -36,6 +38,7 @@ const ICON: Record<ToolId, string> = {
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'terraform', label: 'Földmunka' },
   { id: 'transport', label: 'Infrastruktúra' },
+  { id: 'lines', label: 'Járatok' },
   { id: 'economy', label: 'Pénzügyek' },
   { id: 'dev', label: 'Dev' },
 ];
@@ -52,6 +55,13 @@ export function SidePanel() {
   const game = useGame();
   const snap = useGameSnapshot();
   const [tab, setTab] = useState<Tab>('transport');
+  const transport = useTransport();
+  // The Járatok tab IS the network view: open it with the tab (and drop the
+  // build tool, so map clicks don't build anything meanwhile).
+  useEffect(() => {
+    transport.setView(tab === 'lines');
+    if (tab === 'lines') game.setActiveTool('select');
+  }, [tab, transport, game]);
 
   const speedButtons: Array<{ speed: GameSpeed; glyph: string; title: string }> = [
     { speed: 0, glyph: '⏸', title: 'Szünet' },
@@ -113,6 +123,8 @@ export function SidePanel() {
           />
         )}
 
+        {tab === 'lines' && <LinesPanel />}
+
         {tab === 'dev' && <DevTab onEditorOn={() => game.setActiveTool('select')} />}
 
         {tab === 'economy' && (
@@ -130,8 +142,8 @@ export function SidePanel() {
               <span className="panel__stat-value">-${snap.totalSpent}</span>
             </div>
             <div className="panel__hint">
-              A bevétel későbbi funkció (szállítás). Jelenleg az építés és a
-              tereprendezés von le pénzt.
+              Bevétel: a járatok leszállított rakománya (Járatok fül). Kiadás:
+              építés, tereprendezés, gépek, kamionok.
             </div>
           </>
         )}

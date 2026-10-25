@@ -1,0 +1,30 @@
+.pay-pop {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: rgba(22, 101, 52, 0.88);
+  border: 1px solid rgba(134, 239, 172, 0.9);
+  color: #ecfdf5;
+  font: 700 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.net-stop {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: rgba(18, 20, 28, 0.88);
+  border: 1px solid rgba(240, 160, 58, 0.9);
+  color: #f3f4f6;
+  font: 600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  white-space: nowrap;
+}
+
+.net-stop.is-rail {
+  border-color: rgba(91, 143, 214, 0.7);
+  opacity: 0.7;
+}
+
+.net-stop.is-picked {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}

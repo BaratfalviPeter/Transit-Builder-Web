@@ -10,6 +10,7 @@ import { SidePanel } from './ui/SidePanel';
 import { TerraformConfirm } from './ui/TerraformConfirm';
 import { VisualTuner } from './ui/VisualTuner';
 import { InteriorProvider, ProductionDriver } from './sim/useInterior';
+import { TransportDriver, TransportProvider } from './sim/useTransport';
 import { InteriorView } from './interior/InteriorView';
 
 /**
@@ -23,6 +24,8 @@ import { InteriorView } from './interior/InteriorView';
  *     by the canvas (input + hologram) and the cost/hint overlay.
  *   - InteriorProvider: industry interiors (micro view) — opened from the map,
  *     shown by <InteriorView>.
+ *   - TransportProvider: lines and trucks (network view in the side panel's
+ *     "Járatok" tab).
  * The canvas fills the viewport; the HUD, SidePanel and confirm panel overlay.
  */
 export default function App() {
@@ -32,7 +35,9 @@ export default function App() {
         <TerraformPlanProvider>
           <PathPlanProvider>
             <InteriorProvider>
+            <TransportProvider>
             <ProductionDriver />
+            <TransportDriver />
             <GameCanvas />
             <Hud />
             <SidePanel />
@@ -41,6 +46,7 @@ export default function App() {
             <VisualTuner />
             {/* Micro view: an industry's interior (opened by clicking it). */}
             <InteriorView />
+            </TransportProvider>
             </InteriorProvider>
           </PathPlanProvider>
         </TerraformPlanProvider>

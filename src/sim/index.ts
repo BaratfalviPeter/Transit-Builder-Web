@@ -18,3 +18,5 @@ export * from './interior';
 export * from './production';
 export * from './InteriorStore';
 export * from './useInterior';
+export * from './transport';
+export * from './useTransport';

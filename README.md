@@ -73,7 +73,7 @@ A jobb oldali **panel** három füle:
   **sárga** „under construction" jelet kapnak, végül egy rövid (valós idejű,
   **nem** in-game) késleltetés után **egyszerre** megépülnek. (A batch-elés
   miatt bármennyi cella is **egyetlen** gyors geometria-frissítés.)
-- **Infrastruktúra (Transport):** **Út** ($10), **Sín** ($20) és **Vasútállomás** ($500). Mindkettő üres
+- **Infrastruktúra (Transport):** **Út** ($10), **Sín** ($20), **Vasútállomás** ($500) és **Kamionrakodó** ($300). Mindkettő üres
   (fű) cellára vagy domb tetejére/oldalára építhető (felveszi a lejtő dőlését és
   magasságát), és **húzva** is lerakható. A sarok/csúcs lejtőkre nem lehet.
   A sín **rácshoz kötött**: az egyenesek 8 irányban (tengely mentén vagy
@@ -92,6 +92,23 @@ A jobb oldali **panel** három füle:
     a telekkel egy szintű terep kell; az olajfúróhoz nem építhető. Bontáskor
     az egész állomás (vágánnyal együtt) eltűnik. (`src/sim/stations.ts`,
     `StationModel.tsx`, `Stations.tsx`)
+  - **Kamionrakodó** ($300): ugyanígy az ipar oldalára illeszthető megálló,
+    de a külső sora **út** (a meglévő úthálóhoz csatlakozik). Bent ugyanúgy
+    kapu („🚚 Rakodó”). Oldalanként egy megálló (vasútállomás vagy rakodó).
+- **Járatok:** a fül megnyitásakor a térkép **járatnézetbe** vált: felülnézet,
+  elszürkített térkép, kiemelt megállók. **Új kamionjárat** ($1500, egy
+  kamionnal): kattints a rakodókra sorban, a járat színes vonalként követi az
+  utat (fehér szaggatott előnézet), **Kész**. A járat a végén visszafordul az
+  elsőhöz. Ahol több járat ugyanazon az úton megy, a vonalak egymás mellett
+  futnak (metrótérkép). A listában: kamionok száma (+ / −, eladáskor ½ ár
+  vissza), törlés, „nincs út!” figyelmeztetés.
+  - **Kamionok:** a járat megállóit körbejárják (jobb oldali közlekedés).
+    Megállónként előbb **leadják**, amit az ottani ipar átvesz (gyár: deszka;
+    erőmű: érc, zúzott érc, olaj) — ez a kapun át befelé megy a belső
+    futószalagra, és **fizet**: egység × ár × (1 + távolság / 25); a megálló
+    fölött „+$” jelzi. Aztán **felrakják** (max. 20), amit egy későbbi
+    megálló átvesz. (`src/sim/transport.ts`, `src/render/Transport.tsx`,
+    `src/ui/LinesPanel.tsx`)
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
 ### Belső nézet (mikro nézet)

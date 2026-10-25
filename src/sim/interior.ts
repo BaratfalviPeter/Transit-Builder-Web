@@ -24,13 +24,29 @@ export type Resource = 'ore' | 'tree' | 'oil';
 /** Goods that move through an interior (on belts, through gates). */
 export type Item = 'ore' | 'crushed' | 'log' | 'plank' | 'oil' | 'goods';
 
-export const ITEMS: Record<Item, { label: string; icon: string; color: string }> = {
-  ore: { label: 'Érc', icon: '🪨', color: '#4a90c2' },
-  crushed: { label: 'Zúzott érc', icon: '🧱', color: '#9cc2de' },
-  log: { label: 'Rönk', icon: '🪵', color: '#7a5233' },
-  plank: { label: 'Deszka', icon: '🟫', color: '#d6a868' },
-  oil: { label: 'Olaj', icon: '🛢️', color: '#24262c' },
-  goods: { label: 'Áru', icon: '📦', color: '#e0782f' },
+/** `value`: base delivery price per unit (see transport.ts). */
+export const ITEMS: Record<Item, { label: string; icon: string; color: string; value: number }> = {
+  ore: { label: 'Érc', icon: '🪨', color: '#4a90c2', value: 10 },
+  crushed: { label: 'Zúzott érc', icon: '🧱', color: '#9cc2de', value: 16 },
+  log: { label: 'Rönk', icon: '🪵', color: '#7a5233', value: 8 },
+  plank: { label: 'Deszka', icon: '🟫', color: '#d6a868', value: 14 },
+  oil: { label: 'Olaj', icon: '🛢️', color: '#24262c', value: 20 },
+  goods: { label: 'Áru', icon: '📦', color: '#e0782f', value: 30 },
+};
+
+/** What each industry takes in through its gates (and pays for on delivery). */
+export const ACCEPTS: Partial<Record<CellType, Item[]>> = {
+  [CellType.Factory]: ['plank'],
+  [CellType.PowerPlant]: ['ore', 'crushed', 'oil'],
+};
+
+/** Industry icon (stop labels, line lists). */
+export const INDUSTRY_ICON: Partial<Record<CellType, string>> = {
+  [CellType.Mine]: '⛏️',
+  [CellType.LumberMill]: '🪓',
+  [CellType.OilRig]: '🛢️',
+  [CellType.Factory]: '⚙️',
+  [CellType.PowerPlant]: '⚡',
 };
 
 /**

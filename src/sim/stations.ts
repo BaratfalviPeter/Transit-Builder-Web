@@ -2,11 +2,12 @@
  * Stations — the connection points between an industry and the transport
  * network (the "gates" between the macro map and an industry's interior).
  *
- * A rail station attaches to one SIDE of a large industry's 6×6 lot, just
- * outside it: a platform row along the side and, behind it, a straight
- * through-track as long as the side. The track is an ordinary rail-network
- * edge, so the rail planner can join it at either end (or branch off it).
- * At most one station per side.
+ * A stop attaches to one SIDE of a large industry's 6×6 lot, just outside
+ * it: a platform row along the side and, behind it, a straight row as long as
+ * the side — for a RAIL station a through-track (an ordinary rail-network
+ * edge, so the rail planner can join it at either end), for a TRUCK stop a
+ * road (ordinary Road cells, so it joins the road network). At most one stop
+ * per side; each is a gate of the industry's interior.
  *
  * Pure TypeScript.
  */
@@ -23,18 +24,25 @@ import {
 /** Which side of the lot: N = −Z, S = +Z, W = −X, E = +X. */
 export type Side = 'N' | 'S' | 'W' | 'E';
 
+/** Rail station or truck stop. */
+export type StopKind = 'rail' | 'truck';
+
 export interface Station {
   readonly id: number;
   /** Anchor cell of the industry it serves. */
   readonly anchor: readonly [number, number];
   readonly side: Side;
+  /** Missing = 'rail' (stations built before truck stops existed). */
+  readonly kind?: StopKind;
 }
+
+export const stopKind = (s: Station): StopKind => s.kind ?? 'rail';
 
 /** Where a station on (anchor, side) lies. */
 export interface StationGeom {
   /** Platform cells (next to the lot), along the side. */
   platform: Array<[number, number]>;
-  /** Track cells (outer row), along the side. */
+  /** Outer row (rail track or road), along the side. */
   track: Array<[number, number]>;
   /** Track centre-line [x0, z0, x1, z1] (a rail-network edge). */
   trackPts: number[];
@@ -120,8 +128,8 @@ export function sideAt(map: TerrainMap, x: number, z: number): { anchor: [number
 export function stationProblem(map: TerrainMap, anchor: readonly [number, number], side: Side): string | null {
   const type = map.cells[anchor[0]][anchor[1]];
   if (!LARGE_INDUSTRY.has(type)) return 'Itt nincs ipar';
-  if (type === CellType.OilRig) return 'A fúrótoronyhoz nem építhető vasútállomás';
-  if (stationOn(map, anchor, side)) return 'Ezen az oldalon már van állomás';
+  if (type === CellType.OilRig) return 'A fúrótoronyhoz nem építhető megálló';
+  if (stationOn(map, anchor, side)) return 'Ezen az oldalon már van megálló';
   const level = cornerHeightAt(map, anchor[0], anchor[1]);
   const g = stationGeom(anchor, side);
   for (const [x, z] of [...g.platform, ...g.track]) {

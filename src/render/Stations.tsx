@@ -13,14 +13,17 @@ import {
   STATION_CAPACITY,
   cornerHeightAt,
   stationGeom,
+  stopKind,
   useInteriorStore,
   useProductionVersion,
   type Item,
   type Side,
+  type StopKind,
   type TerrainMap,
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { StationModel } from './StationModel';
+import { TruckStopModel } from './TruckStopModel';
 import './stations.css';
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
@@ -55,7 +58,11 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
         const parts = (Object.keys(stock) as Item[]).filter((k) => stock[k]).map((k) => `${ITEMS[k].icon} ${stock[k]}`);
         return (
           <group key={s.id}>
-            <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+            {stopKind(s) === 'truck' ? (
+              <TruckStopModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+            ) : (
+              <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+            )}
             {total > 0 && (
               <Html position={[pos[0], pos[1] + cellSize * 1.3, pos[2]]} center style={{ pointerEvents: 'none' }}>
                 <div className={'station-tip station-stock' + (total >= STATION_CAPACITY ? ' is-bad' : '')}>
@@ -78,7 +85,21 @@ export interface StationHover {
 }
 
 /** Green / red cells where the station would go, plus a label. */
-export function StationPreview({ map, cellSize, hover, cost, canAfford }: { map: TerrainMap; cellSize: number; hover: StationHover; cost: number; canAfford: boolean }) {
+export function StationPreview({
+  map,
+  cellSize,
+  hover,
+  kind,
+  cost,
+  canAfford,
+}: {
+  map: TerrainMap;
+  cellSize: number;
+  hover: StationHover;
+  kind: StopKind;
+  cost: number;
+  canAfford: boolean;
+}) {
   const half = (map.size - 1) / 2;
   const g = stationGeom(hover.anchor, hover.side);
   const reason = hover.problem ?? (canAfford ? null : 'Nincs elég pénz');
@@ -97,7 +118,7 @@ export function StationPreview({ map, cellSize, hover, cost, canAfford }: { map:
         );
       })}
       <Html position={[pos[0], pos[1] + cellSize * 1.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
-        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `🚉 Vasútállomás · $${cost}` : reason}</div>
+        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${kind === 'truck' ? '🚚 Kamionrakodó' : '🚉 Vasútállomás'} · $${cost}` : reason}</div>
       </Html>
     </group>
   );

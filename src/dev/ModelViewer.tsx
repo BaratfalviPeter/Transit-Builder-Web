@@ -27,6 +27,7 @@ import { PowerPlantModel } from '../render/PowerPlantModel';
 import { FactoryModel } from '../render/FactoryModel';
 import { OilRigModel } from '../render/OilRigModel';
 import { StationModel } from '../render/StationModel';
+import { TruckStopModel } from '../render/TruckStopModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -45,8 +46,8 @@ export const VIEWER_MODELS: Array<{
   label: string;
   Comp: ComponentType<{ phase?: number }>;
   water?: boolean;
-  /** Show a stand-in rail track along X at z = 0.25 (station models). */
-  track?: boolean;
+  /** Stand-in rail track / road along X at z = 0.25 (stop models). */
+  track?: 'rail' | 'road';
   zoom?: number;
   /** Height the camera looks at (default TARGET's). */
   lookY?: number;
@@ -56,7 +57,8 @@ export const VIEWER_MODELS: Array<{
   { id: 'PowerPlantModel', label: 'Erőmű', Comp: PowerPlantModel },
   { id: 'FactoryModel', label: 'Gyár', Comp: FactoryModel },
   { id: 'OilRigModel', label: 'Olajfúró', Comp: OilRigModel, water: true, zoom: 1.2, lookY: 0.9 },
-  { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: true, zoom: 0.8, lookY: 0.15 },
+  { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
+  { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */
@@ -134,7 +136,22 @@ function gridLines(hole: boolean): THREE.BufferGeometry {
  * Stand-in track for station models (the game's real track is drawn by
  * Rails.tsx): ballast, sleepers, rails — in design units (½ cell).
  */
-function ViewerTrack() {
+function ViewerTrack({ kind }: { kind: 'rail' | 'road' }) {
+  if (kind === 'road')
+    return (
+      <group position={[0, 0, 0.25]}>
+        <mesh position={[0, 0.012, 0]} receiveShadow>
+          <boxGeometry args={[3.6, 0.024, 0.46]} />
+          <meshStandardMaterial color="#3a3d42" roughness={1} />
+        </mesh>
+        {Array.from({ length: 9 }).map((_, i) => (
+          <mesh key={i} position={[-1.6 + i * 0.4, 0.025, 0]}>
+            <boxGeometry args={[0.18, 0.002, 0.02]} />
+            <meshStandardMaterial color="#e8e2c8" />
+          </mesh>
+        ))}
+      </group>
+    );
   return (
     <group position={[0, 0, 0.25]}>
       <mesh position={[0, 0.02, 0]} receiveShadow>
@@ -267,7 +284,7 @@ export function ModelViewer() {
       <Canvas shadows="soft" camera={{ fov: 40, near: 0.05, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
         <ViewerLights />
         <Ground depth={depth} water={!!entry.water} />
-        {entry.track && <ViewerTrack />}
+        {entry.track && <ViewerTrack kind={entry.track} />}
         <group ref={modelRef}>
           <EditorPick>
             <Comp key={entry.id} phase={0} />

@@ -17,7 +17,8 @@ export type ToolId =
   | 'bulldoze'
   | 'road'
   | 'rail'
-  | 'station';
+  | 'station'
+  | 'truckstop';
 
 export interface ToolDef {
   id: ToolId;
@@ -44,9 +45,11 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   rail: { id: 'rail', label: 'Sín', cost: 20, builds: CellType.Rail },
   // Rail station on an industry's side (flat price per station).
   station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },
+  // Truck stop on an industry's side (flat price).
+  truckstop: { id: 'truckstop', label: 'Kamionrakodó', cost: 300, builds: null },
 };
 
 /** Terraforming tab tools. */
 export const TERRAFORM_TOOLS: ToolId[] = ['select', 'raise', 'lower', 'bulldoze'];
 /** Infrastructure tab tools. */
-export const TRANSPORT_TOOLS: ToolId[] = ['select', 'road', 'rail', 'station'];
+export const TRANSPORT_TOOLS: ToolId[] = ['select', 'road', 'rail', 'station', 'truckstop'];

@@ -68,6 +68,8 @@ export class ProductionSim {
   private machines = new Map<number, MachineRt>();
   private belts = new Map<number, BeltRt>();
   private stock = new Map<number, Partial<Record<Item, number>>>();
+  /** Delivered goods waiting at a stop to go IN through its gate. */
+  private inbound = new Map<number, Partial<Record<Item, number>>>();
   private readonly listeners = new Set<Listener>();
   private sincePublish = 0;
   private version = 0;
@@ -107,6 +109,32 @@ export class ProductionSim {
     let n = 0;
     for (const v of Object.values(this.stationStock(id))) n += v ?? 0;
     return n;
+  }
+
+  /** Take up to `n` of `item` from a stop's outgoing stock; returns how many. */
+  take(id: number, item: Item, n: number): number {
+    const s = this.stock.get(id);
+    const k = Math.min(n, s?.[item] ?? 0);
+    if (s && k > 0) s[item] = (s[item] ?? 0) - k;
+    return k;
+  }
+
+  /** Delivered goods waiting at a stop to go in through its gate. */
+  inboundStock(id: number): Partial<Record<Item, number>> {
+    return this.inbound.get(id) ?? {};
+  }
+
+  /** Leave `n` of `item` at a stop for its industry; returns how many fit. */
+  deliver(id: number, item: Item, n: number): number {
+    const s = this.inbound.get(id) ?? {};
+    let total = 0;
+    for (const v of Object.values(s)) total += v ?? 0;
+    const k = Math.max(0, Math.min(n, STATION_CAPACITY - total));
+    if (k > 0) {
+      s[item] = (s[item] ?? 0) + k;
+      this.inbound.set(id, s);
+    }
+    return k;
   }
 
   /** Bumped on every throttled publish (for useSyncExternalStore). */
@@ -153,6 +181,27 @@ export class ProductionSim {
       }
       return this.accept(t, item);
     };
+
+    // 0) Delivered goods enter through the gates onto inward-pointing belts.
+    for (const side of ['N', 'S', 'W', 'E'] as Side[]) {
+      const st = stationOn(map, it.anchor, side);
+      const inb = st && this.inbound.get(st.id);
+      if (!inb) continue;
+      const inward: [number, number] = side === 'N' ? [0, 1] : side === 'S' ? [0, -1] : side === 'W' ? [1, 0] : [-1, 0];
+      for (const [x, z] of gateTiles(side)) {
+        const t = at(x, z);
+        if (!t || t.kind !== 'conveyor') continue;
+        const [dx, dz] = ROT_DIR[t.rot];
+        if (dx !== inward[0] || dz !== inward[1]) continue;
+        const b = this.belt(t.id);
+        if (b.item) continue;
+        const item = (Object.keys(inb) as Item[]).find((k) => (inb[k] ?? 0) > 0);
+        if (!item) break;
+        inb[item] = (inb[item] ?? 0) - 1;
+        b.item = item;
+        b.progress = 0;
+      }
+    }
 
     // 1) Belts move (this frees room for the machines below).
     for (const m of it.machines) {

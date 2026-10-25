@@ -2,7 +2,7 @@
   position: absolute;
   top: 16px;
   right: 16px;
-  width: 260px;
+  width: 330px;
   pointer-events: auto;
   background: rgba(18, 20, 28, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -16,7 +16,7 @@
 
 /* The Dev tab needs room for source snippets. */
 .panel--wide {
-  width: 320px;
+  width: 340px;
 }
 
 /* Date + time controls bar */
@@ -70,7 +70,7 @@
 
 .panel__tab {
   flex: 1 1 auto;
-  padding: 9px 4px;
+  padding: 9px 2px;
   border: none;
   background: transparent;
   color: #c7cbd4;

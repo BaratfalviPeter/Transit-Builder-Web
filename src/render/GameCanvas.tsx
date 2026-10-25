@@ -30,6 +30,7 @@ import { Rails } from './Rails';
 import { Industries } from './Industries';
 import { EditorGizmo, EditorPick } from '../dev/ModelEditor';
 import { StationPreview, Stations, type StationHover } from './Stations';
+import { NetworkView, Trucks } from './Transport';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
@@ -53,6 +54,9 @@ import {
   useTerrainStore,
   useInteriorSnapshot,
   useInteriorStore,
+  useTransport,
+  useTransportSnapshot,
+  type StopKind,
   type TerrainMap,
 } from '../sim';
 import { getDev } from '../dev/modelEditorStore';
@@ -246,6 +250,11 @@ function ShadowController({
   return null;
 }
 
+/** Stop a tool docks onto an industry side (null = not a stop tool). */
+function stopToolKind(id: string): StopKind | null {
+  return id === 'station' ? 'rail' : id === 'truckstop' ? 'truck' : null;
+}
+
 /** Track type a tool plans with the two-click planner (null = not a track tool). */
 function trackOf(id: string): CellType.Road | CellType.Rail | null {
   return id === 'road' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
@@ -265,6 +274,8 @@ function Scene() {
   const pathPlan = usePathPlan();
   const pathSnap = usePathPlanSnapshot();
   const interiors = useInteriorStore();
+  const transport = useTransport();
+  const { view: networkView } = useTransportSnapshot();
   const map = useTerrainMap();
   const half = (map.size - 1) / 2;
 
@@ -302,6 +313,7 @@ function Scene() {
   // two-click A→B planner below instead.
   const handlePaint = useCallback(
     (worldX: number, worldZ: number) => {
+      if (transport.getSnapshot().view) return; // network view: no building
       const { x, z } = cellOf(worldX, worldZ);
       const tool = TOOLS[game.getActiveTool()];
       const key = `${x},${z}`;
@@ -325,7 +337,7 @@ function Scene() {
           return; // select: no-op; road/rail: click mode
       }
     },
-    [terrain, game, plan, cellOf],
+    [terrain, game, plan, cellOf, transport],
   );
 
   const handleDragChange = useCallback(() => {
@@ -345,7 +357,7 @@ function Scene() {
     [terrain, cellOf],
   );
   useEffect(() => {
-    if (activeTool !== 'station') setStationHover(null);
+    if (stopToolKind(activeTool) === null) setStationHover(null);
   }, [activeTool]);
 
   // ---- Two-click (Point A → Point B) road/rail planner -------------------
@@ -358,10 +370,11 @@ function Scene() {
       // Select: a click (not a drag — that pans) on an industry opens its interior.
       active: () => {
         const t = game.getActiveTool();
-        return trackOf(t) !== null || t === 'station' || (t === 'select' && !getDev().editorOn);
+        if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
+        return trackOf(t) !== null || stopToolKind(t) !== null || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
-        if (game.getActiveTool() === 'station') {
+        if (stopToolKind(game.getActiveTool()) !== null) {
           const h = stationTarget(wx, wz);
           setStationHover((cur) =>
             cur && h && cur.anchor[0] === h.anchor[0] && cur.anchor[1] === h.anchor[1] && cur.side === h.side && cur.problem === h.problem
@@ -385,10 +398,11 @@ function Scene() {
           if (a) interiors.open(a, m.cells[a[0]][a[1]]);
           return;
         }
-        if (tool.id === 'station') {
+        const stop = stopToolKind(tool.id);
+        if (stop) {
           const h = stationTarget(wx, wz);
           if (!h || h.problem || !game.canAfford(tool.cost)) return;
-          if (terrain.buildStation(h.anchor, h.side)) game.spend(tool.cost);
+          if (terrain.buildStation(h.anchor, h.side, stop)) game.spend(tool.cost);
           setStationHover(stationTarget(wx, wz));
           return;
         }
@@ -422,7 +436,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget, cellOf, interiors],
+    [game, terrain, pathPlan, gridOf, stationTarget, cellOf, interiors, transport],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -540,13 +554,18 @@ function Scene() {
         {/* Stations docked onto industry sides (their track is in Rails). */}
         <StationsM map={map} cellSize={cellSize} />
       </EditorPick>
+      {/* Trucks on their lines (+ the "+$" of deliveries). */}
+      <Trucks map={map} cellSize={cellSize} />
+      {/* Network view: grey veil, stops, metro-style lines (Járatok tab). */}
+      {networkView && <NetworkView map={map} cellSize={cellSize} />}
       {stationHover && (
         <StationPreview
           map={map}
           cellSize={cellSize}
           hover={stationHover}
-          cost={TOOLS.station.cost}
-          canAfford={money >= TOOLS.station.cost}
+          kind={stopToolKind(activeTool) ?? 'rail'}
+          cost={TOOLS[activeTool].cost}
+          canAfford={money >= TOOLS[activeTool].cost}
         />
       )}
       {/* Dev model editor: selection outline + move / rotate / scale gizmo. */}

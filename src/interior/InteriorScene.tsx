@@ -121,7 +121,7 @@ function Walls({ gates }: { gates: Side[] }) {
 }
 
 /** A gate: an arch over the opening, a blue band and a station label. */
-function Gate({ side, stock }: { side: Side; stock?: string }) {
+function Gate({ side, stock, truck }: { side: Side; stock?: string; truck?: boolean }) {
   const half = N / 2 + 0.1;
   const pos: [number, number, number] =
     side === 'N' ? [0, 0, -half] : side === 'S' ? [0, 0, half] : side === 'W' ? [-half, 0, 0] : [half, 0, 0];
@@ -145,7 +145,7 @@ function Gate({ side, stock }: { side: Side; stock?: string }) {
       </mesh>
       <Html position={[0, 1.55, 0]} center style={{ pointerEvents: 'none' }}>
         <div className="iv-gate">
-          🚉 Állomás ({label})
+          {truck ? '🚚 Rakodó' : '🚉 Állomás'} ({label})
           {stock && <div className="iv-gate__stock">{stock}</div>}
         </div>
       </Html>
@@ -302,6 +302,7 @@ export function InteriorScene({
   interior,
   gates,
   gateStock,
+  truckGates,
   sim,
   ghost,
   removeTarget,
@@ -311,6 +312,8 @@ export function InteriorScene({
   gates: Side[];
   /** Station stock text per gate side. */
   gateStock: Partial<Record<Side, string>>;
+  /** Gates whose outside stop is a truck stop. */
+  truckGates: Side[];
   sim: ProductionSim;
   ghost: Ghost | null;
   removeTarget: Machine | null;
@@ -339,7 +342,7 @@ export function InteriorScene({
       })}
       <Walls gates={gates} />
       {gates.map((g) => (
-        <Gate key={g} side={g} stock={gateStock[g]} />
+        <Gate key={g} side={g} stock={gateStock[g]} truck={truckGates.includes(g)} />
       ))}
       <Machines machines={interior.machines} hideUnder={removeTarget} />
       <BeltItems machines={interior.machines} sim={sim} />

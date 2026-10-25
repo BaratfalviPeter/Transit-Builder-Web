@@ -31,6 +31,13 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
   kell bontani (gödör, daru, siló, szalag, cső), amelyeket a belső építés
   helyez el és fejleszt.
 
+## Belső nézet — későbbi finomítások
+
+- **Minden iparnak saját, a modelljéhez illő belső tere:** ne egy általános
+  rács legyen, hanem a bánya belseje a valódi gödör, a fatelepé a fűrésztelep
+  udvara, az olajfúróé a fedélzet stb.
+- **Többsávos futószalagok:** egy szalagon két (vagy több) sáv, külön árukkal.
+
 ## További irányok (a megbeszélt sorrend után)
 
 - Teherautók az utakon, teherautó-rakodó a telkek oldalán.

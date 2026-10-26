@@ -28,6 +28,7 @@ import { FactoryModel } from '../render/FactoryModel';
 import { OilRigModel } from '../render/OilRigModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
+import { TruckPreview } from '../render/TruckModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -59,6 +60,7 @@ export const VIEWER_MODELS: Array<{
   { id: 'OilRigModel', label: 'Olajfúró', Comp: OilRigModel, water: true, zoom: 1.2, lookY: 0.9 },
   { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
+  { id: 'Truck', label: 'Kamion', Comp: TruckPreview, zoom: 1.0, lookY: 0.3 },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */

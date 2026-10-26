@@ -7,6 +7,19 @@
  * pays: units × value × distance factor), then LOAD what a later stop of the
  * line takes from the stop's outgoing stock.
  *
+ * Trucks drive on the RIGHT lane of a smooth lane path (rounded corners:
+ * right turns tight, left turns wide) and are articulated: the tractor and
+ * the trailer each follow the lane (see `pose`). Traffic rules:
+ *   - keep a gap to whatever is ahead in the lane (also at stop queues);
+ *   - junctions (road cells with 3+ road neighbours): enter only if the
+ *     junction is free AND there is room for the whole truck past it (no
+ *     blocking the box); the junction is reserved until the trailer is out;
+ *   - pulling out of a stop gives way to the traffic;
+ *   - two trucks waiting for each other elsewhere: the one with the other
+ *     on its RIGHT gives way;
+ *   - a real deadlock (trucks waiting for each other in a circle — not just a
+ *     long queue) is broken: one truck of the circle drives on for a moment.
+ *
  * Lines are immutable snapshot data (for the UI); the trucks are mutable
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
@@ -52,7 +65,20 @@ export const TRUCK_PRICE = 1500;
 export const TRUCK_CAPACITY = 20;
 /** Truck speed (cells per game second). */
 const TRUCK_SPEED = 3;
-/** Seconds spent at a stop (un)loading. */
+/** Lane offset to the right of the road centre (cells). */
+const LANE = 0.2;
+/** Front of the tractor → its fifth wheel (hitch), and hitch → trailer axles (cells). */
+export const TRUCK_HITCH = 0.22;
+export const TRAILER_AXLE = 0.5;
+/** Clear road wanted ahead of the tractor's front (cells). */
+const LOOK_AHEAD = 0.55;
+/** Two body points closer than this collide (lanes are 2·LANE apart). */
+const BODY_GAP = 0.27;
+/** Seconds waiting before a truck checks for a deadlock circle. */
+const DEADLOCK_CHECK = 3;
+/** Seconds a deadlocked truck may drive ignoring the others. */
+const DEADLOCK_PASS = 2;
+/** Seconds stopped at a stop (un)loading. */
 const STOP_TIME = 2;
 /** Delivery pay grows with the distance carried (cells). */
 const DISTANCE_SCALE = 25;
@@ -67,10 +93,21 @@ export interface Truck {
   /** Index (in the line's stops) of the stop it's at / heading to. */
   target: number;
   path: Cell[] | null;
-  /** Distance travelled along `path` (cells). */
+  /** Distance travelled along `lane` (cells). */
   s: number;
+  /** Smooth right-lane path built from `path` (s runs along it). */
+  lane: Lane | null;
   state: 'stop' | 'drive' | 'noroute';
   timer: number;
+  /** Seconds it has been held up by traffic. */
+  blocked: number;
+  /** Junction cells (x·n + z) it has reserved, until `s` passes `holdUntil`. */
+  holds: number[];
+  holdUntil: number;
+  /** The truck it is waiting for (null = not waiting). */
+  waitFor: number | null;
+  /** Seconds left of a deadlock pass (ignores the traffic). */
+  pass: number;
   cargo: Partial<Record<Item, number>>;
   /** Stop the cargo was loaded at (for the distance pay). */
   from: number | null;
@@ -160,6 +197,116 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | n
   return null;
 }
 
+// ---------------------------------------------------------------- lanes
+
+/** A polyline with cumulative lengths: the right lane along a route. */
+export interface Lane {
+  xs: number[];
+  zs: number[];
+  /** Length up to each point. */
+  cum: number[];
+  length: number;
+}
+
+/**
+ * The right lane along a cell route: offset by LANE to the right, corners
+ * rounded with a quadratic curve (from the cell edge before to the cell edge
+ * after; its control point is where the two offset lanes meet — so a right
+ * turn is tight and a left turn wide). A U-turn swings round the cell.
+ */
+export function buildLane(path: Cell[]): Lane {
+  const xs: number[] = [];
+  const zs: number[] = [];
+  const push = (x: number, z: number) => {
+    const n = xs.length;
+    if (n && Math.abs(xs[n - 1] - x) < 1e-6 && Math.abs(zs[n - 1] - z) < 1e-6) return;
+    xs.push(x);
+    zs.push(z);
+  };
+  const dir = (i: number): [number, number] => [path[i + 1][0] - path[i][0], path[i + 1][1] - path[i][1]];
+  // Right of heading (dx, dz) is (−dz, dx).
+  const right = ([dx, dz]: [number, number]): [number, number] => [-dz * LANE, dx * LANE];
+  const quad = (ax: number, az: number, kx: number, kz: number, bx: number, bz: number) => {
+    for (let k = 0; k <= 6; k++) {
+      const t = k / 6, u = 1 - t;
+      push(u * u * ax + 2 * u * t * kx + t * t * bx, u * u * az + 2 * u * t * kz + t * t * bz);
+    }
+  };
+  if (path.length === 1) push(path[0][0], path[0][1]);
+  else {
+    const r0 = right(dir(0));
+    push(path[0][0] + r0[0], path[0][1] + r0[1]);
+    for (let i = 1; i < path.length - 1; i++) {
+      const [cx, cz] = path[i];
+      const din = dir(i - 1), dout = dir(i);
+      const rin = right(din), rout = right(dout);
+      if (din[0] === dout[0] && din[1] === dout[1]) continue; // straight on
+      if (din[0] === -dout[0] && din[1] === -dout[1]) {
+        // U-turn (dead end): swing round the far side of the cell.
+        quad(cx + rin[0], cz + rin[1], cx + din[0] * 0.45, cz + din[1] * 0.45, cx + rout[0], cz + rout[1]);
+        continue;
+      }
+      quad(
+        cx - din[0] * 0.5 + rin[0], cz - din[1] * 0.5 + rin[1],
+        cx + rin[0] + rout[0], cz + rin[1] + rout[1],
+        cx + dout[0] * 0.5 + rout[0], cz + dout[1] * 0.5 + rout[1],
+      );
+    }
+    const last = path.length - 1;
+    const rl = right(dir(last - 1));
+    push(path[last][0] + rl[0], path[last][1] + rl[1]);
+  }
+  const cum = [0];
+  for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
+  return { xs, zs, cum, length: cum[cum.length - 1] };
+}
+
+/** Point at distance `s` along a lane (extended straight beyond both ends). */
+export function laneAt(l: Lane, s: number): [number, number] {
+  const n = l.xs.length;
+  if (n === 1) return [l.xs[0], l.zs[0]];
+  let i: number;
+  if (s <= 0) i = 0;
+  else if (s >= l.length) i = n - 2;
+  else {
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (l.cum[m] <= s) lo = m;
+      else hi = m;
+    }
+    i = lo;
+  }
+  const seg = l.cum[i + 1] - l.cum[i] || 1;
+  const f = (s - l.cum[i]) / seg;
+  return [l.xs[i] + (l.xs[i + 1] - l.xs[i]) * f, l.zs[i] + (l.zs[i + 1] - l.zs[i]) * f];
+}
+
+/** Where an articulated truck is (grid coords; yaw about Y, 0 = +X). */
+export interface TruckPose {
+  /** Fifth wheel (hitch): the tractor's and the trailer's pivot. */
+  x: number;
+  z: number;
+  /** Tractor heading. */
+  yaw: number;
+  /** Trailer heading. */
+  trailerYaw: number;
+  /** Front of the tractor / rear of the trailer (for traffic checks). */
+  front: [number, number];
+  rear: [number, number];
+}
+
+function poseOnLane(l: Lane, s: number): TruckPose {
+  const f = laneAt(l, s);
+  const h = laneAt(l, s - TRUCK_HITCH);
+  const a = laneAt(l, s - TRUCK_HITCH - TRAILER_AXLE);
+  const yaw = (p: [number, number], q: [number, number]) => Math.atan2(-(p[1] - q[1]), p[0] - q[0]);
+  const ty = yaw(h, a);
+  // Rear end: a bit past the trailer axles, along the trailer.
+  const rear: [number, number] = [a[0] - Math.cos(ty) * 0.1, a[1] + Math.sin(ty) * 0.1];
+  return { x: h[0], z: h[1], yaw: yaw(f, h), trailerYaw: ty, front: f, rear };
+}
+
 // ---------------------------------------------------------------- sim
 
 export class TransportSim {
@@ -168,6 +315,11 @@ export class TransportSim {
   private nextLine = 1;
   private nextTruck = 1;
   private routeCache = new Map<string, Cell[] | null>();
+  /** Junction cell → the truck that reserved it. */
+  private reserved = new Map<number, number>();
+  /** 1 = junction cell (cached per map version). */
+  private junctions: Uint8Array | null = null;
+  private junctionVersion = -1;
   private routeVersion = -1;
   readonly payments: Payment[] = [];
   private readonly listeners = new Set<Listener>();
@@ -224,6 +376,7 @@ export class TransportSim {
   }
 
   removeLine(id: number): void {
+    for (const t of this.trucks) if (t.lineId === id) this.release(t);
     this.trucks = this.trucks.filter((t) => t.lineId !== id);
     this.set({ lines: this.snap.lines.filter((l) => l.id !== id), fleet: this.snap.fleet + 1 });
   }
@@ -263,6 +416,13 @@ export class TransportSim {
     this.syncFleet();
     const byId = new Map((map.stations ?? []).map((s) => [s.id, s]));
     const noRoute = new Set<number>();
+    // Everyone's position at the start of the tick (for the traffic rules).
+    const poses = new Map<number, TruckPose>();
+    for (const t of this.trucks) {
+      const p = this.pose(t);
+      if (p) poses.set(t.id, p);
+      t.pass = Math.max(0, t.pass - dt);
+    }
     for (const t of this.trucks) {
       const line = this.snap.lines.find((l) => l.id === t.lineId);
       if (!line) continue;
@@ -274,34 +434,250 @@ export class TransportSim {
       if (t.state === 'stop') {
         t.timer -= dt;
         if (t.timer > 0) continue;
+        const next = (t.target + 1) % line.stops.length;
+        // Pulling out (or out of the depot) gives way to the traffic.
+        const r = this.route(map, here, byId.get(line.stops[next]) ?? null);
+        if (r && r.length && this.startBlocked(t, buildLane(r), poses)) {
+          t.timer = 0.3;
+          t.blocked += 0.3;
+          continue;
+        }
+        t.blocked = 0;
+        t.waitFor = null;
         this.serveStop(t, line, here, byId, map, prod, earn);
         // Head for the next stop.
-        const next = (t.target + 1) % line.stops.length;
-        t.path = this.route(map, here, byId.get(line.stops[next]) ?? null);
-        t.s = 0;
+        this.setPath(t, this.route(map, here, byId.get(line.stops[next]) ?? null));
         t.target = next;
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
+        this.updatePose(t, poses);
       } else if (t.state === 'noroute') {
         noRoute.add(line.id);
         t.timer -= dt;
         if (t.timer > 0) continue;
         const prevStop = byId.get(line.stops[(t.target - 1 + line.stops.length) % line.stops.length]) ?? null;
-        t.path = this.route(map, prevStop, here);
-        t.s = 0;
+        this.setPath(t, this.route(map, prevStop, here));
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
-      } else if (t.path) {
+      } else if (t.lane) {
+        if (this.junctionWait(t, map, poses) || this.heldUp(t, poses)) {
+          t.blocked += dt;
+          continue;
+        }
+        t.blocked = 0;
+        t.waitFor = null;
         t.s += dt * TRUCK_SPEED;
-        if (t.s >= t.path.length - 1) {
-          t.s = t.path.length - 1;
+        this.updatePose(t, poses);
+        if (t.s >= t.lane.length) {
+          t.s = t.lane.length;
+          this.release(t); // parked at the stop: the junction is free again
           t.state = 'stop';
           t.timer = STOP_TIME;
         }
       }
     }
+    this.breakDeadlocks();
     const nr = [...noRoute].sort((a, b) => a - b);
     if (nr.join() !== this.snap.noRoute.join()) this.set({ noRoute: nr });
+  }
+
+  /** Note that `t` waits for `o`; returns true (= wait). */
+  private waitOn(t: Truck, o: Truck): boolean {
+    t.waitFor = o.id;
+    return true;
+  }
+
+  /**
+   * Deadlock breaker: follow who-waits-for-whom from every truck that has
+   * waited a while; a chain that comes back to itself is a circle (a queue
+   * just ends at someone moving). The lowest id of the circle gets a pass.
+   */
+  private breakDeadlocks(): void {
+    const byId = new Map(this.trucks.map((t) => [t.id, t]));
+    for (const t of this.trucks) {
+      if (t.waitFor === null || t.blocked < DEADLOCK_CHECK || t.pass > 0) continue;
+      const circle: Truck[] = [t];
+      let cur = byId.get(t.waitFor);
+      while (cur && cur !== t && circle.length < 64 && cur.waitFor !== null && !circle.includes(cur)) {
+        circle.push(cur);
+        cur = byId.get(cur.waitFor);
+      }
+      if (cur !== t) continue;
+      const first = circle.reduce((a, b) => (b.id < a.id ? b : a));
+      first.pass = DEADLOCK_PASS;
+    }
+  }
+
+  private release(t: Truck): void {
+    for (const c of t.holds) if (this.reserved.get(c) === t.id) this.reserved.delete(c);
+    t.holds = [];
+  }
+
+  private junctionMap(map: TerrainMap): Uint8Array {
+    if (this.junctions && this.junctionVersion === map.cellsVersion) return this.junctions;
+    const n = map.size;
+    const road = (x: number, z: number) => x >= 0 && z >= 0 && x < n && z < n && map.cells[x][z] === CellType.Road;
+    const j = new Uint8Array(n * n);
+    for (let x = 0; x < n; x++)
+      for (let z = 0; z < n; z++) {
+        if (!road(x, z)) continue;
+        let k = 0;
+        for (let d = 0; d < 4; d++) if (road(x + DX[d], z + DZ[d])) k++;
+        if (k >= 3) j[x * n + z] = 1;
+      }
+    this.junctions = j;
+    this.junctionVersion = map.cellsVersion;
+    return j;
+  }
+
+  /**
+   * Junction rule: before entering a junction, wait until it is free and
+   * the road past it has room for the whole truck; then reserve it until
+   * the trailer is out. True = wait.
+   */
+  private junctionWait(t: Truck, map: TerrainMap, poses: Map<number, TruckPose>): boolean {
+    const lane = t.lane;
+    if (!lane) return false;
+    if (t.holds.length) {
+      if (t.s < t.holdUntil) return false; // crossing: carry on
+      this.release(t);
+    }
+    if (t.pass > 0) return false;
+    const n = map.size;
+    const jm = this.junctionMap(map);
+    const cellAt = (d: number) => {
+      const [x, z] = laneAt(lane, d);
+      const cx = Math.round(x), cz = Math.round(z);
+      return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
+    };
+    const isJ = (c: number) => c >= 0 && jm[c] === 1;
+    // Already in a junction (e.g. started in one): just drive on.
+    if (isJ(cellAt(t.s))) return false;
+    // The next junction close ahead.
+    let sIn = -1;
+    for (let d = t.s + 0.1; d <= Math.min(lane.length, t.s + 0.6); d += 0.1)
+      if (isJ(cellAt(d))) {
+        sIn = d;
+        break;
+      }
+    if (sIn < 0) return false;
+    // Its run of junction cells along the lane.
+    const run = new Set<number>();
+    let sOut = sIn;
+    for (let d = sIn; d <= lane.length; d += 0.1) {
+      const c = cellAt(d);
+      if (!isJ(c)) break;
+      run.add(c);
+      sOut = d;
+    }
+    for (const c of run) {
+      const h = this.reserved.get(c);
+      if (h !== undefined && h !== t.id) {
+        const holder = this.trucks.find((q) => q.id === h);
+        if (holder && holder.holds.includes(c)) return this.waitOn(t, holder);
+        this.reserved.delete(c); // stale
+      }
+    }
+    // Room past the junction for the whole truck (or up to the stop).
+    const end = Math.min(lane.length, sOut + TRUCK_HITCH + TRAILER_AXLE + 0.4);
+    for (const o of this.trucks) {
+      const op = o !== t && poses.get(o.id);
+      if (!op) continue;
+      const body: Array<[number, number]> = [op.front, [op.x, op.z], op.rear, [(op.x + op.rear[0]) / 2, (op.z + op.rear[1]) / 2]];
+      for (let d = sIn; d <= end + 1e-6; d += 0.1) {
+        const [px, pz] = laneAt(lane, d);
+        for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP) return this.waitOn(t, o);
+      }
+    }
+    t.holds = [...run];
+    for (const c of run) this.reserved.set(c, t.id);
+    t.holdUntil = sOut + TRUCK_HITCH + TRAILER_AXLE + 0.2;
+    return false;
+  }
+
+  /** Later trucks in the same tick see where this one went. */
+  private updatePose(t: Truck, poses: Map<number, TruckPose>): void {
+    const p = this.pose(t);
+    if (p) poses.set(t.id, p);
+    else poses.delete(t.id);
+  }
+
+  private setPath(t: Truck, path: Cell[] | null): void {
+    this.release(t);
+    t.path = path;
+    t.lane = path && path.length ? buildLane(path) : null;
+    t.s = 0;
+    t.blocked = 0;
+  }
+
+  /**
+   * Must truck `t` wait? True if another truck's body is on its lane just
+   * ahead. When two trucks block each other (a crossing), the one that has
+   * the other on its right gives way (jobbkéz-szabály); ties by id. After
+   * GRIDLOCK seconds a truck drives through anyway.
+   */
+  private heldUp(t: Truck, poses: Map<number, TruckPose>): boolean {
+    if (!t.lane || t.pass > 0) return false;
+    const me = poses.get(t.id);
+    if (!me) return false;
+    for (const o of this.trucks) {
+      if (o === t) continue;
+      const op = poses.get(o.id);
+      if (!op) continue;
+      // On the very same spot (trucks starting at one stop): a parked one is
+      // ignored; of two leaving together the lower id goes first.
+      if (Math.hypot(op.x - me.x, op.z - me.z) < 0.1) {
+        if (o.state === 'drive' && t.id > o.id) return this.waitOn(t, o);
+        continue;
+      }
+      if (!this.inWay(t, op)) continue;
+      // Mutual block (crossing): the right-hand rule decides.
+      if (o.state === 'drive' && this.inWay(o, me)) {
+        const [hx, hz] = [Math.cos(me.yaw), -Math.sin(me.yaw)];
+        const onRight = (op.x - me.x) * -hz + (op.z - me.z) * hx > 0;
+        const meOnItsRight = (me.x - op.x) * Math.sin(op.yaw) + (me.z - op.z) * Math.cos(op.yaw) > 0;
+        if (onRight === meOnItsRight ? t.id > o.id : onRight) return this.waitOn(t, o);
+        continue;
+      }
+      return this.waitOn(t, o);
+    }
+    return false;
+  }
+
+  /**
+   * Would a truck starting on `lane` touch another one? A new truck (leaving
+   * the depot) checks its whole length; one pulling out of a stop only the
+   * road ahead (not the queue waiting behind it — that would lock both).
+   */
+  private startBlocked(t: Truck, lane: Lane, poses: Map<number, TruckPose>): boolean {
+    if (t.pass > 0) return false;
+    const fresh = !t.path;
+    const me = poses.get(t.id);
+    for (const o of this.trucks) {
+      const op = o !== t && poses.get(o.id);
+      if (!op) continue;
+      // Someone waiting for US to leave: leaving is what frees them.
+      if (me && o.state === 'drive' && this.inWay(o, me)) continue;
+      const body: Array<[number, number]> = [op.front, [op.x, op.z], op.rear];
+      for (let d = fresh ? -TRUCK_HITCH - TRAILER_AXLE - 0.2 : 0.12; d <= LOOK_AHEAD; d += 0.11) {
+        const [px, pz] = laneAt(lane, d);
+        for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP + 0.05) return this.waitOn(t, o);
+      }
+    }
+    return false;
+  }
+
+  /** Is truck `o` (pose) on `t`'s lane within LOOK_AHEAD of its front? */
+  private inWay(t: Truck, o: TruckPose): boolean {
+    const lane = t.lane;
+    if (!lane) return false;
+    const body: Array<[number, number]> = [o.front, [o.x, o.z], o.rear, [(o.x + o.rear[0]) / 2, (o.z + o.rear[1]) / 2]];
+    for (let d = 0.12; d <= LOOK_AHEAD + 1e-6; d += 0.11) {
+      if (t.s + d > lane.length + 0.05) break;
+      const [px, pz] = laneAt(lane, t.s + d);
+      for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP) return true;
+    }
+    return false;
   }
 
   /** Unload what this stop takes (and get paid), then load for later stops. */
@@ -363,9 +739,15 @@ export class TransportSim {
           lineId: line.id,
           target: 0,
           path: null,
+          lane: null,
           s: 0,
           state: 'stop',
           timer: STOP_TIME + i * 3,
+          blocked: 0,
+          holds: [],
+          holdUntil: 0,
+          waitFor: null,
+          pass: 0,
           cargo: {},
           from: null,
         });
@@ -373,6 +755,7 @@ export class TransportSim {
       }
       if (mine.length > line.vehicles) {
         const drop = new Set(mine.slice(line.vehicles).map((t) => t.id));
+        for (const t of mine.slice(line.vehicles)) this.release(t);
         this.trucks = this.trucks.filter((t) => !drop.has(t.id));
         changed = true;
       }
@@ -381,25 +764,12 @@ export class TransportSim {
     if (changed) this.set({ fleet: this.snap.fleet + 1 });
   }
 
-  /** Where a truck is: grid position, heading (radians about Y), at stop. */
-  pose(t: Truck, map: TerrainMap): { x: number; z: number; yaw: number } | null {
-    const line = this.snap.lines.find((l) => l.id === t.lineId);
-    if (!line) return null;
-    if (!t.path || t.path.length === 0) {
-      const st = map.stations?.find((s) => s.id === line.stops[t.target]);
-      if (!st) return null;
-      const [x, z] = stopCenter(st);
-      return { x, z, yaw: 0 };
-    }
-    const i = Math.min(t.path.length - 2, Math.floor(t.s));
-    if (i < 0) return { x: t.path[0][0], z: t.path[0][1], yaw: 0 };
-    const f = t.s - i;
-    const [ax, az] = t.path[i];
-    const [bx, bz] = t.path[i + 1];
-    const dx = bx - ax, dz = bz - az;
-    // Keep right: offset to the right of the driving direction.
-    const lane = 0.2;
-    return { x: ax + dx * f - dz * lane, z: az + dz * f + dx * lane, yaw: Math.atan2(-dz, dx) };
+  /**
+   * Where a truck is (articulated pose), or null while it waits in the depot
+   * (a new truck, before it first drives off; not drawn).
+   */
+  pose(t: Truck): TruckPose | null {
+    return t.lane ? poseOnLane(t.lane, t.s) : null;
   }
 
   private set(patch: Partial<TransportSnapshot>): void {

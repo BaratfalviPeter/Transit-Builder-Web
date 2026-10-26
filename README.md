@@ -124,6 +124,16 @@ A jobb oldali **panel** három füle:
     fölött „+$” jelzi. Aztán **felrakják** (max. 20), amit egy későbbi
     megálló átvesz. (`src/sim/transport.ts`, `src/render/Transport.tsx`,
     `src/ui/LinesPanel.tsx`)
+  - **Modell:** csuklós nyerges kamion (platós vontató + ponyvás pótkocsi,
+    `src/render/TruckModel.tsx`); a fülke és a ponyva színe kamiononként más,
+    a pótkocsi oldalán a járat színe csíkként. A kanyarban a pótkocsi behajlik.
+    Új kamion a „garázsból” indul (amíg el nem indul, nem látszik).
+  - **KRESZ:** a jobb sávban, lekerekített kanyarokkal (jobbra szűken, balra
+    tágan) mennek; követési távolság; kereszteződésbe (3+ irányú útcella) csak
+    akkor hajtanak be, ha szabad, és mögötte elfér az egész kamion (a
+    kereszteződést lefoglalják, amíg a pótkocsi ki nem ér); a megállóból
+    kihajtó elsőbbséget ad; egyébként jobbkéz-szabály. Valódi körbe-várakozás
+    (holtpont) esetén a körből egy kamion rövid ideig áthaladhat.
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
 ### Termelés (fix)

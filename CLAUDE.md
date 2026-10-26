@@ -49,6 +49,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
   megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
   fölött látszanak), világegységben 0,38 cella szélesen.
+- Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer`, origó a nyeregnél, 5 háló /
+  kamion), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
+  pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
+  (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
+  Terhelési teszt: hub + 10 járat, ütközés ≈ 0 (1–2 kamion/járat).
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
@@ -63,7 +68,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
     localStorage-ban tárolódik.
 
 ## Tesztelés a felhős gépen
-- `npx tsc --noEmit -p .` és `npm run build`
+- `npx tsc --noEmit -p tsconfig.app.json` és `npm run build` (a `-p .` NEM ellenőriz semmit: a gyökér tsconfig csak hivatkozás)
 - Dev szerver: `npx vite --port 5173` a háttérben. Leállítás: `pkill -f "[v]ite --port 5173"`
   (a szögletes zárójel kell, különben a saját shellt is kilövi).
 - Headless böngésző: Playwright (`require('playwright')`), indítás ezzel:
@@ -72,6 +77,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - Tesztjárathoz ideiglenesen `window.__tb`-be tehető a terrain/transport store egy
     `App.tsx`-be rakott hookkal (utána `git checkout src/App.tsx`). Úthoz:
     `findTrackPath(map, a, b, CellType.Road)` + `terrain.buildPath(path)`.
+  - Közeli képhez a kamerát egy ideiglenes `useThree`-s komponenssel lehet `window`-ra tenni
+    a `GameCanvas`-ban (utána visszaállítani). Játékidő: `game.setSpeed(0|1|3)`.
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
@@ -84,7 +91,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
-- Folyamatban: járatnézet az út szintjén, vízemelés javítás. **A felhasználó prioritása: a
+- Nyitva: #74 (járatnézet az út szintjén, vízemelés, új csuklós kamion + KRESZ). **A felhasználó prioritása: a
   szállítás legyen jó** (kamionok, vonatok, járatok).
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)

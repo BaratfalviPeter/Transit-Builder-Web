@@ -20,12 +20,13 @@ import {
   LARGE_INDUSTRY,
   type TerrainMap,
 } from './terrain';
+import { depotAt, type DepotRot } from './depot';
 
 /** Which side of the lot: N = −Z, S = +Z, W = −X, E = +X. */
 export type Side = 'N' | 'S' | 'W' | 'E';
 
-/** Rail station or truck stop. */
-export type StopKind = 'rail' | 'truck';
+/** Rail station, truck stop, or a freight depot (see depot.ts). */
+export type StopKind = 'rail' | 'truck' | 'depot';
 
 export interface Station {
   readonly id: number;
@@ -34,6 +35,8 @@ export interface Station {
   readonly side: Side;
   /** Missing = 'rail' (stations built before truck stops existed). */
   readonly kind?: StopKind;
+  /** A depot's quarter turns (its anchor is the lot's min corner; `side` unused). */
+  readonly rot?: DepotRot;
 }
 
 export const stopKind = (s: Station): StopKind => s.kind ?? 'rail';
@@ -79,12 +82,15 @@ export function stationGeom(anchor: readonly [number, number], side: Side): Stat
 
 /** The station (if any) on that side of that industry. */
 export function stationOn(map: TerrainMap, anchor: readonly [number, number], side: Side): Station | null {
-  return map.stations?.find((s) => s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1] && s.side === side) ?? null;
+  return map.stations?.find((s) => s.kind !== 'depot' && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1] && s.side === side) ?? null;
 }
 
-/** The station whose platform or track covers (x, z), or null. */
+/** The station (or depot) whose cells cover (x, z), or null. */
 export function stationAt(map: TerrainMap, x: number, z: number): Station | null {
+  const d = depotAt(map, x, z);
+  if (d) return d;
   for (const s of map.stations ?? []) {
+    if (s.kind === 'depot') continue;
     const g = stationGeom(s.anchor, s.side);
     if (g.platform.some(([a, b]) => a === x && b === z) || g.track.some(([a, b]) => a === x && b === z)) return s;
   }

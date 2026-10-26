@@ -9,6 +9,7 @@
  * Grid indexing matches `generateTerrain`: cells[x][z], x,z in [0, size).
  */
 
+import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import {
   CellType,
@@ -25,7 +26,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
-import { stationAt, stationGeom, stationProblem, stopKind, type Side, type StopKind } from './stations';
+import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
 
@@ -233,10 +234,53 @@ export class TerrainStore {
     return true;
   }
 
-  /** Remove a whole stop (platform + its track / road). */
+  /**
+   * Build a freight depot (see depot.ts) with its lot's min corner at
+   * (x0, z0), turned `rot`: tracks → rail-network edges, the hall and bays →
+   * Station cells, the drive → Road. Returns false if the rules forbid it.
+   */
+  buildDepot(x0: number, z0: number, rot: DepotRot): boolean {
+    if (depotProblem(this.map, x0, z0, rot)) return false;
+    const stations = this.map.stations ?? [];
+    const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
+    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'depot', rot };
+    const cells = this.map.cells.slice();
+    let roads = 0;
+    for (const { x, z, lz } of depotCells(st)) {
+      if (lz < 2) continue; // track rows: the rail edges below set them
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      const road = lz === DEPOT_SIZE - 1;
+      if (road && cells[x][z] !== CellType.Road) roads++;
+      cells[x][z] = road ? CellType.Road : CellType.Station;
+    }
+    this.commit({ cells, stations: stations.concat(st) }, true);
+    this.roadCount += roads;
+    let net = this.map.railNet ?? EMPTY_NET;
+    for (const pts of depotTracks(st)) net = addEdge(net, pts);
+    this.setRailNet(net, null);
+    return true;
+  }
+
+  /** Remove a whole stop (platform + its track / road, or a depot's lot). */
   private removeStation(id: number): void {
     const st = this.map.stations?.find((s) => s.id === id);
     if (!st) return;
+    if (st.kind === 'depot') {
+      const cells = this.map.cells.slice();
+      let roads = 0;
+      for (const { x, z, lz } of depotCells(st)) {
+        if (lz < 2) continue;
+        if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+        if (cells[x][z] === CellType.Road) roads++;
+        cells[x][z] = CellType.Empty;
+      }
+      this.commit({ cells, stations: (this.map.stations ?? []).filter((s) => s.id !== id) }, true);
+      this.roadCount -= roads;
+      let net = this.map.railNet ?? EMPTY_NET;
+      for (const { x, z, lz } of depotCells(st)) if (lz < 2) net = cutAtCell(net, x, z);
+      this.setRailNet(net, null);
+      return;
+    }
     const g = stationGeom(st.anchor, st.side);
     const cells = this.map.cells.slice();
     const truck = stopKind(st) === 'truck';

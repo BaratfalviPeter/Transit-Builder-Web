@@ -150,6 +150,23 @@ A jobb oldali **panel** három füle:
     kereszteződést lefoglalják, amíg a pótkocsi ki nem ér); a megállóból
     kihajtó elsőbbséget ad; egyébként jobbkéz-szabály. Valódi körbe-várakozás
     (holtpont) esetén a körből egy kamion rövid ideig áthaladhat.
+- **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):
+  6×6-os átrakóhely sík, üres területre (**Q**: forgatás). Két vágány
+  (vonatoknak, később), csarnok, 5 rakodóállás és egy **egyirányú behajtó**
+  (útcellák): a nyugati végén be, a keleti végén ki — **mindkét véghez kell
+  út** (különben „nincs út!”).
+  - A raktár megálló: a járatokba ugyanúgy felvehető, mint a rakodók.
+  - **Kamionok a raktárnál:** a behajtó előtt (kereszteződés előtt) várnak,
+    amíg nincs szabad állás vagy más manőverezik (piros lámpa); aztán
+    elhaladnak a szabad állás mellett, **betolatnak**, ki- és berakodnak,
+    majd a kijáraton távoznak. Egyszerre egy kamion manőverezik az udvaron.
+    A kapuk fölötti lámpák mutatják a foglalt / szabad állásokat.
+  - **Átrakás és válogatás:** a raktárban azt rakják le, amit a járatuk
+    egyik ipari megállója sem vesz át; és azt veszik fel, amit valamelyik
+    átvesz. Ipari megállóban, ha a járat későbbi megállója raktár, bármit
+    felvesznek. Kapacitás: 400 egység.
+  - **Fizetés:** az áru megjegyzi, honnan indult (a raktár súlyozott
+    átlagot tárol), és a végső leadáskor a teljes útért fizet.
 - **Forgalomirányítás** (az alsó eszköztár „Forgalom” csoportja, `src/sim/traffic.ts`,
   `src/render/TrafficControls.tsx`):
   - **Elsőbbségadás tábla** ($60) és **STOP tábla** ($60): közvetlenül egy

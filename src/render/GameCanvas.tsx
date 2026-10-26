@@ -34,6 +34,7 @@ import { FrameLimiter, useQuality } from './quality';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
+import { DepotPlacement } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
@@ -44,6 +45,8 @@ import {
   canStartRoute,
   controlOfTool,
   controlProblem,
+  depotProblem,
+  type DepotRot,
   industryAnchorOf,
   INTERIORS_ENABLED,
   sideAt,
@@ -378,6 +381,36 @@ function Scene() {
     if (stopToolKind(activeTool) === null) setStationHover(null);
   }, [activeTool]);
 
+  // ---- Depot tool: hover a spot (the lot is centred on it), Q turns it ---------
+  const [depotRot, setDepotRot] = useState<DepotRot>(0);
+  const depotRotRef = useRef<DepotRot>(0);
+  depotRotRef.current = depotRot;
+  const [depotHover, setDepotHover] = useState<{ x0: number; z0: number; problem: string | null } | null>(null);
+  const depotTarget = useCallback(
+    (wx: number, wz: number) => {
+      const { x, z } = cellOf(wx, wz);
+      const x0 = x - 2, z0 = z - 2;
+      return { x0, z0, problem: depotProblem(terrain.getMap(), x0, z0, depotRotRef.current) };
+    },
+    [terrain, cellOf],
+  );
+  const lastHoverW = useRef<[number, number] | null>(null);
+  useEffect(() => {
+    if (activeTool !== 'depot') {
+      setDepotHover(null);
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyQ' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return;
+      const r = ((depotRotRef.current + 1) % 4) as DepotRot;
+      depotRotRef.current = r;
+      setDepotRot(r);
+      if (lastHoverW.current) setDepotHover(depotTarget(...lastHoverW.current));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeTool, depotTarget]);
+
   // ---- Traffic tools: hover a road cell, click to place ---------------------
   const [trafficHover, setTrafficHover] = useState<{ x: number; z: number; problem: string | null } | null>(null);
   const trafficTarget = useCallback(
@@ -404,9 +437,15 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || t === 'depot' || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
+        if (game.getActiveTool() === 'depot') {
+          lastHoverW.current = [wx, wz];
+          const h = depotTarget(wx, wz);
+          setDepotHover((cur) => (cur && cur.x0 === h.x0 && cur.z0 === h.z0 && cur.problem === h.problem ? cur : h));
+          return;
+        }
         if (controlOfTool(game.getActiveTool()) !== null) {
           const h = trafficTarget(wx, wz);
           setTrafficHover((cur) => (cur && h && cur.x === h.x && cur.z === h.z && cur.problem === h.problem ? cur : h));
@@ -434,6 +473,13 @@ function Scene() {
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
           if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
+        if (tool.id === 'depot') {
+          const h = depotTarget(wx, wz);
+          if (h.problem || !game.canAfford(tool.cost)) return;
+          if (terrain.buildDepot(h.x0, h.z0, depotRotRef.current)) game.spend(tool.cost);
+          setDepotHover(depotTarget(wx, wz));
           return;
         }
         const control = controlOfTool(tool.id);
@@ -482,7 +528,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, cellOf, interiors, transport],
+    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -603,6 +649,18 @@ function Scene() {
       </EditorPick>
       {/* Lights, signs, roundabout islands. */}
       <TrafficControls map={map} cellSize={cellSize} />
+      {depotHover && activeTool === 'depot' && (
+        <DepotPlacement
+          map={map}
+          cellSize={cellSize}
+          x0={depotHover.x0}
+          z0={depotHover.z0}
+          rot={depotRot}
+          problem={depotHover.problem}
+          cost={TOOLS.depot.cost}
+          canAfford={money >= TOOLS.depot.cost}
+        />
+      )}
       {trafficHover && controlOfTool(activeTool) && (
         <TrafficPreview
           map={map}

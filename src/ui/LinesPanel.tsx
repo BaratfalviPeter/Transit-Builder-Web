@@ -5,8 +5,7 @@
  */
 
 import {
-  INDUSTRY_ICON,
-  INDUSTRY_NAME,
+  stopLabel,
   TRUCK_PRICE,
   useGame,
   useGameSnapshot,
@@ -26,10 +25,9 @@ export function LinesPanel() {
 
   const stopName = (id: number) => {
     const st = map.stations?.find((s) => s.id === id);
-    const t = st ? map.cells[st.anchor[0]][st.anchor[1]] : null;
-    return t ? `${INDUSTRY_ICON[t] ?? ''} ${INDUSTRY_NAME[t] ?? ''}` : '— (elbontva)';
+    return st ? stopLabel(map, st) : '— (elbontva)';
   };
-  const truckStops = (map.stations ?? []).filter((s) => (s.kind ?? 'rail') === 'truck').length;
+  const truckStops = (map.stations ?? []).filter((s) => s.kind === 'truck' || s.kind === 'depot').length;
 
   const finish = () => {
     if (!game.canAfford(TRUCK_PRICE)) return;
@@ -57,7 +55,7 @@ export function LinesPanel() {
           className="panel__tool"
           onClick={() => sim.startDraft()}
           disabled={truckStops < 2}
-          title={truckStops < 2 ? 'Előbb építs legalább két kamionrakodót' : ''}
+          title={truckStops < 2 ? 'Előbb építs legalább két kamionrakodót vagy raktárt' : ''}
         >
           <span className="panel__tool-icon" aria-hidden>
             ➕
@@ -67,12 +65,12 @@ export function LinesPanel() {
         </button>
       )}
       {truckStops < 2 && !draft && (
-        <div className="panel__hint">Járathoz legalább két kamionrakodó kell (Infrastruktúra fül), és út köztük.</div>
+        <div className="panel__hint">Járathoz legalább két kamionrakodó vagy raktár kell, és út köztük.</div>
       )}
 
       {draft && (
         <div className="lines__draft">
-          <div className="lines__draft-title">Új járat — kattints a rakodókra sorban</div>
+          <div className="lines__draft-title">Új járat — kattints a rakodókra / raktárakra sorban</div>
           <ol className="lines__stops">
             {draft.map((id, i) => (
               <li key={i}>{stopName(id)}</li>

@@ -41,6 +41,7 @@ const ICON: Record<ToolId, string> = {
   rail: '🚆',
   station: '🚉',
   truckstop: '🚚',
+  depot: '🏬',
   yield: '🔻',
   stop: '🛑',
   light: '🚦',
@@ -61,6 +62,7 @@ const KEYS: Array<{ code: string; label: string; tool: ToolId }> = [
   { code: 'Digit6', label: '6', tool: 'stop' },
   { code: 'Digit7', label: '7', tool: 'light' },
   { code: 'Digit8', label: '8', tool: 'roundabout' },
+  { code: 'Digit9', label: '9', tool: 'depot' },
 ];
 /** Short names for the dock buttons (the full name is in the tooltip). */
 const SHORT: Partial<Record<ToolId, string>> = {
@@ -82,7 +84,7 @@ const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: stri
 const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
   { title: '', tools: ['select'] },
   { title: 'Terep', tools: ['raise', 'lower', 'bulldoze'] },
-  { title: 'Építés', tools: ['road', 'rail', 'station', 'truckstop'] },
+  { title: 'Építés', tools: ['road', 'rail', 'station', 'truckstop', 'depot'] },
   { title: 'Forgalom', tools: ['yield', 'stop', 'light', 'roundabout'] },
 ];
 
@@ -96,6 +98,7 @@ const HINT: Record<ToolId, string> = {
   rail: 'Sín — kattints a kezdőpontra, majd a célpontra · jobb klikk / Esc: mégse',
   station: 'Vasútállomás — egy ipar telkének oldalára kattints',
   truckstop: 'Kamionrakodó — egy ipar telkének oldalára kattints (úthoz csatlakozik)',
+  depot: 'Raktár — 6×6 sík terület · Q: forgatás · a behajtóhoz ÉS a kihajtóhoz is kell út · amit egy járat lerak, egy másik továbbviszi',
   yield: 'Elsőbbségadás — a kereszteződés előtti útcellára: innen elengedik a többieket',
   stop: 'STOP — a kereszteződés előtti útcellára: itt mindig megállnak',
   light: 'Lámpa — kereszteződésre (3–4 irányú): a két irány felváltva kap zöldet',
@@ -327,6 +330,10 @@ export function GameUI() {
                     </span>
                   </div>
                 ))}
+                <div className="ui-help__row">
+                  <kbd>Q</kbd>
+                  <span>Raktár forgatása</span>
+                </div>
                 <div className="ui-help__row">
                   <kbd>Esc</kbd>
                   <span>Mégse / vissza a kijelöléshez</span>

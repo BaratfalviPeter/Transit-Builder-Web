@@ -63,6 +63,26 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–8 eszközök, Szóköz, T,
   J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
+- Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
+  geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
+  és a raktár.
+- Vonat (`TrainModel.tsx`, még csak modell, a referenciaképek alapján): `Locomotive` (LOCO_LEN 1,45) + `Wagon`
+  (hopper / tank / box / flat; CAR_LEN 1,15), origó a kocsi közepén sínkorona-magasságban.
+  A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
+- Raktár: modell `DepotModel.tsx` (6×6, ipari egység ×2; `DepotDynamic` = lámpák +
+  raklapok, a StaticBatch-en KÍVÜL), logika `depot.ts` + `transport.ts`. Megálló
+  `kind: 'depot'` + `rot` a `map.stations`-ben (anchor = telek sarka). Lokális sorok:
+  0–1 vágány (railNet élek), 2–4 csarnok + állások (Station cellák), 5 behajtó (Road).
+  Egyirányú behajtó: be lx 0 (`depotEntrance`), ki lx 5 (`depotExit`); a `roadRoute`
+  `oneWay` módban nem lép visszafelé rajta. Kamion: `state 'depot'`, `DepotVisit`
+  fázisok wait → in → back → load → out; betolatás = a `bayPath` sávon visszafelé
+  (sP → sDock). Udvarzár (`yardHolder`): egyszerre egy manőverező; a stopvonalnál
+  (`gateHold`, kereszteződés ELŐTT) foglal. `zones`: átmenő forgalom kerüli a
+  betolatási zónát. Átrakás / forrás: `serveStop`, `ProductionSim.store/originOf`.
+  Tesztek: scratchpad `depot.ts` (hub-szimuláció; a teszt utakat a behajtó zárásával
+  építi, különben azon vezetne át).
+- `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
+  lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
@@ -92,7 +112,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
-  StationModel, TruckStopModel, Truck).
+  StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
 
 ## Állapot (2026-10-26)
@@ -101,12 +121,14 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
 - Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
-- Nyitva: #75 (forgalomirányítás: táblák, lámpa, körforgalom + új UI és gyorsbillentyűk).
+- Mergelve: #75 (forgalomirányítás + új UI és gyorsbillentyűk).
+- Nyitva: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
+  Következő: a vonatok (járatok, mozgás a sínen, a raktár vasúti oldala).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
-## Következő lépések (felajánlva, a felhasználó még nem választott)
-- Vonatok a hálózati nézetben, vasútállomások között
+## Következő lépések
+- Vonatok (járatok vasútállomások / raktárak között, mozgás a sínen)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

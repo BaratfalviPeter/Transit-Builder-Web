@@ -35,7 +35,7 @@ export interface ToolDef {
 
 export const TOOLS: Record<ToolId, ToolDef> = {
   // Neutral tool; a click on an industry opens its interior (micro view).
-  select: { id: 'select', label: 'Kijelölés / belépés', cost: 0, builds: null },
+  select: { id: 'select', label: 'Kijelölés', cost: 0, builds: null },
   // Terraforming
   raise: { id: 'raise', label: 'Emelés', cost: 50, builds: null },
   lower: { id: 'lower', label: 'Süllyesztés', cost: 50, builds: null },

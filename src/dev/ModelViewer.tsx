@@ -29,6 +29,8 @@ import { OilRigModel } from '../render/OilRigModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
 import { TruckPreview } from '../render/TruckModel';
+import { TrainPreview } from '../render/TrainModel';
+import { DepotPreview } from '../render/DepotModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -61,6 +63,8 @@ export const VIEWER_MODELS: Array<{
   { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
   { id: 'Truck', label: 'Kamion', Comp: TruckPreview, zoom: 1.0, lookY: 0.3 },
+  { id: 'Train', label: 'Vonat', Comp: TrainPreview, zoom: 1.25, lookY: 0.4 },
+  { id: 'Depot', label: 'Raktár', Comp: DepotPreview },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */
@@ -146,9 +150,9 @@ function ViewerTrack({ kind }: { kind: 'rail' | 'road' }) {
           <boxGeometry args={[3.6, 0.024, 0.46]} />
           <meshStandardMaterial color="#3a3d42" roughness={1} />
         </mesh>
-        {Array.from({ length: 9 }).map((_, i) => (
-          <mesh key={i} position={[-1.6 + i * 0.4, 0.025, 0]}>
-            <boxGeometry args={[0.18, 0.002, 0.02]} />
+        {Array.from({ length: 27 }).map((_, i) => (
+          <mesh key={i} position={[-1.7 + i * 0.13, 0.025, 0]}>
+            <boxGeometry args={[0.07, 0.002, 0.016]} />
             <meshStandardMaterial color="#e8e2c8" />
           </mesh>
         ))}
@@ -157,18 +161,18 @@ function ViewerTrack({ kind }: { kind: 'rail' | 'road' }) {
   return (
     <group position={[0, 0, 0.25]}>
       <mesh position={[0, 0.02, 0]} receiveShadow>
-        <boxGeometry args={[3.6, 0.04, 0.3]} />
+        <boxGeometry args={[3.6, 0.04, 0.22]} />
         <meshStandardMaterial color="#6b6256" roughness={1} />
       </mesh>
-      {Array.from({ length: 30 }).map((_, i) => (
-        <mesh key={i} position={[-1.75 + i * 0.12, 0.045, 0]}>
-          <boxGeometry args={[0.045, 0.017, 0.31]} />
+      {Array.from({ length: 36 }).map((_, i) => (
+        <mesh key={i} position={[-1.75 + i * 0.1, 0.045, 0]}>
+          <boxGeometry args={[0.035, 0.015, 0.15]} />
           <meshStandardMaterial color="#5a3f27" />
         </mesh>
       ))}
-      {[-0.1, 0.1].map((z) => (
+      {[-0.0375, 0.0375].map((z) => (
         <mesh key={z} position={[0, 0.06, z]} castShadow>
-          <boxGeometry args={[3.6, 0.02, 0.025]} />
+          <boxGeometry args={[3.6, 0.018, 0.012]} />
           <meshStandardMaterial color="#a3a9b0" metalness={0.3} roughness={0.5} />
         </mesh>
       ))}

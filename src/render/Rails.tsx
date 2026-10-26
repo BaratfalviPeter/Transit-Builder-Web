@@ -33,26 +33,26 @@ const GRAVEL_COLOR = CELL_STYLE[CellType.Rail].color;
 const SLEEPER_COLOR = '#5a3f27';
 const RAIL_COLOR = '#a3a9b0';
 const SURFACE_LIFT = 0.02;
-/** Rail half-gauge (cells). */
-const GAUGE = 0.2;
+/** Rail half-gauge (cells) — sized to the trains / trucks (see TrainModel). */
+const GAUGE = 0.075;
 
 // --- unit models (1 cell long along +X; scaled to the unit length) ---------
 const BALLAST_GEO = (() => {
   // Deep, tapered gravel bed: where the even grade runs a little above the
   // ground it reads as a low embankment instead of a floating track.
-  const g = new THREE.BoxGeometry(1, 0.165, 0.8);
+  const g = new THREE.BoxGeometry(1, 0.165, 0.5);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setZ(i, p.getZ(i) * (0.54 / 0.8)); // taper
+  for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setZ(i, p.getZ(i) * (0.36 / 0.5)); // taper
   g.translate(0, -0.0375, 0); // spans y −0.12 … 0.045
   g.computeVertexNormals();
   return g;
 })();
 const RAILS_GEO = (() => {
-  const a = new THREE.BoxGeometry(1, 0.04, 0.05).translate(0, 0.08, GAUGE);
-  const b = new THREE.BoxGeometry(1, 0.04, 0.05).translate(0, 0.08, -GAUGE);
+  const a = new THREE.BoxGeometry(1, 0.035, 0.024).translate(0, 0.0825, GAUGE);
+  const b = new THREE.BoxGeometry(1, 0.035, 0.024).translate(0, 0.0825, -GAUGE);
   return mergeGeometries([a, b])!;
 })();
-const SLEEPER_GEO = new THREE.BoxGeometry(0.09, 0.035, 0.62).translate(0, 0.0475, 0);
+const SLEEPER_GEO = new THREE.BoxGeometry(0.07, 0.03, 0.3).translate(0, 0.05, 0);
 
 interface Built {
   ballast: THREE.Matrix4[];

@@ -13,7 +13,7 @@
 
 import { forwardRef, useMemo } from 'react';
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { box, buildParts, FIXED_MAT, paintMat, type Part } from './lowPoly';
 
 /** Cab paints and tarp colours (a truck's pick depends on its id). */
 export const CAB_COLORS = ['#c4532a', '#2f6fb3', '#d9d5c9', '#b3312e', '#3d8a4f', '#e0ad2c', '#5b4f8c', '#2b2d31'];
@@ -22,15 +22,6 @@ export const TARP_COLORS = ['#5b6f80', '#7b8a6a', '#8a5a4a', '#cfcabd', '#3f4f6b
 export function truckColors(id: number): { cab: string; tarp: string } {
   const h = (id * 2654435761) >>> 0;
   return { cab: CAB_COLORS[h % CAB_COLORS.length], tarp: TARP_COLORS[(h >>> 8) % TARP_COLORS.length] };
-}
-
-type V3 = [number, number, number];
-interface Part {
-  /** 'paint' | 'tarp' | 'stripe' take the truck's colours; else a fixed colour. */
-  mat: string;
-  shape: 'box' | 'cylZ' | 'cylX' | 'cylY';
-  pos: V3;
-  size: V3;
 }
 
 const DARK = '#2a2c30';
@@ -45,7 +36,6 @@ const RED = '#c8261e';
 const YELLOW = '#e8c21e';
 const RIB = '#3a3f44';
 
-const box = (mat: string, pos: V3, size: V3): Part => ({ mat, shape: 'box', pos, size });
 /** Wheel: a cylinder along Z (radius, width). */
 const wheel = (x: number, z: number, r = 0.036): Part[] => [
   { mat: TIRE, shape: 'cylZ', pos: [x, r, z], size: [r, 0.03, r] },
@@ -112,57 +102,7 @@ for (let x = T0 + 0.06; x < T1 - 0.02; x += 0.075) {
   TRAILER.push(box(RIB, [x, 0.17, -0.1052], [0.006, 0.15, 0.002]));
 }
 
-const BOX = new THREE.BoxGeometry(1, 1, 1);
-const CYL = new THREE.CylinderGeometry(1, 1, 1, 10);
-
-function partGeometry(p: Part): THREE.BufferGeometry {
-  const g = (p.shape === 'box' ? BOX : CYL).clone();
-  const m = new THREE.Matrix4();
-  const [sx, sy, sz] = p.size;
-  if (p.shape === 'box') m.makeScale(sx, sy, sz);
-  else if (p.shape === 'cylY') m.makeScale(sx, sy, sz);
-  else if (p.shape === 'cylZ') m.makeRotationX(Math.PI / 2).multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
-  else m.makeRotationZ(Math.PI / 2).multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
-  m.setPosition(...p.pos);
-  g.applyMatrix4(m);
-  return g.index ? g.toNonIndexed() : g;
-}
-
-/** Merged geometry per material slot ('fixed' = vertex-coloured). */
-function build(parts: Part[]): Record<string, THREE.BufferGeometry> {
-  const slots: Record<string, THREE.BufferGeometry[]> = {};
-  const c = new THREE.Color();
-  for (const p of parts) {
-    const g = partGeometry(p);
-    let slot = p.mat;
-    if (p.mat.startsWith('#')) {
-      slot = 'fixed';
-      c.set(p.mat);
-      const n = g.getAttribute('position').count;
-      const col = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) c.toArray(col, i * 3);
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    }
-    (slots[slot] ??= []).push(g);
-  }
-  const out: Record<string, THREE.BufferGeometry> = {};
-  for (const [k, gs] of Object.entries(slots)) {
-    out[k] = mergeGeometries(gs, false)!;
-    gs.forEach((g) => g.dispose());
-  }
-  return out;
-}
-
-const GEO = { tractor: build(TRACTOR), trailer: build(TRAILER) };
-
-const FIXED = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.1 });
-const paints = new Map<string, THREE.MeshStandardMaterial>();
-function paint(color: string, roughness = 0.55): THREE.MeshStandardMaterial {
-  const key = `${color}|${roughness}`;
-  let m = paints.get(key);
-  if (!m) paints.set(key, (m = new THREE.MeshStandardMaterial({ color, roughness })));
-  return m;
-}
+const GEO = { tractor: buildParts(TRACTOR), trailer: buildParts(TRAILER) };
 
 export interface TruckColors {
   cab: string;
@@ -173,7 +113,7 @@ export interface TruckColors {
 
 function Slots({ geo, colors }: { geo: Record<string, THREE.BufferGeometry>; colors: TruckColors }) {
   const mats = useMemo(
-    () => ({ paint: paint(colors.cab, 0.5), tarp: paint(colors.tarp, 0.9), stripe: paint(colors.stripe, 0.6), fixed: FIXED }),
+    () => ({ paint: paintMat(colors.cab, 0.5), tarp: paintMat(colors.tarp, 0.9), stripe: paintMat(colors.stripe, 0.6), fixed: FIXED_MAT }),
     [colors.cab, colors.tarp, colors.stripe],
   );
   return (

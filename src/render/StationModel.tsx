@@ -6,8 +6,9 @@
  *
  * Built in the industry models' design units (the game scales it by
  * INDUSTRY_MODEL_SCALE × cellSize, like a 6×6 lot): 3 units long along X.
- * Local +Z points AWAY from the industry: the platform row is z ∈ [−0.5, 0],
- * the track row (drawn by Rails.tsx, centre-line z = 0.25) is z ∈ [0, 0.5].
+ * Local +Z points AWAY from the industry: the platform row is z ∈ [−0.5, 0]
+ * (the platform reaches on to z ≈ 0.14, up to the trains), the track row
+ * (drawn by Rails.tsx, centre-line z = 0.25) is z ∈ [0, 0.5].
  * Y = 0 is the ground.
  */
 
@@ -77,13 +78,14 @@ export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0, f
 function Platform() {
   return (
     <group>
-      <Box p={[0, PLAT / 2, -0.25]} s={[2.96, PLAT, 0.46]} m={M.concrete} cast />
+      {/* Reaches out to just short of the trains (narrow track at z = 0.25) */}
+      <Box p={[0, PLAT / 2, -0.17]} s={[2.96, PLAT, 0.62]} m={M.concrete} cast />
       {/* Darker edge face toward the track + yellow safety line */}
-      <Box p={[0, PLAT / 2, -0.018]} s={[2.96, PLAT, 0.006]} m={M.concreteEdge} />
-      <Box p={[0, PLAT + 0.001, -0.045]} s={[2.9, 0.002, 0.014]} m={M.safety} />
+      <Box p={[0, PLAT / 2, 0.142]} s={[2.96, PLAT, 0.006]} m={M.concreteEdge} />
+      <Box p={[0, PLAT + 0.001, 0.115]} s={[2.9, 0.002, 0.014]} m={M.safety} />
       {/* Ramps at both ends */}
-      <Box p={[-1.5, PLAT / 2 - 0.012, -0.25]} s={[0.06, PLAT - 0.02, 0.4]} m={M.concreteEdge} />
-      <Box p={[1.5, PLAT / 2 - 0.012, -0.25]} s={[0.06, PLAT - 0.02, 0.4]} m={M.concreteEdge} />
+      <Box p={[-1.5, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
+      <Box p={[1.5, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
       {/* Low fence on the industry side */}
       <Box p={[0, PLAT + 0.03, -0.47]} s={[2.9, 0.006, 0.006]} m={M.steel} />
       {Array.from({ length: 13 }).map((_, i) => (

@@ -120,46 +120,36 @@ A jobb oldali **panel** három füle:
   vissza), törlés, „nincs út!” figyelmeztetés.
   - **Kamionok:** a járat megállóit körbejárják (jobb oldali közlekedés).
     Megállónként előbb **leadják**, amit az ottani ipar átvesz (gyár: deszka;
-    erőmű: érc, zúzott érc, olaj) — ez a kapun át befelé megy a belső
-    futószalagra, és **fizet**: egység × ár × (1 + távolság / 25); a megálló
+    erőmű: érc, zúzott érc, olaj), és ez **fizet**: egység × ár × (1 + távolság / 25); a megálló
     fölött „+$” jelzi. Aztán **felrakják** (max. 20), amit egy későbbi
     megálló átvesz. (`src/sim/transport.ts`, `src/render/Transport.tsx`,
     `src/ui/LinesPanel.tsx`)
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
-### Belső nézet (mikro nézet)
+### Termelés (fix)
 
-**Kijelölés / belépés** eszközzel (a Földmunka és az Infrastruktúra fül első
-gombja; **Esc**-kel is visszaválthatsz rá) egy iparra kattintva (kattintás,
-nem húzás) megnyílik a belseje: egy 12×12-es építőrács, ahol a termelést rakod össze.
+Az iparágak egyelőre **fix ütemben** termelnek (játékmásodpercenként), ha van
+legalább egy megállójuk:
 
-- **Gépek ipartípusonként:** bánya — ásógép (érclelőhelyre), zúzó; fatelep —
-  favágó (fás területre), fűrész; olajfúró — szivattyú (olajkútra), tartály;
-  gyár — szerelőgép; erőmű — kazán; mindenhol futószalag. A nyersanyag-mezők
-  az ipar helyéből generálódnak (mindig ugyanazok).
-- **Kapuk:** ahol kint vasútállomás van, ott bent a rács azon szélén kapu
-  (kék mezők + felirat). Ide kell vezetni a futószalagot.
-- **Kezelés:** alsó sáv vagy 1–9 gép választása, **R** forgatás, futószalag
-  **húzva** is (a sarkokon magától fordul), **Bontás** (Del/X, az ár felét
-  visszaadja), **Esc** szerszám elengedése / vissza a térképre. Jobb gomb
-  húzás: forgatás, görgő: zoom.
-- Amíg a belső nézet nyitva van, a térkép nem renderel (a játékidő is áll).
-- **Termelés** (`src/sim/production.ts`): a kitermelők (ásógép, favágó,
-  szivattyú) annál gyorsabban termelnek, minél több nyersanyag-mezőt fednek
-  le; a feldolgozók (zúzó: érc → zúzott érc, fűrész: rönk → deszka,
-  szerelőgép: deszka → áru, tartály: olajpuffer, kazán: érc/olaj égetése) a
-  bemenetből készítik a kimenetet. A gép a **kimeneti oldalára** (nyíl) ad le:
-  futószalagra vagy közvetlenül a következő gépbe. A futószalag egyesével
-  viszi az árut (1,5 mező/s), és megáll, ha előtte foglalt. Ha egy szalag a
-  **kapun kifelé** visz, az áru a kinti **állomás raktárába** kerül
-  (100 egység).
-- **Látszik bent és kint is:** a szalagokon mennek a tárgyak, a gépek fölött
-  státuszlámpa (zöld = dolgozik, sárga = alapanyagra vár, piros = nem tudja
-  leadni); a kapukon a raktár tartalma. A térképen az állomás peronján nő a
-  rakomány, fölötte címke mutatja a mennyiséget.
-- A termelés a játékidővel fut (szünetben áll, gyorsítva 3×), akkor is, ha a
-  belső nézet zárva van. (`src/sim/interior.ts`, `InteriorStore.ts`,
-  `production.ts`, `src/interior/`)
+| Ipar | Mit csinál | Ütem |
+|---|---|---|
+| Bánya | ércet termel | 0,5 / s |
+| Fatelep | deszkát termel | 0,5 / s |
+| Olajfúró | olajat termel | 0,4 / s |
+| Gyár | a leadott deszkából árut gyárt | max. 1 / s |
+| Erőmű | elégeti a leadott ércet / olajat | max. 2 / s |
+
+- A termék az ipar **legüresebb megállójába** kerül (megállónként max. 100).
+  Innen viszik el a kamionok. A gyár áruját is el lehet szállítani.
+- A termelés a játékidővel fut (szünetben áll, gyorsítva 3×).
+- `FIXED_PRODUCTION` a `src/sim/production.ts`-ben.
+
+**Belső (mikro) nézet: egyelőre kikapcsolva.** A kódja megvan (gépek,
+futószalagok, kapuk: `src/sim/interior.ts`, `InteriorStore.ts`,
+`production.ts`, `src/interior/`). A `src/sim/interior.ts`-ben az
+`INTERIORS_ENABLED = true` kapcsolja vissza: ekkor a kijelölő eszközzel egy
+iparra kattintva megnyílik a belseje, és a termelést a gépek adják.
+
 - **Dev:** fejlesztői eszközök.
   - **Látvány beállítás:** a fény- és színcsúszkák panelje.
   - **Modellszerkesztő** (csak `npm run dev` alatt): kattints egy ipari épület

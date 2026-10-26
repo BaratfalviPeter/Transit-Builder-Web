@@ -15,6 +15,13 @@
 import { CellType, type TerrainMap } from './terrain';
 import { stationOn, type Side } from './stations';
 
+/**
+ * The micro view is switched off for now: industries run on FIXED
+ * production (see FIXED_PRODUCTION in production.ts) and can't be entered.
+ * The interior code stays for later — flip this to bring it back.
+ */
+export const INTERIORS_ENABLED = false;
+
 /** Interior grid edge length (tiles). */
 export const INTERIOR_SIZE = 12;
 

@@ -16,12 +16,17 @@
  *   - A belt moves its one item BELT_SPEED tiles/s; at the end it hands it on
  *     (belt / machine / gate) or waits.
  *
+ * While the micro view is off (INTERIORS_ENABLED = false) the interiors are
+ * skipped and every industry with a stop runs on FIXED production instead
+ * (see FIXED_PRODUCTION below).
+ *
  * Pure TypeScript.
  */
 
-import { stationOn, type Side } from './stations';
-import type { TerrainMap } from './terrain';
+import { stationOn, type Side, type Station } from './stations';
+import { CellType, type TerrainMap } from './terrain';
 import {
+  INTERIORS_ENABLED,
   INTERIOR_SIZE,
   MACHINES,
   ROT_DIR,
@@ -40,6 +45,23 @@ export const STATION_CAPACITY = 100;
 /** Machine input / output buffer sizes. */
 const IN_CAP = 4;
 const OUT_CAP = 3;
+
+/**
+ * Fixed production (micro view off), per game second:
+ *   - `makes`: an extractor puts `rate` units of its product into its stops;
+ *   - `turns`: a processor turns up to `rate` delivered units into its product;
+ *   - `burns`: a consumer uses up to `rate` delivered units.
+ * Only industries with at least one stop produce (nobody would pick it up).
+ */
+export const FIXED_PRODUCTION: Partial<
+  Record<CellType, { makes?: Item; turns?: { from: Item; to: Item }; burns?: boolean; rate: number }>
+> = {
+  [CellType.Mine]: { makes: 'ore', rate: 0.5 },
+  [CellType.LumberMill]: { makes: 'plank', rate: 0.5 },
+  [CellType.OilRig]: { makes: 'oil', rate: 0.4 },
+  [CellType.Factory]: { turns: { from: 'plank', to: 'goods' }, rate: 1 },
+  [CellType.PowerPlant]: { burns: true, rate: 2 },
+};
 
 export type MachineStatus = 'work' | 'wait' | 'blocked' | 'idle';
 
@@ -73,12 +95,15 @@ export class ProductionSim {
   private readonly listeners = new Set<Listener>();
   private sincePublish = 0;
   private version = 0;
+  /** Fractional fixed production carried between ticks, per industry. */
+  private carry = new Map<string, number>();
 
   /** Advance every interior by `dt` game seconds. */
   tick(dt: number, interiors: Iterable<Interior>, map: TerrainMap): void {
     if (dt <= 0) return;
     const live = new Set<number>();
-    for (const it of interiors) this.tickInterior(it, map, dt, live);
+    if (INTERIORS_ENABLED) for (const it of interiors) this.tickInterior(it, map, dt, live);
+    else this.tickFixed(map, dt);
     // Machines / belts that were removed lose their contents.
     for (const id of this.machines.keys()) if (!live.has(id)) this.machines.delete(id);
     for (const id of this.belts.keys()) if (!live.has(id)) this.belts.delete(id);
@@ -148,6 +173,54 @@ export class ProductionSim {
   }
 
   // ------------------------------------------------------------- internals
+
+  /** Fixed production: every industry with stops makes / turns / burns. */
+  private tickFixed(map: TerrainMap, dt: number): void {
+    const byIndustry = new Map<string, Station[]>();
+    for (const st of map.stations ?? []) {
+      const key = `${st.anchor[0]},${st.anchor[1]}`;
+      const list = byIndustry.get(key);
+      if (list) list.push(st);
+      else byIndustry.set(key, [st]);
+    }
+    for (const [key, stops] of byIndustry) {
+      const [ax, az] = stops[0].anchor;
+      const p = FIXED_PRODUCTION[map.cells[ax][az]];
+      if (!p) continue;
+      const budget = (this.carry.get(key) ?? 0) + p.rate * dt;
+      let units = Math.floor(budget);
+      this.carry.set(key, budget - units);
+      // Processors / consumers first use up what was delivered.
+      if (p.turns || p.burns) {
+        let used = 0;
+        for (const st of stops) {
+          const inb = this.inbound.get(st.id);
+          if (!inb) continue;
+          for (const item of Object.keys(inb) as Item[]) {
+            if (p.turns && item !== p.turns.from) continue;
+            const k = Math.min(units - used, inb[item] ?? 0);
+            inb[item] = (inb[item] ?? 0) - k;
+            used += k;
+          }
+        }
+        if (!p.turns) continue;
+        units = used;
+      }
+      // Output goes to the emptiest stop that has room.
+      const item = p.makes ?? p.turns?.to;
+      for (let i = 0; item && i < units; i++) {
+        let best: Station | null = null;
+        for (const st of stops) {
+          const n = this.stationTotal(st.id);
+          if (n < STATION_CAPACITY && (!best || n < this.stationTotal(best.id))) best = st;
+        }
+        if (!best) break;
+        const s = this.stock.get(best.id) ?? {};
+        s[item] = (s[item] ?? 0) + 1;
+        this.stock.set(best.id, s);
+      }
+    }
+  }
 
   private tickInterior(it: Interior, map: TerrainMap, dt: number, live: Set<number>): void {
     // Tile → machine occupancy.

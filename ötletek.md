@@ -33,6 +33,9 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
 
 ## Belső nézet — későbbi finomítások
 
+> **Jelenleg kikapcsolva** (`INTERIORS_ENABLED = false`): a játék fix termeléssel
+> megy, amíg a szállítás el nem készül. Utána innen folytatjuk.
+
 - **Minden iparnak saját, a modelljéhez illő belső tere:** ne egy általános
   rács legyen, hanem a bánya belseje a valódi gödör, a fatelepé a fűrésztelep
   udvara, az olajfúróé a fedélzet stb.

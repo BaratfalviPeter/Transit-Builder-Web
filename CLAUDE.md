@@ -38,8 +38,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2).
 - Állomás/megálló: az iparág oldalán (`stations.ts`, Side N/S/W/E, StopKind rail|truck).
   Ára: vasútállomás $500, kamionmegálló $300.
-- Belső nézet: 12×12 rács (`interior.ts`). Gépek receptekkel, szalag 1,5 mező/s,
-  állomáskapacitás 100 (`production.ts`).
+- **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya érc 0,5/s, fatelep
+  deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s, erőmű éget max. 2/s.
+  Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
+- **Belső (mikro) nézet kikapcsolva** (`INTERIORS_ENABLED = false`, `interior.ts`): a
+  felhasználó kérésére, előbb a szállítás legyen jó. A kód megvan (12×12 rács, gépek,
+  szalag 1,5 mező/s), később visszajön.
 - Járatok (`transport.ts`): teherautó $1500, 20 egység, sebesség 3. Fizetés:
   egység × érték × (1 + táv/25). Hálózati nézet metrótérkép-stílusban
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak).
@@ -70,7 +74,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 ## Állapot (2026-10-26)
 - Mergelve: #65–#71 (dev fül és modellszerkesztő, modellnéző, olajfúró, állomások,
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
-- **Nyitva: #72**: teljesítmény (StaticBatch, fények, füst, perf kijelző) és grafikai fokozatok.
+- Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
+- Folyamatban: belső nézet kikapcsolva, fix termelés. **A felhasználó prioritása: a
+  szállítás legyen jó** (kamionok, vonatok, járatok).
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)
 - Vonatok a hálózati nézetben, vasútállomások között

@@ -40,6 +40,11 @@ export interface DepotModelProps {
   fill?: number;
   /** Which loading bays hold a truck (west → east); missing = free. */
   bays?: readonly boolean[];
+  /**
+   * Leave out the parts that change with the game state (lamps, pallets) —
+   * for drawing the rest under StaticBatch, with <DepotDynamic> beside it.
+   */
+  staticOnly?: boolean;
 }
 
 /** Loading bays (dock doors) on the road side. */
@@ -374,21 +379,33 @@ function EntranceSignal({ open }: { open: boolean }) {
 
 // ---------------------------------------------------------------- model
 
-export function DepotModel({ position = [0, 0, 0], scale = 1, rotationY = 0, phase = 0, fill = 0.5, bays = [] }: DepotModelProps) {
-  const taken = BAY_X.map((_, i) => !!bays[i]);
-  const shown = Math.round(Math.max(0, Math.min(1, fill)) * STOCK_SPOTS.length);
+export function DepotModel({ position = [0, 0, 0], scale = 1, rotationY = 0, phase = 0, fill = 0.5, bays = [], staticOnly = false }: DepotModelProps) {
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
       {Object.entries(GEO).map(([k, g]) => (
         <mesh key={k} geometry={g} material={FIXED_MAT} castShadow receiveShadow />
       ))}
-      {shown > 0 && <mesh geometry={stockSlice(shown)} material={FIXED_MAT} castShadow />}
-      <BayLamps bays={taken} />
-      <EntranceSignal open={taken.some((b) => !b)} />
+      {!staticOnly && <DepotDynamic fill={fill} bays={bays} />}
       <WindWheel phase={phase} />
       <CraneTrolley phase={phase} />
       <Forklift phase={phase} />
     </group>
+  );
+}
+
+/**
+ * The depot's state-driven parts — bay lamps, the entrance signal, the stock
+ * pallets — in the model's frame (place it like the model).
+ */
+export function DepotDynamic({ fill, bays, open }: { fill: number; bays: readonly boolean[]; open?: boolean }) {
+  const taken = BAY_X.map((_, i) => !!bays[i]);
+  const shown = Math.round(Math.max(0, Math.min(1, fill)) * STOCK_SPOTS.length);
+  return (
+    <>
+      {shown > 0 && <mesh geometry={stockSlice(shown)} material={FIXED_MAT} castShadow />}
+      <BayLamps bays={taken} />
+      <EntranceSignal open={open ?? taken.some((b) => !b)} />
+    </>
   );
 }
 

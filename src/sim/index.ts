@@ -20,4 +20,5 @@ export * from './InteriorStore';
 export * from './useInterior';
 export * from './transport';
 export * from './traffic';
+export * from './depot';
 export * from './useTransport';

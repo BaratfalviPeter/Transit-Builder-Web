@@ -12,7 +12,16 @@ import {
   ITEMS,
   STATION_CAPACITY,
   cornerHeightAt,
+  DEPOT_CAPACITY,
+  depotCells,
+  depotCenter,
+  depotEntrance,
+  depotExit,
+  type DepotRot,
+  isDepot,
   stationGeom,
+  useTransport,
+  type Station,
   stopKind,
   useInteriorStore,
   useProductionVersion,
@@ -24,6 +33,7 @@ import {
 import { CELL_STYLE } from './terrainStyle';
 import { StationModel } from './StationModel';
 import { TruckStopModel } from './TruckStopModel';
+import { DepotDynamic, DepotModel } from './DepotModel';
 import { StaticBatch } from './StaticBatch';
 import { useDev } from '../dev/modelEditorStore';
 import './stations.css';
@@ -55,6 +65,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
   return (
     <group>
       {(map.stations ?? []).map((s) => {
+        if (isDepot(s)) return <Depot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
         const { pos, rot } = placement(map, cellSize, s.anchor, s.side);
         const total = prod.stationTotal(s.id);
         const stock = prod.stationStock(s.id);
@@ -78,6 +89,36 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
           </group>
         );
       })}
+    </group>
+  );
+}
+
+/** A freight depot: the model (static parts batched), its lamps / stock, a label. */
+function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number; st: Station; batch: boolean }) {
+  const prod = useInteriorStore().production;
+  const sim = useTransport();
+  const half = (map.size - 1) / 2;
+  const [cx, cz] = depotCenter(st);
+  const y = (FLAT_TOP + cornerHeightAt(map, st.anchor[0], st.anchor[1])) * cellSize;
+  const pos: [number, number, number] = [(cx - half) * cellSize, y, (cz - half) * cellSize];
+  const rotY = -(st.rot ?? 0) * (Math.PI / 2);
+  const scale = cellSize * INDUSTRY_MODEL_SCALE;
+  const total = prod.stationTotal(st.id);
+  const stock = prod.stationStock(st.id);
+  const parts = (Object.keys(stock) as Item[]).filter((k) => stock[k]).map((k) => `${ITEMS[k].icon} ${stock[k]}`);
+  return (
+    <group>
+      <StaticBatch enabled={batch}>
+        <DepotModel position={pos} rotationY={rotY} scale={scale} staticOnly />
+      </StaticBatch>
+      <group position={pos} rotation-y={rotY} scale={scale}>
+        <DepotDynamic fill={total / DEPOT_CAPACITY} bays={sim.depotBays(st.id)} open={sim.depotOpen(st.id)} />
+      </group>
+      <Html position={[pos[0], pos[1] + cellSize * 2.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
+        <div className={'station-tip station-stock' + (total >= DEPOT_CAPACITY ? ' is-bad' : '')}>
+          🏬 {parts.length ? parts.join('  ') : 'üres'} · {total}/{DEPOT_CAPACITY}
+        </div>
+      </Html>
     </group>
   );
 }
@@ -124,6 +165,59 @@ export function StationPreview({
       })}
       <Html position={[pos[0], pos[1] + cellSize * 1.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${kind === 'truck' ? '🚚 Kamionrakodó' : '🚉 Vasútállomás'} · $${cost}` : reason}</div>
+      </Html>
+    </group>
+  );
+}
+
+/** Row colours of the depot preview (local lz 0…5). */
+const DEPOT_ROW_COLOR = ['#8aa0b8', '#8aa0b8', '#e6e2d6', '#e6e2d6', '#c9b37a', '#f0a03a'];
+
+/** The depot tool's preview: the lot by rows (tracks, hall, bays, drive) and a tip. */
+export function DepotPlacement({
+  map,
+  cellSize,
+  x0,
+  z0,
+  rot,
+  problem,
+  cost,
+  canAfford,
+}: {
+  map: TerrainMap;
+  cellSize: number;
+  x0: number;
+  z0: number;
+  rot: DepotRot;
+  problem: string | null;
+  cost: number;
+  canAfford: boolean;
+}) {
+  const half = (map.size - 1) / 2;
+  const reason = problem ?? (canAfford ? null : 'Nincs elég pénz');
+  const ok = reason === null;
+  const st: Station = { id: 0, anchor: [x0, z0], side: 'S', kind: 'depot', rot };
+  const cx = Math.min(map.size - 1, Math.max(0, x0 + 2)), cz = Math.min(map.size - 1, Math.max(0, z0 + 2));
+  const y = (FLAT_TOP + cornerHeightAt(map, cx, cz)) * cellSize;
+  const [mx, mz] = depotCenter(st);
+  const [ex, ez] = depotEntrance(st);
+  const [ox, oz] = depotExit(st);
+  return (
+    <group>
+      {depotCells(st).map(({ x, z, lz }) => (
+        <mesh key={`${x},${z}`} position={[(x - half) * cellSize, y + 0.06 * cellSize, (z - half) * cellSize]}>
+          <boxGeometry args={[cellSize * 0.94, cellSize * 0.06, cellSize * 0.94]} />
+          <meshBasicMaterial color={ok ? DEPOT_ROW_COLOR[lz] : '#f87171'} transparent opacity={0.5} depthWrite={false} />
+        </mesh>
+      ))}
+      <Html position={[(ex - half) * cellSize, y + cellSize * 0.6, (ez - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+        <div className="station-tip">➡ behajtó</div>
+      </Html>
+      <Html position={[(ox - half) * cellSize, y + cellSize * 0.6, (oz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+        <div className="station-tip">kihajtó ➡</div>
+      </Html>
+      <Html position={[(mx - half) * cellSize, y + cellSize * 1.6, (mz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `🏬 Raktár · $${cost} · Q: forgatás` : reason}</div>
       </Html>
     </group>
   );

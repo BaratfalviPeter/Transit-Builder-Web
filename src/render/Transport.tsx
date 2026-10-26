@@ -11,8 +11,8 @@ import { Html, Line as DreiLine } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 import {
-  INDUSTRY_ICON,
-  INDUSTRY_NAME,
+  isDepot,
+  stopLabel,
   stopCenter,
   stopKind,
   TRAILER_AXLE,
@@ -191,11 +191,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
   const half = (map.size - 1) / 2;
   const W = (x: number) => (x - half) * cellSize;
   const stops = map.stations ?? [];
-  const nameOf = (id: number) => {
-    const st = stops.find((s) => s.id === id);
-    const t = st ? map.cells[st.anchor[0]][st.anchor[1]] : null;
-    return t ? `${INDUSTRY_ICON[t] ?? ''} ${INDUSTRY_NAME[t] ?? ''}` : '?';
-  };
+  const nameOf = (id: number) => stopLabel(map, stops.find((s) => s.id === id));
 
   const paths = useMemo(() => {
     const m = new Map<number, Cell[]>();
@@ -242,7 +238,8 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {draftPts && <DreiLine points={toV(draftPts, 0.02)} color="#ffffff" lineWidth={LINE_WIDTH * 0.7 * cellSize} worldUnits dashed dashSize={0.8} gapSize={0.5} depthTest={false} renderOrder={11} />}
       {/* Stops */}
       {stops.map((s) => {
-        const truck = stopKind(s) === 'truck';
+        const depot = isDepot(s);
+        const truck = stopKind(s) === 'truck' || depot;
         const [cx, cz] = stopCenter(s);
         const picked = snap.draft?.includes(s.id);
         return (
@@ -256,11 +253,12 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
               }}
             >
               <circleGeometry args={[1.1 * cellSize, 24]} />
-              <meshBasicMaterial color={picked ? '#ffffff' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={truck ? 1 : 0.5} />
+              <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={truck ? 1 : 0.5} />
             </mesh>
             <Html center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
               <div className={'net-stop' + (truck ? '' : ' is-rail') + (picked ? ' is-picked' : '')}>
-                {truck ? '🚚' : '🚉'} {nameOf(s.id)}
+                {depot ? '' : truck ? '🚚 ' : '🚉 '}
+                {nameOf(s.id)}
               </div>
             </Html>
           </group>

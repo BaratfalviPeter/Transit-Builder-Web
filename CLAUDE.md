@@ -69,12 +69,20 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Vonat (`TrainModel.tsx`, még csak modell, a referenciaképek alapján): `Locomotive` (LOCO_LEN 1,45) + `Wagon`
   (hopper / tank / box / flat; CAR_LEN 1,15), origó a kocsi közepén sínkorona-magasságban.
   A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
-- Raktár (`DepotModel.tsx`, még csak modell): 6×6, ipari tervezési egységben (×2). Sorok z
-  szerint: 2 vágány (Rails rajzolja) + portáldaru; csarnok (peron, iroda, szélkerék);
-  5 rakodóállás (`BAY_X`, `BAY_Z`: a kamionok betolatnak a dokkolókapuhoz, kapunként
-  zöld/piros lámpa); egysávos behajtó út (útcellák) portásfülkével és behajtó lámpával
-  (piros, ha minden állás foglalt). Prop: `bays` (foglaltság), `fill`. Előnézet:
-  `?model=Depot` (minden állás foglalt → piros lámpa, egy kamion vár).
+- Raktár: modell `DepotModel.tsx` (6×6, ipari egység ×2; `DepotDynamic` = lámpák +
+  raklapok, a StaticBatch-en KÍVÜL), logika `depot.ts` + `transport.ts`. Megálló
+  `kind: 'depot'` + `rot` a `map.stations`-ben (anchor = telek sarka). Lokális sorok:
+  0–1 vágány (railNet élek), 2–4 csarnok + állások (Station cellák), 5 behajtó (Road).
+  Egyirányú behajtó: be lx 0 (`depotEntrance`), ki lx 5 (`depotExit`); a `roadRoute`
+  `oneWay` módban nem lép visszafelé rajta. Kamion: `state 'depot'`, `DepotVisit`
+  fázisok wait → in → back → load → out; betolatás = a `bayPath` sávon visszafelé
+  (sP → sDock). Udvarzár (`yardHolder`): egyszerre egy manőverező; a stopvonalnál
+  (`gateHold`, kereszteződés ELŐTT) foglal. `zones`: átmenő forgalom kerüli a
+  betolatási zónát. Átrakás / forrás: `serveStop`, `ProductionSim.store/originOf`.
+  Tesztek: scratchpad `depot.ts` (hub-szimuláció; a teszt utakat a behajtó zárásával
+  építi, különben azon vezetne át).
+- `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
+  lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
@@ -114,14 +122,13 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
 - Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
 - Mergelve: #75 (forgalomirányítás + új UI és gyorsbillentyűk).
-- Folyamatban: vonat- és raktármodellek (a felhasználó referenciaképei alapján). Utána: a
-  raktár mint játékelem (lerakás, készlet, válogatás járatonként, fizetés a végső
-  leadáskor a teljes útért), majd a vonatok (járatok, mozgás a sínen).
+- Nyitva: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
+  Következő: a vonatok (járatok, mozgás a sínen, a raktár vasúti oldala).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Raktár játékelemként, aztán vonatok (a felhasználó ezt választotta)
+- Vonatok (járatok vasútállomások / raktárak között, mozgás a sínen)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

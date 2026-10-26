@@ -24,6 +24,7 @@
  */
 
 import { stationOn, type Side, type Station } from './stations';
+import { DEPOT_CAPACITY } from './depot';
 import { CellType, type TerrainMap } from './terrain';
 import {
   INTERIORS_ENABLED,
@@ -95,6 +96,8 @@ export class ProductionSim {
   private readonly listeners = new Set<Listener>();
   private sincePublish = 0;
   private version = 0;
+  /** Depot stock origins (see `store`). */
+  private origins = new Map<number, Partial<Record<Item, [number, number]>>>();
   /** Fractional fixed production carried between ticks, per industry. */
   private carry = new Map<string, number>();
 
@@ -160,6 +163,30 @@ export class ProductionSim {
       this.inbound.set(id, s);
     }
     return k;
+  }
+
+  /**
+   * Store cargo in a depot (all kinds share DEPOT_CAPACITY); `origin` is
+   * where it came from — the stock keeps the weighted mean per kind, so it
+   * is paid for the whole way when delivered. Returns how many fit.
+   */
+  store(id: number, item: Item, n: number, origin: [number, number]): number {
+    const k = Math.max(0, Math.min(n, DEPOT_CAPACITY - this.stationTotal(id)));
+    if (k <= 0) return 0;
+    const s = this.stock.get(id) ?? {};
+    const had = s[item] ?? 0;
+    const o = this.origins.get(id) ?? {};
+    const prev = o[item];
+    o[item] = prev && had > 0 ? [(prev[0] * had + origin[0] * k) / (had + k), (prev[1] * had + origin[1] * k) / (had + k)] : origin;
+    this.origins.set(id, o);
+    s[item] = had + k;
+    this.stock.set(id, s);
+    return k;
+  }
+
+  /** Where a depot's stock of `item` came from (weighted mean), or null. */
+  originOf(id: number, item: Item): [number, number] | null {
+    return this.origins.get(id)?.[item] ?? null;
   }
 
   /** Bumped on every throttled publish (for useSyncExternalStore). */

@@ -75,12 +75,17 @@ function shownUpTo(o: THREE.Object3D, host: THREE.Object3D): boolean {
   return true;
 }
 
-/** Geometry ready to merge: non-indexed, position/normal/uv only, transformed. */
+/**
+ * Geometry ready to merge: non-indexed, position/normal/uv (+ vertex colour
+ * for a vertexColors material — all of a batch share it) only, transformed.
+ */
 function prepared(mesh: THREE.Mesh, m: THREE.Matrix4): THREE.BufferGeometry | null {
   const src = mesh.geometry;
   if (!src.getAttribute('position')) return null;
   const g = src.index ? src.toNonIndexed() : src.clone();
-  for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
+  const keepColor = (mesh.material as THREE.Material).vertexColors && !!g.getAttribute('color');
+  for (const name of Object.keys(g.attributes))
+    if (name !== 'position' && name !== 'normal' && name !== 'uv' && !(keepColor && name === 'color')) g.deleteAttribute(name);
   if (!g.getAttribute('normal')) g.computeVertexNormals();
   if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
   g.morphAttributes = {};

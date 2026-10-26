@@ -10,6 +10,7 @@
 
 import { CellType } from './terrain';
 import type { ControlKind } from './traffic';
+import { DEPOT_PRICE } from './depot';
 
 export type ToolId =
   | 'select'
@@ -20,6 +21,7 @@ export type ToolId =
   | 'rail'
   | 'station'
   | 'truckstop'
+  | 'depot'
   | 'light'
   | 'roundabout'
   | 'yield'
@@ -52,6 +54,8 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },
   // Truck stop on an industry's side (flat price).
   truckstop: { id: 'truckstop', label: 'Kamionrakodó', cost: 300, builds: null },
+  // Freight depot (6×6 transfer point, see depot.ts).
+  depot: { id: 'depot', label: 'Raktár', cost: DEPOT_PRICE, builds: null },
   // Traffic controls (see traffic.ts): on a junction / just before one.
   light: { id: 'light', label: 'Lámpa', cost: 800, builds: null },
   roundabout: { id: 'roundabout', label: 'Körforgalom', cost: 1200, builds: null },

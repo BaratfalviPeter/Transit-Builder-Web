@@ -23,6 +23,13 @@
  *   - a real deadlock (trucks waiting for each other in a circle — not just a
  *     long queue) is broken: one truck of the circle drives on for a moment.
  *
+ * Depots (depot.ts) are stops too: a truck waits at the entrance while all
+ * bays are taken (or another truck is manoeuvring — one at a time in the
+ * yard), drives past a free bay, backs in, unloads what no other
+ * stop of its line takes and loads what one does (that's the sorting), then
+ * leaves by the exit. Cargo remembers where it came from: the final
+ * delivery pays for the whole distance from that origin.
+ *
  * Lines are immutable snapshot data (for the UI); the trucks are mutable
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
@@ -36,7 +43,20 @@ import {
 } from './terrain';
 import { hasRailAt, roadCrossingAxis } from './railNet';
 import { stationGeom, stopKind, type Station } from './stations';
-import { ACCEPTS, ITEMS, type Item } from './interior';
+import { ACCEPTS, INDUSTRY_ICON, INDUSTRY_NAME, ITEMS, type Item } from './interior';
+import {
+  bayApproach,
+  bayPath,
+  bayUsable,
+  DEPOT_BAYS,
+  depotCenter,
+  depotEntrance,
+  depotExit,
+  driveCells,
+  inBayZone,
+  isDepot,
+  type DepotDir,
+} from './depot';
 import type { ProductionSim } from './production';
 import { activeControl, lightState } from './traffic';
 
@@ -109,7 +129,10 @@ export interface Truck {
   s: number;
   /** Smooth right-lane path built from `path` (s runs along it). */
   lane: Lane | null;
-  state: 'stop' | 'drive' | 'noroute';
+  /** 'depot': in a depot's yard (see `depot`). */
+  state: 'stop' | 'drive' | 'noroute' | 'depot';
+  /** The visit to a depot under way (state 'depot'). */
+  depot: DepotVisit | null;
   timer: number;
   /** Seconds it has been held up by traffic. */
   blocked: number;
@@ -123,9 +146,27 @@ export interface Truck {
   /** Junction cell it already halted for at a STOP sign (-1 = none). */
   stopDone: number;
   cargo: Partial<Record<Item, number>>;
-  /** Stop the cargo was loaded at (for the distance pay). */
-  from: number | null;
+  /** Where each kind of cargo came from (grid coords; for the distance pay). */
+  origin: Partial<Record<Item, [number, number]>>;
 }
+
+/** A truck's visit to a depot: wait → in (past the bay) → back (in) → load → out. */
+export interface DepotVisit {
+  phase: 'wait' | 'in' | 'back' | 'load' | 'out';
+  /** Which end it came in at (+1: lx 0, −1: lx 5; see depot.ts). */
+  dir: DepotDir;
+  bay: number;
+  /** The bay's path (forward = leaving), and where on it the truck turns / docks. */
+  bayLane: Lane | null;
+  sP: number;
+  sDock: number;
+}
+
+/** How far (cells) before a depot's drive a truck waits while its bays are full. */
+const GATE_HOLD = 1.0;
+/** Speed (cells/s) in a depot's yard, and backing in. */
+const YARD_SPEED = 1.6;
+const REVERSE_SPEED = 0.9;
 
 /** A recent payment (shown as a floating "+$" over the stop). */
 export interface Payment {
@@ -150,13 +191,47 @@ function axisOk(kind: SlopeKind, d: number): boolean {
   return true;
 }
 
-/** The road row of a truck stop (where trucks stop). */
+/** The road row of a truck stop (where trucks stop); a depot's drive. */
 export function stopCells(st: Station): Cell[] {
-  return stationGeom(st.anchor, st.side).track;
+  return isDepot(st) ? driveCells(st) : stationGeom(st.anchor, st.side).track;
 }
 
-/** Centre of a stop's road row (grid coords). */
+/** Road cells a truck heading TO a stop aims for (a depot: its entrance). */
+function arriveCells(st: Station): Cell[] {
+  return isDepot(st) ? [depotEntrance(st)] : stopCells(st);
+}
+/** Road cells a truck LEAVING a stop starts from (a depot: its exit). */
+function leaveCells(st: Station): Cell[] {
+  return isDepot(st) ? [depotExit(st)] : stopCells(st);
+}
+/**
+ * Road route honouring the depots' one-way drives (entrance → exit). A depot
+ * whose exit isn't connected onward gives no route (the line shows it).
+ */
+function oneWayRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | null {
+  return roadRoute(map, from, to, true);
+}
+
+/** Display name of a stop: the industry it serves, or the depot. */
+export function stopLabel(map: TerrainMap, st: Station | null | undefined): string {
+  if (!st) return '?';
+  if (isDepot(st)) return '🏬 Raktár';
+  const t = map.cells[st.anchor[0]][st.anchor[1]];
+  return `${INDUSTRY_ICON[t] ?? ''} ${INDUSTRY_NAME[t] ?? ''}`.trim() || '?';
+}
+
+/** A lane straight through world points (no lane offset: already placed). */
+export function polyLane(pts: Array<[number, number]>): Lane {
+  const xs = pts.map((p) => p[0]);
+  const zs = pts.map((p) => p[1]);
+  const cum = [0];
+  for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
+  return { xs, zs, cum, length: cum[cum.length - 1] };
+}
+
+/** Centre of a stop's road row (grid coords); a depot's lot centre. */
 export function stopCenter(st: Station): [number, number] {
+  if (isDepot(st)) return depotCenter(st);
   const c = stopCells(st);
   const a = c[0];
   const b = c[c.length - 1];
@@ -168,7 +243,7 @@ export function stopCenter(st: Station): [number, number] {
  * existing Road cells, obeying the road rules (one height level per step,
  * ramps along their axis, level crossings straight). Null if not connected.
  */
-export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | null {
+export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = false): Cell[] | null {
   const n = map.size;
   const isRoad = (x: number, z: number) => x >= 0 && z >= 0 && x < n && z < n && map.cells[x][z] === CellType.Road;
   const kind = (x: number, z: number): SlopeKind => {
@@ -177,6 +252,15 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | n
   };
   const crossing = (x: number, z: number): 'x' | 'z' | null => (hasRailAt(map, x, z) ? (roadCrossingAxis(map, x, z) ?? 'x') : null);
   const goal = new Set(to.map(([x, z]) => x * n + z));
+  // A depot's drive is one-way (entrance → exit): no steps back along it.
+  const noStep = new Set<number>();
+  if (oneWay)
+    for (const st of map.stations ?? []) {
+      if (!isDepot(st)) continue;
+      const d = driveCells(st);
+      for (let i = 1; i < d.length; i++) noStep.add((d[i][0] * n + d[i][1]) * n * n + d[i - 1][0] * n + d[i - 1][1]);
+    }
+
   const prev = new Int32Array(n * n).fill(-2);
   const q: number[] = [];
   for (const [x, z] of from) {
@@ -198,7 +282,7 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | n
       const nx = x + DX[d], nz = z + DZ[d];
       if (!isRoad(nx, nz)) continue;
       const k = nx * n + nz;
-      if (prev[k] !== -2) continue;
+      if (prev[k] !== -2 || noStep.has(c * n * n + k)) continue;
       if (!axisOk(kind(x, z), d) || !axisOk(kind(nx, nz), d)) continue;
       if (Math.abs(map.heights[nx][nz] - map.heights[x][z]) > HILL_STEP + 1e-6) continue;
       const axis = d < 2 ? 'x' : 'z';
@@ -315,6 +399,20 @@ export function laneAt(l: Lane, s: number): [number, number] {
   return [l.xs[i] + (l.xs[i + 1] - l.xs[i]) * f, l.zs[i] + (l.zs[i + 1] - l.zs[i]) * f];
 }
 
+/** Lane distance (within the first `within` cells) closest to point p. */
+export function nearestS(l: Lane, p: [number, number], within = Infinity): number {
+  let best = 0, bd = Infinity;
+  for (let s = 0; s <= Math.min(l.length, within); s += 0.05) {
+    const [x, z] = laneAt(l, s);
+    const d = Math.hypot(x - p[0], z - p[1]);
+    if (d < bd) {
+      bd = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
 /** Where an articulated truck is (grid coords; yaw about Y, 0 = +X). */
 export interface TruckPose {
   /** Fifth wheel (hitch): the tractor's and the trailer's pivot. */
@@ -348,6 +446,12 @@ export class TransportSim {
   private nextLine = 1;
   private nextTruck = 1;
   private routeCache = new Map<string, Cell[] | null>();
+  /** Yard zones claimed this tick by trucks driving to / backing into a bay. */
+  private zones: Array<{ st: Station; bay: number; dir: DepotDir; owner: number }> = [];
+  /** Depot id → the truck manoeuvring in its yard (one at a time). */
+  private yardHolder = new Map<number, number>();
+  /** Depot id → which truck holds each loading bay (null = free). */
+  private bays = new Map<number, Array<number | null>>();
   /** Game seconds since the start (drives the traffic lights). */
   clock = 0;
   /** Junction cell → the truck that reserved it. */
@@ -411,7 +515,11 @@ export class TransportSim {
   }
 
   removeLine(id: number): void {
-    for (const t of this.trucks) if (t.lineId === id) this.release(t);
+    for (const t of this.trucks)
+      if (t.lineId === id) {
+        this.release(t);
+        this.leaveDepot(t);
+      }
     this.trucks = this.trucks.filter((t) => t.lineId !== id);
     this.set({ lines: this.snap.lines.filter((l) => l.id !== id), fleet: this.snap.fleet + 1 });
   }
@@ -434,7 +542,7 @@ export class TransportSim {
       this.routeVersion = map.cellsVersion;
     }
     const key = `${a.id}>${b.id}`;
-    if (!this.routeCache.has(key)) this.routeCache.set(key, roadRoute(map, stopCells(a), stopCells(b)));
+    if (!this.routeCache.has(key)) this.routeCache.set(key, oneWayRoute(map, leaveCells(a), arriveCells(b)));
     return this.routeCache.get(key) ?? null;
   }
 
@@ -459,12 +567,25 @@ export class TransportSim {
       if (p) poses.set(t.id, p);
       t.pass = Math.max(0, t.pass - dt);
     }
+    this.zones = [];
+    for (const t of this.trucks) {
+      const v = t.depot;
+      if (!v || (v.phase !== 'in' && v.phase !== 'back')) continue;
+      const line = this.snap.lines.find((l) => l.id === t.lineId);
+      const st = line ? byId.get(line.stops[t.target]) : undefined;
+      if (st) this.zones.push({ st, bay: v.bay, dir: v.dir, owner: t.id });
+    }
     for (const t of this.trucks) {
       const line = this.snap.lines.find((l) => l.id === t.lineId);
       if (!line) continue;
       const here = byId.get(line.stops[t.target]);
-      if (!here || stopKind(here) !== 'truck') {
+      if (!here || (stopKind(here) !== 'truck' && !isDepot(here))) {
+        if (t.depot) this.leaveDepot(t);
         noRoute.add(line.id);
+        continue;
+      }
+      if (t.state === 'depot') {
+        this.tickDepot(t, dt, line, here, byId, map, prod, earn, poses);
         continue;
       }
       if (t.state === 'stop') {
@@ -496,6 +617,17 @@ export class TransportSim {
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
       } else if (t.lane) {
+        // Coming to a depot whose bays (on this side) are all taken: wait
+        // at its stop line, out on the road — not in the yard.
+        // At the stop line it takes the yard (one truck manoeuvres at a time).
+        if (isDepot(here) && t.lane.length - t.s < this.gateHold(t, map) && this.yardHolder.get(here.id) !== t.id) {
+          if (!this.hasFreeBay(here, 1) || !this.takeYard(here, t)) {
+            t.blocked += dt;
+            const h = this.yardHolder.get(here.id);
+            t.waitFor = h !== undefined && h !== t.id ? h : null;
+            continue;
+          }
+        }
         if (this.junctionWait(t, map, poses) || this.heldUp(t, poses)) {
           t.blocked += dt;
           continue;
@@ -507,8 +639,14 @@ export class TransportSim {
         if (t.s >= t.lane.length) {
           t.s = t.lane.length;
           this.release(t); // parked at the stop: the junction is free again
-          t.state = 'stop';
-          t.timer = STOP_TIME;
+          if (isDepot(here)) {
+            const dir: DepotDir = 1; // in at the entrance (the drive is one-way)
+            t.state = 'depot';
+            t.depot = { phase: 'wait', dir, bay: -1, bayLane: null, sP: 0, sDock: 0 };
+          } else {
+            t.state = 'stop';
+            t.timer = STOP_TIME;
+          }
         }
       }
     }
@@ -724,6 +862,23 @@ export class TransportSim {
     if (!t.lane || t.pass > 0) return false;
     const me = poses.get(t.id);
     if (!me) return false;
+    // Keep out of a depot yard zone where another truck is backing into a bay.
+    if (this.zones.length) {
+      const lane = t.lane;
+      // (Through traffic only: the yard's own trucks take turns, see yardHolder.)
+      const [fx, fz] = laneAt(lane, t.s);
+      for (const zn of this.zones) {
+        if (t.depot || zn.owner === t.id) continue;
+        if (inBayZone(zn.st, zn.bay, zn.dir, fx, fz)) continue; // already in: drive on out
+        for (let d = 0; d <= LOOK_AHEAD + 1e-6; d += 0.11) {
+          const [px, pz] = laneAt(lane, t.s + d);
+          if (inBayZone(zn.st, zn.bay, zn.dir, px, pz)) {
+            const o = this.trucks.find((q) => q.id === zn.owner);
+            return o ? this.waitOn(t, o) : true;
+          }
+        }
+      }
+    }
     for (const o of this.trucks) {
       if (o === t) continue;
       const op = poses.get(o.id);
@@ -784,6 +939,176 @@ export class TransportSim {
     return false;
   }
 
+  /**
+   * How far before the end of its route (a depot's entrance) a truck waits
+   * for the yard: GATE_HOLD — or before the junction(s) right in front of
+   * the entrance, so a waiting truck never blocks a junction.
+   */
+  private gateHold(t: Truck, map: TerrainMap): number {
+    const path = t.path;
+    if (!path || path.length < 2) return GATE_HOLD;
+    const jm = this.junctionMap(map);
+    const n = map.size;
+    let k = path.length - 2;
+    while (k >= 0 && jm[path[k][0] * n + path[k][1]] === 1) k--;
+    return Math.max(GATE_HOLD, path.length - 1 - k - 0.45);
+  }
+
+  /** Is a bay free that a truck coming in from `dir` can use? */
+  private hasFreeBay(st: Station, dir: DepotDir): boolean {
+    const bays = this.bayList(st.id);
+    return bays.some((b, i) => b === null && bayUsable(i, dir));
+  }
+
+  /** Take the depot's yard (true) unless another truck is manoeuvring in it. */
+  private takeYard(st: Station, t: Truck): boolean {
+    const h = this.yardHolder.get(st.id);
+    if (h !== undefined && h !== t.id && this.trucks.some((q) => q.id === h)) return false;
+    this.yardHolder.set(st.id, t.id);
+    return true;
+  }
+
+  private freeYard(t: Truck): void {
+    for (const [id, h] of this.yardHolder) if (h === t.id) this.yardHolder.delete(id);
+  }
+
+
+  /** May a truck drive into the depot now (a bay free and nobody manoeuvring)? */
+  depotOpen(id: number): boolean {
+    const free = this.bayList(id).some((b, i) => b === null && bayUsable(i, 1));
+    const h = this.yardHolder.get(id);
+    return free && (h === undefined || !this.trucks.some((q) => q.id === h));
+  }
+
+  /** Which bays of a depot hold (or are reserved by) a truck. */
+  depotBays(id: number): boolean[] {
+    const b = this.bays.get(id);
+    return Array.from({ length: DEPOT_BAYS }, (_, i) => b?.[i] != null);
+  }
+
+  private bayList(id: number): Array<number | null> {
+    let b = this.bays.get(id);
+    if (!b) this.bays.set(id, (b = Array.from({ length: DEPOT_BAYS }, () => null)));
+    return b;
+  }
+
+  /** Free a truck's bay and drop its depot visit. */
+  private leaveDepot(t: Truck): void {
+    for (const b of this.bays.values()) for (let i = 0; i < b.length; i++) if (b[i] === t.id) b[i] = null;
+    this.freeYard(t);
+    t.depot = null;
+    if (t.state === 'depot') t.state = 'stop';
+  }
+
+  /**
+   * A truck in a depot's yard: wait at the entrance until a bay is free,
+   * drive past it, back in, (un)load, pull out and leave by the exit.
+   */
+  private tickDepot(
+    t: Truck,
+    dt: number,
+    line: Line,
+    here: Station,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    prod: ProductionSim,
+    earn: (amount: number) => void,
+    poses: Map<number, TruckPose>,
+  ): void {
+    const v = t.depot;
+    if (!v) {
+      t.state = 'stop';
+      return;
+    }
+    if (v.phase === 'wait') {
+      const bays = this.bayList(here.id);
+      // The free bay nearest the end it came in at (that it can turn into).
+      let free = -1;
+      for (let k = 0; k < bays.length; k++) {
+        const i = v.dir > 0 ? k : bays.length - 1 - k;
+        if (bays[i] === null && bayUsable(i, v.dir)) {
+          free = i;
+          break;
+        }
+      }
+      if (free < 0 || !this.takeYard(here, t)) {
+        t.blocked += dt; // the entrance signal is red
+        return;
+      }
+      bays[free] = t.id;
+      const path = bayPath(here, free, v.dir);
+      v.bay = free;
+      v.bayLane = polyLane(path.pts);
+      v.sP = path.sP;
+      v.sDock = path.sDock;
+      t.lane = polyLane(bayApproach(here, free, v.dir));
+      t.s = 0;
+      t.blocked = 0;
+      v.phase = 'in';
+    } else if (v.phase === 'in' && t.lane) {
+      if (this.heldUp(t, poses)) {
+        t.blocked += dt;
+        return;
+      }
+      t.blocked = 0;
+      t.s += dt * YARD_SPEED;
+      if (t.s >= t.lane.length) {
+        // Stopped past the bay: from here on it moves along the bay's path.
+        t.lane = v.bayLane;
+        t.s = v.sP;
+        v.phase = 'back';
+      }
+    } else if (v.phase === 'back') {
+      t.blocked = 0;
+      t.s -= dt * REVERSE_SPEED;
+      if (t.s <= v.sDock) {
+        t.s = v.sDock;
+        this.serveStop(t, line, here, byId, map, prod, earn);
+        t.timer = STOP_TIME;
+        v.phase = 'load';
+        this.freeYard(t); // docked: the next truck may manoeuvre
+      }
+    } else if (v.phase === 'load') {
+      t.timer -= dt;
+      if (t.timer <= 0 && this.takeYard(here, t)) v.phase = 'out';
+    } else if (v.phase === 'out' && t.lane) {
+      if (this.heldUp(t, poses)) {
+        t.blocked += dt;
+        return;
+      }
+      t.blocked = 0;
+      t.s += dt * YARD_SPEED;
+      if (t.s < t.lane.length) {
+        this.updatePose(t, poses);
+        return;
+      }
+      // Out on the road at the far end: free the bay, head for the next stop
+      // — once the start of that route is clear.
+      const front = laneAt(t.lane, t.lane.length);
+      const next = (t.target + 1) % line.stops.length;
+      const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
+      if (route && route.length) {
+        const lane = this.laneOf(route, map);
+        const s0 = nearestS(lane, front, 1.2);
+        const ahead = { ...t, lane, s: s0, path: route } as Truck;
+        if (this.heldUp(ahead, poses)) {
+          t.s = t.lane.length;
+          t.blocked += dt;
+          t.waitFor = ahead.waitFor;
+          return;
+        }
+      }
+      this.leaveDepot(t);
+      this.setPath(t, route, map);
+      t.target = next;
+      t.state = t.path ? 'drive' : 'noroute';
+      t.timer = 2;
+      // Pick the new route up where the truck is (no jump back).
+      if (t.lane) t.s = nearestS(t.lane, front, 1.2);
+    }
+    this.updatePose(t, poses);
+  }
+
   /** Unload what this stop takes (and get paid), then load for later stops. */
   private serveStop(
     t: Truck,
@@ -794,40 +1119,64 @@ export class TransportSim {
     prod: ProductionSim,
     earn: (amount: number) => void,
   ): void {
-    const type = map.cells[here.anchor[0]][here.anchor[1]];
-    const takes = ACCEPTS[type] ?? [];
     const [hx, hz] = stopCenter(here);
+    // What the line's OTHER stops take: industries their ACCEPTS, a depot
+    // anything (it's a transfer point).
+    const laterTakes = new Set<Item>();
+    let laterDepot = false;
+    for (const id of line.stops) {
+      if (id === here.id) continue;
+      const s = byId.get(id);
+      if (!s) continue;
+      if (isDepot(s)) laterDepot = true;
+      else for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
+    }
+    const depot = isDepot(here);
+
+    // Unload. An industry takes (and pays for) what it accepts; a depot
+    // stores what this line can't deliver itself.
+    const takes = depot ? null : (ACCEPTS[map.cells[here.anchor[0]][here.anchor[1]]] ?? []);
     let pay = 0;
     for (const item of Object.keys(t.cargo) as Item[]) {
       const n = t.cargo[item] ?? 0;
-      if (!n || !takes.includes(item)) continue;
-      const k = prod.deliver(here.id, item, n);
-      t.cargo[item] = n - k;
-      const from = t.from !== null ? byId.get(t.from) : null;
-      const dist = from ? Math.hypot(stopCenter(from)[0] - hx, stopCenter(from)[1] - hz) : 0;
-      pay += Math.round(k * ITEMS[item].value * (1 + dist / DISTANCE_SCALE));
+      if (!n) continue;
+      const origin = t.origin[item] ?? [hx, hz];
+      if (depot) {
+        if (laterTakes.has(item)) continue;
+        const k = prod.store(here.id, item, n, origin);
+        t.cargo[item] = n - k;
+      } else {
+        if (!takes!.includes(item)) continue;
+        const k = prod.deliver(here.id, item, n);
+        t.cargo[item] = n - k;
+        // Paid for the whole way from where the cargo came from.
+        const dist = Math.hypot(origin[0] - hx, origin[1] - hz);
+        pay += Math.round(k * ITEMS[item].value * (1 + dist / DISTANCE_SCALE));
+      }
+      if (!t.cargo[item]) delete t.origin[item];
     }
     if (pay > 0) {
       earn(pay);
       this.payments.push({ amount: pay, x: hx, z: hz, age: 0 });
     }
-    // Load what any OTHER stop of the line takes.
-    const wanted = new Set<Item>();
-    for (const id of line.stops) {
-      if (id === here.id) continue;
-      const s = byId.get(id);
-      if (s) for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) wanted.add(it);
-    }
+
+    // Load what a later stop takes (any cargo when a depot comes later).
+    const wanted = new Set<Item>(laterTakes);
+    if (laterDepot && !depot) for (const it of Object.keys(ITEMS) as Item[]) wanted.add(it);
     let load = 0;
     for (const v of Object.values(t.cargo)) load += v ?? 0;
     for (const item of wanted) {
       if (load >= TRUCK_CAPACITY) break;
+      const from = depot ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
       const k = prod.take(here.id, item, TRUCK_CAPACITY - load);
-      if (k > 0) {
-        t.cargo[item] = (t.cargo[item] ?? 0) + k;
-        load += k;
-        t.from = here.id;
-      }
+      if (k <= 0) continue;
+      const had = t.cargo[item] ?? 0;
+      const o = t.origin[item];
+      const src = from ?? [hx, hz];
+      // Mixed loads: the origin is the weighted mean of where it came from.
+      t.origin[item] = o ? [(o[0] * had + src[0] * k) / (had + k), (o[1] * had + src[1] * k) / (had + k)] : src;
+      t.cargo[item] = had + k;
+      load += k;
     }
   }
 
@@ -854,13 +1203,17 @@ export class TransportSim {
           pass: 0,
           stopDone: -1,
           cargo: {},
-          from: null,
+          origin: {},
+          depot: null,
         });
         changed = true;
       }
       if (mine.length > line.vehicles) {
         const drop = new Set(mine.slice(line.vehicles).map((t) => t.id));
-        for (const t of mine.slice(line.vehicles)) this.release(t);
+        for (const t of mine.slice(line.vehicles)) {
+          this.release(t);
+          this.leaveDepot(t);
+        }
         this.trucks = this.trucks.filter((t) => !drop.has(t.id));
         changed = true;
       }

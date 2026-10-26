@@ -1,8 +1,8 @@
 .vt {
   position: absolute;
   left: 16px;
-  top: 84px;
-  bottom: 64px;
+  top: 64px;
+  bottom: 150px;
   z-index: 20;
   width: 330px;
   display: flex;

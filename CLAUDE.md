@@ -14,7 +14,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - `src/sim/`: tiszta TS szimuláció (megfigyelhető store-ok + `useSyncExternalStore`)
 - `src/render/`: R3F 3D render (modellek, terep, járművek)
 - `src/interior/`: ipari belső nézet (saját Canvas)
-- `src/ui/`: DOM UI (SidePanel fülek: Földmunka, Infrastruktúra, Járatok, Pénzügyek, Dev)
+- `src/ui/`: DOM UI — `GameUI.tsx` (felső sáv, panelgombok, alsó eszköztár, oldalpanel:
+  Járatok / Pénzügyek / Dev, súgó, gyorsbillentyűk). A régi SidePanel / Hud megszűnt.
 - `src/dev/`: fejlesztői eszközök (modellszerkesztő, modellnéző, perf mérő)
 - `dev/modelEditorPlugin.ts`: Vite-plugin, a szerkesztő ezen át írja vissza a `.tsx` forrást
 - `ötletek.md`: későbbre félretett ötletek (a felhasználó kérte)
@@ -59,6 +60,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
   a vonalig gurul, NEM foglal); körforgalom a `buildLane`-ben (R 0,3, óramutatóval
   ellentétes). Lámpaciklus a `TransportSim.clock`-ból. Eszközök: `TRAFFIC_TOOLS`.
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–8 eszközök, Szóköz, T,
+  J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
+  hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
@@ -97,8 +101,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
 - Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
-- Folyamatban: forgalomirányítás (táblák, lámpa, körforgalom), utána UI-átdolgozás +
-  gyorsbillentyűk (a felhasználó kérte). **Prioritás: a szállítás legyen jó.**
+- Nyitva: #75 (forgalomirányítás: táblák, lámpa, körforgalom + új UI és gyorsbillentyűk).
+  **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)

@@ -1,6 +1,6 @@
 .tfc {
   position: absolute;
-  bottom: 54px;
+  bottom: 150px;
   left: 50%;
   transform: translateX(-50%);
   pointer-events: auto;

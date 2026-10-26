@@ -29,7 +29,7 @@ import { OilRigModel } from '../render/OilRigModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
 import { TruckPreview } from '../render/TruckModel';
-import { TrainPreview } from '../render/TrainModel';
+import { LocoPreview, TrainPreview, WagonsPreview } from '../render/TrainModel';
 import { DepotPreview } from '../render/DepotModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
@@ -64,6 +64,8 @@ export const VIEWER_MODELS: Array<{
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
   { id: 'Truck', label: 'Kamion', Comp: TruckPreview, zoom: 1.0, lookY: 0.3 },
   { id: 'Train', label: 'Vonat', Comp: TrainPreview, zoom: 1.25, lookY: 0.4 },
+  { id: 'Loco', label: 'Mozdony közelről', Comp: LocoPreview, zoom: 1.9, lookY: 0.6 },
+  { id: 'Wagons', label: 'Kocsik közelről', Comp: WagonsPreview, zoom: 1.8, lookY: 0.5 },
   { id: 'Depot', label: 'Raktár', Comp: DepotPreview },
 ];
 

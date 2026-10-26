@@ -66,7 +66,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
   és a raktár.
-- Vonat (`TrainModel.tsx`, még csak modell): `Locomotive` (LOCO_LEN 1,35) + `Wagon`
+- Vonat (`TrainModel.tsx`, még csak modell, a referenciaképek alapján): `Locomotive` (LOCO_LEN 1,45) + `Wagon`
   (hopper / tank / box / flat; CAR_LEN 1,15), origó a kocsi közepén sínkorona-magasságban.
   A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
 - Raktár (`DepotModel.tsx`, még csak modell): 6×6, ipari tervezési egységben (×2). Sorok z
@@ -101,7 +101,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
-  StationModel, TruckStopModel, Truck, Train, Depot).
+  StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
 
 ## Állapot (2026-10-26)

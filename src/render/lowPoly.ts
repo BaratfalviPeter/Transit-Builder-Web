@@ -18,18 +18,35 @@ export type V3 = [number, number, number];
 export interface Part {
   /** A fixed colour ('#rrggbb') or a slot name the caller colours. */
   mat: string;
-  /** cylX / cylY / cylZ: a cylinder along that axis; rock: a lumpy ball. */
-  shape: 'box' | 'cylX' | 'cylY' | 'cylZ' | 'rock';
+  /**
+   * cylX / cylY / cylZ: a cylinder along that axis; rock: a lumpy ball;
+   * ball: a sphere (size = radii); custom: `geo` (scaled by size).
+   */
+  shape: 'box' | 'cylX' | 'cylY' | 'cylZ' | 'rock' | 'ball' | 'custom';
   pos: V3;
   /** Box: full size; cylinder: [radius, length, radius] (before the axis turn); rock: radii. */
   size: V3;
   /** Extra rotation (radians, XYZ), applied before the position. */
   rot?: V3;
-  /** Cylinder segments (default 10). */
+  /** Cylinder / ball segments (default 10). */
   seg?: number;
+  /** The geometry of a 'custom' part (cloned). */
+  geo?: THREE.BufferGeometry;
 }
 
 export const box = (mat: string, pos: V3, size: V3, rot?: V3): Part => ({ mat, shape: 'box', pos, size, rot });
+export const ball = (mat: string, pos: V3, radii: V3, seg = 10): Part => ({ mat, shape: 'ball', pos, size: radii, seg });
+
+/**
+ * A prism from a 2-D profile in the XY plane (e.g. a car's side view),
+ * `depth` deep along Z, centred on z = 0.
+ */
+export function profile(mat: string, pts: Array<[number, number]>, depth: number, pos: V3 = [0, 0, 0], rot?: V3): Part {
+  const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }).translate(0, 0, -depth / 2);
+  return { mat, shape: 'custom', pos, size: [1, 1, 1], geo, rot };
+}
+
 export const cyl = (mat: string, axis: 'x' | 'y' | 'z', pos: V3, r: number, len: number, seg = 10, rot?: V3): Part => ({
   mat,
   shape: axis === 'x' ? 'cylX' : axis === 'y' ? 'cylY' : 'cylZ',
@@ -47,6 +64,8 @@ function partGeometry(p: Part): THREE.BufferGeometry {
   let g: THREE.BufferGeometry;
   if (p.shape === 'box') g = BOX.clone();
   else if (p.shape === 'rock') g = ROCK.clone();
+  else if (p.shape === 'custom') g = p.geo!.clone();
+  else if (p.shape === 'ball') g = new THREE.SphereGeometry(1, p.seg ?? 10, Math.max(4, Math.round((p.seg ?? 10) / 2)));
   else {
     const seg = p.seg ?? 10;
     let c = CYLS.get(seg);

@@ -25,6 +25,8 @@ import { PowerPlantModel } from './PowerPlantModel';
 import { MineModel } from './MineModel';
 import { LumberMillModel } from './LumberMillModel';
 import { FactoryModel } from './FactoryModel';
+import { StaticBatch } from './StaticBatch';
+import { useDev } from '../dev/modelEditorStore';
 import { OilRigModel } from './OilRigModel';
 import { WATER_LEVEL } from './TerrainSurface';
 
@@ -38,6 +40,9 @@ const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 
 export function Industries({ map, cellSize }: IndustriesProps) {
   const half = (map.size - 1) / 2;
+  // Merge each model's static parts (fewer draw calls) — but not while the
+  // dev model editor needs every part pickable.
+  const batch = !useDev().editorOn;
 
   const items = useMemo(() => {
     const out: Array<{ x: number; z: number; type: CellType }> = [];
@@ -64,6 +69,7 @@ export function Industries({ map, cellSize }: IndustriesProps) {
         // its surface top; raise the building onto it (hill-top buildings too).
         const wy = (FLAT_TOP + cornerHeightAt(map, x, z)) * cellSize;
         const key = `${x},${z}`;
+        const model = (() => {
         switch (type) {
           case CellType.LumberMill:
             return (
@@ -119,6 +125,14 @@ export function Industries({ map, cellSize }: IndustriesProps) {
           default:
             return null;
         }
+        })();
+        return (
+          model && (
+            <StaticBatch key={key} enabled={batch}>
+              {model}
+            </StaticBatch>
+          )
+        );
       })}
     </group>
   );

@@ -36,6 +36,7 @@ import {
   type Side,
 } from '../sim';
 import { InteriorScene, type Ghost } from './InteriorScene';
+import { FrameLimiter, useQuality } from '../render/quality';
 import { useVisual, sunPosition } from '../render/visualSettings';
 import './interior.css';
 
@@ -76,6 +77,7 @@ export function InteriorView() {
   const map = useTerrainMap();
   const game = useGame();
   const { money } = useGameSnapshot();
+  const q = useQuality();
   const [tool, setTool] = useState<Tool>(null);
   const [rot, setRot] = useState<Rot>(0);
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -215,7 +217,8 @@ export function InteriorView() {
 
   return (
     <div className="iv" onContextMenu={(e) => e.preventDefault()}>
-      <Canvas shadows="soft" camera={{ position: [0, 13, 12.5], fov: 45, near: 0.1, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
+      <Canvas frameloop={q.fps > 0 ? 'demand' : 'always'} dpr={q.dpr} shadows="soft" camera={{ position: [0, 13, 12.5], fov: 45, near: 0.1, far: 200 }} style={{ position: 'absolute', inset: 0 }}>
+        {q.fps > 0 && <FrameLimiter fps={q.fps} />}
         <Lights />
         <InteriorScene interior={interior} gates={gates} gateStock={gateStock} truckGates={truckGates} sim={store.production} ghost={ghost} removeTarget={removeTarget} input={input} />
         <OrbitControls

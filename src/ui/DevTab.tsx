@@ -18,6 +18,8 @@ import {
   useDev,
   type GizmoMode,
 } from '../dev/modelEditorStore';
+import { usePerf } from '../dev/perf';
+import { QUALITY_LABEL, setQuality, useQuality, type QualityPreset } from '../render/quality';
 import './devTab.css';
 
 const MODES: Array<{ id: GizmoMode; label: string; key: string }> = [
@@ -32,6 +34,8 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
   const dev = useDev();
   const info = dev.chain[dev.index];
   const inViewer = new URLSearchParams(window.location.search).has('model');
+  const perf = usePerf();
+  const quality = useQuality();
 
   const toggleEditor = () => {
     const on = !dev.editorOn;
@@ -50,6 +54,29 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
 
   return (
     <>
+      <div className="dev__quality" title="Grafika: alacsonyabb fokozat = kevesebb melegedés, hosszabb akku">
+        <span>Grafika</span>
+        <div className="dev__modes">
+          {(Object.keys(QUALITY_LABEL) as QualityPreset[]).map((id) => (
+            <button key={id} className={quality.preset === id ? 'is-active' : ''} onClick={() => setQuality(id)}>
+              {QUALITY_LABEL[id]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!inViewer && (
+        <div className="dev__perf" title="A térkép nézet mérései (félmásodpercenként)">
+          <span>
+            <b>{perf.fps}</b> FPS
+          </span>
+          <span>
+            <b>{perf.calls}</b> rajzolás
+          </span>
+          <span>
+            <b>{Math.round(perf.triangles / 1000)}k</b> háromszög
+          </span>
+        </div>
+      )}
       <button
         type="button"
         className={'panel__tool' + (dev.visualOpen ? ' is-active' : '')}

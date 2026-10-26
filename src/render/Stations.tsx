@@ -24,6 +24,8 @@ import {
 import { CELL_STYLE } from './terrainStyle';
 import { StationModel } from './StationModel';
 import { TruckStopModel } from './TruckStopModel';
+import { StaticBatch } from './StaticBatch';
+import { useDev } from '../dev/modelEditorStore';
 import './stations.css';
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
@@ -49,6 +51,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
   // Stock comes from the interiors' production (re-rendered ~2×/s).
   const prod = useInteriorStore().production;
   useProductionVersion();
+  const batch = !useDev().editorOn;
   return (
     <group>
       {(map.stations ?? []).map((s) => {
@@ -58,11 +61,13 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
         const parts = (Object.keys(stock) as Item[]).filter((k) => stock[k]).map((k) => `${ITEMS[k].icon} ${stock[k]}`);
         return (
           <group key={s.id}>
-            {stopKind(s) === 'truck' ? (
-              <TruckStopModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
-            ) : (
-              <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
-            )}
+            <StaticBatch enabled={batch}>
+              {stopKind(s) === 'truck' ? (
+                <TruckStopModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+              ) : (
+                <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+              )}
+            </StaticBatch>
             {total > 0 && (
               <Html position={[pos[0], pos[1] + cellSize * 1.3, pos[2]]} center style={{ pointerEvents: 'none' }}>
                 <div className={'station-tip station-stock' + (total >= STATION_CAPACITY ? ' is-bad' : '')}>

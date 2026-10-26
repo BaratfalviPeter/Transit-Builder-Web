@@ -29,6 +29,8 @@ import { Roads } from './Roads';
 import { Rails } from './Rails';
 import { Industries } from './Industries';
 import { EditorGizmo, EditorPick } from '../dev/ModelEditor';
+import { PerfProbe } from '../dev/perf';
+import { FrameLimiter, useQuality } from './quality';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
 import { BuildingIcons } from './BuildingIcons';
@@ -120,6 +122,7 @@ const SHADOW_EXTENT = 92;
  */
 function Lights() {
   const v = useVisual();
+  const q = useQuality();
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
@@ -129,6 +132,16 @@ function Lights() {
   const amb = useRef<THREE.AmbientLight>(null);
   const hemi = useRef<THREE.HemisphereLight>(null);
   const sunRef = useRef<THREE.DirectionalLight>(null);
+  // A new shadow-map size needs a fresh render target (three only allocates
+  // it once), then a re-bake.
+  useEffect(() => {
+    const sun = sunRef.current;
+    if (!sun) return;
+    sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, q.shadowMap]);
   // Time of day (0 = midnight, 0.5 = noon). Starts at the slider value and
   // runs forward while the cycle is on.
   const tod = useRef(v.timeOfDay);
@@ -187,8 +200,8 @@ function Lights() {
         color={v.sunColor}
         intensity={v.sunIntensity}
         castShadow
-        shadow-mapSize-width={4096}
-        shadow-mapSize-height={4096}
+        shadow-mapSize-width={q.shadowMap}
+        shadow-mapSize-height={q.shadowMap}
         shadow-camera-left={-SHADOW_EXTENT}
         shadow-camera-right={SHADOW_EXTENT}
         shadow-camera-top={SHADOW_EXTENT}
@@ -525,6 +538,7 @@ function Scene() {
     <>
       <CameraRig />
       <GameClock />
+      <PerfProbe />
       <ShadowController mapSig={mapSig} live={liveShadows} sunSig={sunSig} />
 
       {/* Lighting — warm "diorama" look: soft warm ambient, a cool sky / green
@@ -611,14 +625,17 @@ export function GameCanvas() {
   // While an interior (micro view) is open, the map isn't visible: stop
   // rendering it (this also pauses the in-game clock).
   const { open } = useInteriorSnapshot();
+  const q = useQuality();
   return (
     <Canvas
-      frameloop={open ? 'never' : 'always'}
+      frameloop={open ? 'never' : q.fps > 0 ? 'demand' : 'always'}
+      dpr={q.dpr}
       shadows="soft"
       camera={{ position: [90, 90, 90], fov: 50, near: 0.1, far: 2000 }}
       style={{ position: 'absolute', inset: 0 }}
     >
       <Scene />
+      {!open && q.fps > 0 && <FrameLimiter fps={q.fps} />}
     </Canvas>
   );
 }

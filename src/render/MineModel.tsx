@@ -24,8 +24,8 @@
  *   - front: an inclined steel conveyor from the pit floor up to an ore pile,
  *     a cart track with shuttling ore carts, crates, barrels, yellow rails.
  *
- * Performance: shared module materials; 2 pointLights (pit tunnel + work area,
- * no shadows). Animations: crane cycle, conveyor stones, pit + yard carts,
+ * Performance: shared module materials; no lights (glow is emissive).
+ * Animations: crane cycle, conveyor stones, pit + yard carts,
  * dust puffs. `phase` desyncs multiple mines.
  */
 
@@ -247,8 +247,6 @@ export function MineModel({
       />
       <FrontYard phase={phase} />
       <Railings />
-      {/* Warm work-area light by the crusher (no shadow) */}
-      <pointLight position={[0.65, 0.5, 0.15]} color="#ffaa00" intensity={1.6} distance={3} decay={1.5} />
     </group>
   );
 }
@@ -472,7 +470,6 @@ function PitDetails({ phase }: { phase: number }) {
       <Shoring p={[0.05, -1 * STEP_H, PIT.z0 + 0.004]} rotY={0} h={STEP_H} />
       <Shoring p={[-0.35, -2 * STEP_H, PIT.z0 + STEP_IN + 0.004]} rotY={0} h={STEP_H} />
       <Shoring p={[PIT.x1 - 2 * STEP_IN - 0.004, -3 * STEP_H, 0.3]} rotY={-Math.PI / 2} h={STEP_H} />
-      <pointLight position={[cx - 0.05, FLOOR + 0.2, fz0 + 0.2]} color="#ffb347" intensity={1.4} distance={2.2} decay={1.5} />
       {/* Ladders up the terrace faces */}
       {Array.from({ length: STEPS }).map((_, k) => {
         const y = -(k + 2) * STEP_H;

@@ -21,6 +21,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 
 ## Együttműködési szabályok (a felhasználó kérései)
 - **Magyarul** válaszolj.
+- Ezt a `CLAUDE.md`-t **magadtól frissítsd**, amikor jónak látod (új funkció, új
+  szabály vagy tény, változott állapot). Nem kell hozzá engedélyt kérni.
 - Fejlesztési ág: `claude/gallant-archimedes-4snxvs`. Ide commitolj és pusholj.
 - **PR-t magadtól nyiss**, ha kész egy rész. A PR leírása **magyarul, vázlatosan**
   (pontokba szedve, nem túl részletesen).

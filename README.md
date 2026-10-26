@@ -36,9 +36,10 @@ src/
             #   GameClock      – useFrame-alapú játékidő (a GameCanvas-ban)
             #   terrainStyle.ts / config.ts
   ui/       # React overlay
-            #   Hud       – épület/út számlálók + vezérlés-hint
-            #   SidePanel – oldalsó fülek (Földmunka / Infrastruktúra / Pénzügyek)
-            #               + dátum és időkontroll (⏸ ▶ ⏩)
+            #   GameUI    – felső sáv (pénz, dátum, ⏸ ▶ ⏩, számlálók),
+            #               panelgombok (Járatok / Pénzügyek / Dev / Súgó),
+            #               alsó eszköztár (Terep / Építés / Forgalom),
+            #               gyorsbillentyűk
   App.tsx
   main.tsx
 public/
@@ -82,6 +83,21 @@ npm run preview    # buildelt verzió kiszolgálása
 
 A jobb oldali **panel** három füle:
 
+- **Felület:** fent balra pénz, dátum, sebesség (⏸ ▶ ⏩) és számlálók; fent
+  jobbra a panelek (Járatok, Pénzügyek, Dev) és a Súgó; lent az eszköztár
+  csoportokban (Terep / Építés / Forgalom), mindegyik gombon az ár és a
+  gyorsbillentyű, fölötte egy sorban az aktív eszköz rövid leírása.
+- **Gyorsbillentyűk** (H: súgó):
+
+  | Billentyű | Mit csinál |
+  |---|---|
+  | V / Esc | Kijelölés (Esc: mégse) |
+  | R / F / B | Emelés / Süllyesztés / Bontás |
+  | 1–4 | Út / Sín / Vasútállomás / Kamionrakodó |
+  | 5–8 | Elsőbbségadás / STOP / Lámpa / Körforgalom |
+  | Szóköz / T | Szünet / gyorsítás |
+  | J / P / 0 | Járatok / Pénzügyek / Dev panel |
+  | WASD, nyilak | Kamera mozgatása |
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
   ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az
   emelés/süllyesztés **kijelölős**: a kattintással/húzással kijelölt cellák
@@ -134,6 +150,19 @@ A jobb oldali **panel** három füle:
     kereszteződést lefoglalják, amíg a pótkocsi ki nem ér); a megállóból
     kihajtó elsőbbséget ad; egyébként jobbkéz-szabály. Valódi körbe-várakozás
     (holtpont) esetén a körből egy kamion rövid ideig áthaladhat.
+- **Forgalomirányítás** (az alsó eszköztár „Forgalom” csoportja, `src/sim/traffic.ts`,
+  `src/render/TrafficControls.tsx`):
+  - **Elsőbbségadás tábla** ($60) és **STOP tábla** ($60): közvetlenül egy
+    kereszteződés előtti útcellára. A táblás irányból érkező kamion a
+    vonalnál elengedi a tábla nélküli irányokból érkezőket; STOP-nál előbb
+    mindig megáll (1 mp).
+  - **Lámpa** ($800): kereszteződésre (3–4 irányú útcella). Minden ágon
+    lámpaoszlop; a két tengely felváltva kap zöldet (6 mp zöld, 2 mp sárga /
+    piros). Piroson és sárgán a kamionok a vonalnál várnak.
+  - **Körforgalom** ($1200): kereszteződésre (mellette nem lehet másik
+    kereszteződés). Füves sziget; a kamionok az óramutatóval ellentétesen
+    kerülik meg.
+  - Bontás eszközzel előbb a tábla / lámpa / körforgalom tűnik el (az út marad).
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
 ### Termelés (fix)

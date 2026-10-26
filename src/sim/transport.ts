@@ -14,6 +14,9 @@
  *   - junctions (road cells with 3+ road neighbours): enter only if the
  *     junction is free AND there is room for the whole truck past it (no
  *     blocking the box); the junction is reserved until the trailer is out;
+ *   - traffic controls (traffic.ts): wait for green at lights; at a STOP
+ *     sign halt at the line; at a STOP / yield sign give way to trucks
+ *     coming from the arms without a sign; drive round a roundabout's island;
  *   - pulling out of a stop gives way to the traffic;
  *   - two trucks waiting for each other elsewhere: the one with the other
  *     on its RIGHT gives way;
@@ -35,6 +38,7 @@ import { hasRailAt, roadCrossingAxis } from './railNet';
 import { stationGeom, stopKind, type Station } from './stations';
 import { ACCEPTS, ITEMS, type Item } from './interior';
 import type { ProductionSim } from './production';
+import { activeControl, lightState } from './traffic';
 
 export interface Line {
   readonly id: number;
@@ -78,6 +82,14 @@ const BODY_GAP = 0.27;
 const DEADLOCK_CHECK = 3;
 /** Seconds a deadlocked truck may drive ignoring the others. */
 const DEADLOCK_PASS = 2;
+/** A truck waiting at a line stops this far (cells) before the junction. */
+const STOP_LINE = 0.18;
+/** Seconds a truck halts at a STOP sign. */
+const STOP_HOLD = 1;
+/** How far ahead (cells) a truck at a sign looks for traffic it must let by. */
+const YIELD_LOOK = 1.8;
+/** Radius (cells) trucks drive round a roundabout's island. */
+export const ROUNDABOUT_R = 0.3;
 /** Seconds stopped at a stop (un)loading. */
 const STOP_TIME = 2;
 /** Delivery pay grows with the distance carried (cells). */
@@ -108,6 +120,8 @@ export interface Truck {
   waitFor: number | null;
   /** Seconds left of a deadlock pass (ignores the traffic). */
   pass: number;
+  /** Junction cell it already halted for at a STOP sign (-1 = none). */
+  stopDone: number;
   cargo: Partial<Record<Item, number>>;
   /** Stop the cargo was loaded at (for the distance pay). */
   from: number | null;
@@ -214,7 +228,7 @@ export interface Lane {
  * after; its control point is where the two offset lanes meet — so a right
  * turn is tight and a left turn wide). A U-turn swings round the cell.
  */
-export function buildLane(path: Cell[]): Lane {
+export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => boolean): Lane {
   const xs: number[] = [];
   const zs: number[] = [];
   const push = (x: number, z: number) => {
@@ -240,6 +254,25 @@ export function buildLane(path: Cell[]): Lane {
       const [cx, cz] = path[i];
       const din = dir(i - 1), dout = dir(i);
       const rin = right(din), rout = right(dout);
+      if (roundabout?.(cx, cz)) {
+        // Round the island counter-clockwise (as seen from above: the angle
+        // atan2(z, x) DEcreases), easing in from / out to the lane.
+        const ex = cx - din[0] * 0.5 + rin[0], ez = cz - din[1] * 0.5 + rin[1];
+        const xx = cx + dout[0] * 0.5 + rout[0], xz = cz + dout[1] * 0.5 + rout[1];
+        const a0 = Math.atan2(ez - cz, ex - cx), a1 = Math.atan2(xz - cz, xx - cx);
+        let sweep = a0 - a1;
+        while (sweep <= 0.2) sweep += Math.PI * 2;
+        const r0 = Math.hypot(ex - cx, ez - cz);
+        const N = Math.max(8, Math.ceil(sweep / 0.2));
+        for (let k = 0; k <= N; k++) {
+          const f = k / N;
+          const a = a0 - sweep * f;
+          const ease = Math.min(1, f / 0.22, (1 - f) / 0.22);
+          const r = r0 + (ROUNDABOUT_R - r0) * Math.sin((ease * Math.PI) / 2);
+          push(cx + Math.cos(a) * r, cz + Math.sin(a) * r);
+        }
+        continue;
+      }
       if (din[0] === dout[0] && din[1] === dout[1]) continue; // straight on
       if (din[0] === -dout[0] && din[1] === -dout[1]) {
         // U-turn (dead end): swing round the far side of the cell.
@@ -315,6 +348,8 @@ export class TransportSim {
   private nextLine = 1;
   private nextTruck = 1;
   private routeCache = new Map<string, Cell[] | null>();
+  /** Game seconds since the start (drives the traffic lights). */
+  clock = 0;
   /** Junction cell → the truck that reserved it. */
   private reserved = new Map<number, number>();
   /** 1 = junction cell (cached per map version). */
@@ -413,6 +448,7 @@ export class TransportSim {
       if (this.payments[i].age > 3) this.payments.splice(i, 1);
     }
     if (dt <= 0) return;
+    this.clock += dt;
     this.syncFleet();
     const byId = new Map((map.stations ?? []).map((s) => [s.id, s]));
     const noRoute = new Set<number>();
@@ -437,7 +473,7 @@ export class TransportSim {
         const next = (t.target + 1) % line.stops.length;
         // Pulling out (or out of the depot) gives way to the traffic.
         const r = this.route(map, here, byId.get(line.stops[next]) ?? null);
-        if (r && r.length && this.startBlocked(t, buildLane(r), poses)) {
+        if (r && r.length && this.startBlocked(t, this.laneOf(r, map), poses)) {
           t.timer = 0.3;
           t.blocked += 0.3;
           continue;
@@ -446,7 +482,7 @@ export class TransportSim {
         t.waitFor = null;
         this.serveStop(t, line, here, byId, map, prod, earn);
         // Head for the next stop.
-        this.setPath(t, this.route(map, here, byId.get(line.stops[next]) ?? null));
+        this.setPath(t, this.route(map, here, byId.get(line.stops[next]) ?? null), map);
         t.target = next;
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
@@ -456,7 +492,7 @@ export class TransportSim {
         t.timer -= dt;
         if (t.timer > 0) continue;
         const prevStop = byId.get(line.stops[(t.target - 1 + line.stops.length) % line.stops.length]) ?? null;
-        this.setPath(t, this.route(map, prevStop, here));
+        this.setPath(t, this.route(map, prevStop, here), map);
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
       } else if (t.lane) {
@@ -570,6 +606,9 @@ export class TransportSim {
       run.add(c);
       sOut = d;
     }
+    const ctl = this.controlWait(t, map, sIn, run, cellAt);
+    if (ctl === 'wait') return true;
+    if (ctl === 'approach') return false; // up to the line, no reservation yet
     for (const c of run) {
       const h = this.reserved.get(c);
       if (h !== undefined && h !== t.id) {
@@ -595,6 +634,65 @@ export class TransportSim {
     return false;
   }
 
+  /**
+   * Lights and signs before junction `run` (entered at lane distance sIn):
+   * 'wait' at the line, 'approach' = drive on up to the line (must not enter
+   * yet), 'go' = may enter (if the junction rules let it).
+   */
+  private controlWait(
+    t: Truck,
+    map: TerrainMap,
+    sIn: number,
+    run: Set<number>,
+    cellAt: (d: number) => number,
+  ): 'go' | 'wait' | 'approach' {
+    const n = map.size;
+    const jIn = cellAt(sIn);
+    const arm = cellAt(Math.max(0, sIn - 0.35));
+    if (jIn < 0 || arm < 0 || arm === jIn) return 'go';
+    const jx = Math.floor(jIn / n), jz = jIn % n;
+    const ax = Math.floor(arm / n), az = arm % n;
+    const atLine = sIn - t.s <= STOP_LINE;
+    const hold = (): 'wait' => {
+      t.waitFor = null;
+      return 'wait';
+    };
+    // Traffic lights: red / amber → wait at the line.
+    if (activeControl(map, jx, jz) === 'light' && lightState(this.clock, ax !== jx ? 'x' : 'z') !== 'green') {
+      return atLine ? hold() : 'approach';
+    }
+    const sign = activeControl(map, ax, az);
+    if (sign !== 'stop' && sign !== 'yield') return 'go';
+    if (!atLine) return 'approach'; // drive up to the line first
+    // STOP: a full halt at the line, once per junction.
+    if (sign === 'stop' && t.stopDone !== jIn) {
+      if (t.blocked < STOP_HOLD) return hold();
+      t.stopDone = jIn;
+    }
+    // Give way to trucks about to enter from an arm WITHOUT a sign.
+    for (const o of this.trucks) {
+      if (o === t || o.state !== 'drive' || !o.lane) continue;
+      const ol = o.lane;
+      const oc = (d: number) => {
+        const [x, z] = laneAt(ol, d);
+        const cx = Math.round(x), cz = Math.round(z);
+        return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
+      };
+      if (run.has(oc(o.s))) continue; // already in it: the reservation handles it
+      for (let d = o.s + 0.1; d <= Math.min(ol.length, o.s + YIELD_LOOK); d += 0.1) {
+        if (!run.has(oc(d))) continue;
+        const oa = oc(Math.max(0, d - 0.35));
+        const k = oa >= 0 ? activeControl(map, Math.floor(oa / n), oa % n) : null;
+        if (k !== 'stop' && k !== 'yield') {
+          this.waitOn(t, o);
+          return 'wait';
+        }
+        break;
+      }
+    }
+    return 'go';
+  }
+
   /** Later trucks in the same tick see where this one went. */
   private updatePose(t: Truck, poses: Map<number, TruckPose>): void {
     const p = this.pose(t);
@@ -602,10 +700,16 @@ export class TransportSim {
     else poses.delete(t.id);
   }
 
-  private setPath(t: Truck, path: Cell[] | null): void {
+  /** The lane along a route (round any roundabouts on it). */
+  private laneOf(path: Cell[], map: TerrainMap): Lane {
+    return buildLane(path, (x, z) => activeControl(map, x, z) === 'roundabout');
+  }
+
+  private setPath(t: Truck, path: Cell[] | null, map: TerrainMap): void {
     this.release(t);
     t.path = path;
-    t.lane = path && path.length ? buildLane(path) : null;
+    t.lane = path && path.length ? this.laneOf(path, map) : null;
+    t.stopDone = -1;
     t.s = 0;
     t.blocked = 0;
   }
@@ -748,6 +852,7 @@ export class TransportSim {
           holdUntil: 0,
           waitFor: null,
           pass: 0,
+          stopDone: -1,
           cargo: {},
           from: null,
         });

@@ -5,8 +5,7 @@ import { TerraformPlanProvider } from './sim/useTerraformPlan';
 import { PathPlanProvider } from './sim/usePathPlan';
 import { PathPlanInfo } from './ui/PathPlanInfo';
 import { GameCanvas } from './render/GameCanvas';
-import { Hud } from './ui/Hud';
-import { SidePanel } from './ui/SidePanel';
+import { GameUI } from './ui/GameUI';
 import { TerraformConfirm } from './ui/TerraformConfirm';
 import { VisualTuner } from './ui/VisualTuner';
 import { InteriorProvider, ProductionDriver } from './sim/useInterior';
@@ -26,7 +25,8 @@ import { InteriorView } from './interior/InteriorView';
  *     shown by <InteriorView>.
  *   - TransportProvider: lines and trucks (network view in the side panel's
  *     "Járatok" tab).
- * The canvas fills the viewport; the HUD, SidePanel and confirm panel overlay.
+ * The canvas fills the viewport; the GameUI (bars, tool dock, panels) and the
+ * confirm panels overlay it.
  */
 export default function App() {
   return (
@@ -39,8 +39,7 @@ export default function App() {
             <ProductionDriver />
             <TransportDriver />
             <GameCanvas />
-            <Hud />
-            <SidePanel />
+            <GameUI />
             <TerraformConfirm />
             <PathPlanInfo />
             <VisualTuner />

@@ -9,6 +9,7 @@
  */
 
 import { CellType } from './terrain';
+import type { ControlKind } from './traffic';
 
 export type ToolId =
   | 'select'
@@ -18,7 +19,11 @@ export type ToolId =
   | 'road'
   | 'rail'
   | 'station'
-  | 'truckstop';
+  | 'truckstop'
+  | 'light'
+  | 'roundabout'
+  | 'yield'
+  | 'stop';
 
 export interface ToolDef {
   id: ToolId;
@@ -47,9 +52,21 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },
   // Truck stop on an industry's side (flat price).
   truckstop: { id: 'truckstop', label: 'Kamionrakodó', cost: 300, builds: null },
+  // Traffic controls (see traffic.ts): on a junction / just before one.
+  light: { id: 'light', label: 'Lámpa', cost: 800, builds: null },
+  roundabout: { id: 'roundabout', label: 'Körforgalom', cost: 1200, builds: null },
+  yield: { id: 'yield', label: 'Elsőbbségadás', cost: 60, builds: null },
+  stop: { id: 'stop', label: 'STOP tábla', cost: 60, builds: null },
 };
+
+/** The traffic control a tool places, or null. */
+export function controlOfTool(id: ToolId): ControlKind | null {
+  return id === 'light' || id === 'roundabout' || id === 'yield' || id === 'stop' ? id : null;
+}
 
 /** Terraforming tab tools. */
 export const TERRAFORM_TOOLS: ToolId[] = ['select', 'raise', 'lower', 'bulldoze'];
 /** Infrastructure tab tools. */
 export const TRANSPORT_TOOLS: ToolId[] = ['select', 'road', 'rail', 'station', 'truckstop'];
+/** Traffic tools (in the Infrastructure tab, own group). */
+export const TRAFFIC_TOOLS: ToolId[] = ['yield', 'stop', 'light', 'roundabout'];

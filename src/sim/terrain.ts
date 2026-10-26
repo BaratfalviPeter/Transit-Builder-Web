@@ -339,6 +339,8 @@ export interface TerrainMap {
   readonly railNet?: import('./railNet').RailNet;
   /** Stations built on industry sides (see stations.ts). Undefined = none. */
   readonly stations?: readonly import('./stations').Station[];
+  /** Traffic controls (lights, roundabouts, signs) by cell index (see traffic.ts). */
+  readonly controls?: ReadonlyMap<number, import('./traffic').ControlKind>;
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.

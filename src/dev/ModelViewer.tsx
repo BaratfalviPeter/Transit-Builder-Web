@@ -32,7 +32,7 @@ import { TruckPreview } from '../render/TruckModel';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
-import '../ui/sidePanel.css';
+import '../ui/gameUI.css';
 import './modelViewer.css';
 
 type V3 = [number, number, number];

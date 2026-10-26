@@ -33,6 +33,7 @@ import { PerfProbe } from '../dev/perf';
 import { FrameLimiter, useQuality } from './quality';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
+import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { usePointerBuild } from './usePointerBuild';
@@ -41,6 +42,8 @@ import { PathPreview } from './PathPreview';
 import {
   CellType,
   canStartRoute,
+  controlOfTool,
+  controlProblem,
   industryAnchorOf,
   INTERIORS_ENABLED,
   sideAt,
@@ -104,7 +107,8 @@ const MapGridM = memo(MapGrid, sameCells);
 const IndustriesM = memo(Industries, sameCells);
 const StationsM = memo(Stations, sameCells);
 const BuildingIconsM = memo(BuildingIcons, sameCells);
-const RoadsM = memo(Roads, sameCells);
+// Roads also redraw their markings when a roundabout comes or goes.
+const RoadsM = memo(Roads, (a, b) => sameCells(a, b) && a.map.controls === b.map.controls);
 const RailsM = memo(Rails, sameCells);
 const BirdsM = memo(Birds, sameCells);
 const LifeM = memo(Life, sameCells);
@@ -374,6 +378,21 @@ function Scene() {
     if (stopToolKind(activeTool) === null) setStationHover(null);
   }, [activeTool]);
 
+  // ---- Traffic tools: hover a road cell, click to place ---------------------
+  const [trafficHover, setTrafficHover] = useState<{ x: number; z: number; problem: string | null } | null>(null);
+  const trafficTarget = useCallback(
+    (wx: number, wz: number) => {
+      const kind = controlOfTool(game.getActiveTool());
+      const { x, z } = cellOf(wx, wz);
+      if (!kind || !terrain.inBounds(x, z)) return null;
+      return { x, z, problem: controlProblem(terrain.getMap(), x, z, kind) };
+    },
+    [game, terrain, cellOf],
+  );
+  useEffect(() => {
+    if (controlOfTool(activeTool) === null) setTrafficHover(null);
+  }, [activeTool]);
+
   // ---- Two-click (Point A → Point B) road/rail planner -------------------
   //   idle          --click valid cell-->  selecting_end (A = startNode)
   //   selecting_end --hover-->             A* preview (green / red hologram)
@@ -385,9 +404,14 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
+        if (controlOfTool(game.getActiveTool()) !== null) {
+          const h = trafficTarget(wx, wz);
+          setTrafficHover((cur) => (cur && h && cur.x === h.x && cur.z === h.z && cur.problem === h.problem ? cur : h));
+          return;
+        }
         if (stopToolKind(game.getActiveTool()) !== null) {
           const h = stationTarget(wx, wz);
           setStationHover((cur) =>
@@ -410,6 +434,14 @@ function Scene() {
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
           if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
+        const control = controlOfTool(tool.id);
+        if (control) {
+          const h = trafficTarget(wx, wz);
+          if (!h || h.problem || !game.canAfford(tool.cost)) return;
+          if (terrain.setControl(h.x, h.z, control)) game.spend(tool.cost);
+          setTrafficHover(trafficTarget(wx, wz));
           return;
         }
         const stop = stopToolKind(tool.id);
@@ -450,7 +482,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget, cellOf, interiors, transport],
+    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, cellOf, interiors, transport],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -569,6 +601,20 @@ function Scene() {
         {/* Stations docked onto industry sides (their track is in Rails). */}
         <StationsM map={map} cellSize={cellSize} />
       </EditorPick>
+      {/* Lights, signs, roundabout islands. */}
+      <TrafficControls map={map} cellSize={cellSize} />
+      {trafficHover && controlOfTool(activeTool) && (
+        <TrafficPreview
+          map={map}
+          cellSize={cellSize}
+          x={trafficHover.x}
+          z={trafficHover.z}
+          kind={controlOfTool(activeTool)!}
+          problem={trafficHover.problem}
+          cost={TOOLS[activeTool].cost}
+          canAfford={money >= TOOLS[activeTool].cost}
+        />
+      )}
       {/* Trucks on their lines (+ the "+$" of deliveries). */}
       <Trucks map={map} cellSize={cellSize} />
       {/* Network view: grey veil, stops, metro-style lines (Járatok tab). */}

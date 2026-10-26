@@ -23,8 +23,13 @@ import {
 import { groundAtGrid } from './railGeometry';
 import './transport.css';
 
-/** Height (world) of the grey veil and the network drawn over it. */
+/** Height (world) of the grey veil over the map. */
 const VEIL_Y = 12;
+/** The network is drawn this high above the ground (cells) — on the roads,
+ *  like a highlight of them — and over the veil (no depth test). */
+const NET_LIFT = 0.12;
+/** Line width (cells, world units: it scales with the zoom like the road). */
+const LINE_WIDTH = 0.38;
 /** Gap between lines sharing a road (cells). */
 const LINE_GAP = 0.42;
 
@@ -223,7 +228,9 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
   }, [snap.draft, map, sim, stops]);
 
   const y = VEIL_Y;
-  const toV = (pts: Array<[number, number]>, dy = 0) => pts.map(([x, z]) => new THREE.Vector3(W(x), y + dy, W(z)));
+  /** World height of the network at grid point (x, z): just above the road. */
+  const netY = (x: number, z: number, dy = 0) => (groundAtGrid(map, x, z) + NET_LIFT + dy) * cellSize;
+  const toV = (pts: Array<[number, number]>, dy = 0) => pts.map(([x, z]) => new THREE.Vector3(W(x), netY(x, z, dy), W(z)));
 
   return (
     <group>
@@ -237,16 +244,16 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {snap.lines.map((l) => {
         const pts = drawn.get(l.id);
         if (!pts || pts.length < 2) return null;
-        return <DreiLine key={l.id} points={toV(pts, 0.05)} color={l.color} lineWidth={7} depthTest={false} renderOrder={10} />;
+        return <DreiLine key={l.id} points={toV(pts)} color={l.color} lineWidth={LINE_WIDTH * cellSize} worldUnits depthTest={false} renderOrder={10} />;
       })}
-      {draftPts && <DreiLine points={toV(draftPts, 0.08)} color="#ffffff" lineWidth={5} dashed dashSize={0.8} gapSize={0.5} depthTest={false} renderOrder={11} />}
+      {draftPts && <DreiLine points={toV(draftPts, 0.02)} color="#ffffff" lineWidth={LINE_WIDTH * 0.7 * cellSize} worldUnits dashed dashSize={0.8} gapSize={0.5} depthTest={false} renderOrder={11} />}
       {/* Stops */}
       {stops.map((s) => {
         const truck = stopKind(s) === 'truck';
         const [cx, cz] = stopCenter(s);
         const picked = snap.draft?.includes(s.id);
         return (
-          <group key={s.id} position={[W(cx), y + 0.1, W(cz)]}>
+          <group key={s.id} position={[W(cx), netY(cx, cz, 0.04), W(cz)]}>
             <mesh
               rotation={[-Math.PI / 2, 0, 0]}
               renderOrder={12}
@@ -255,7 +262,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
                 if (truck && snap.draft) sim.addDraftStop(s.id);
               }}
             >
-              <circleGeometry args={[1.6 * cellSize, 24]} />
+              <circleGeometry args={[1.1 * cellSize, 24]} />
               <meshBasicMaterial color={picked ? '#ffffff' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={truck ? 1 : 0.5} />
             </mesh>
             <Html center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
@@ -282,7 +289,7 @@ function NetTrucks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
       const m = refs.current.get(t.id);
       const p = sim.pose(t, map);
       if (!m || !p) continue;
-      m.position.set((p.x - half) * cellSize, VEIL_Y + 0.15, (p.z - half) * cellSize);
+      m.position.set((p.x - half) * cellSize, (groundAtGrid(map, p.x, p.z) + NET_LIFT + 0.06) * cellSize, (p.z - half) * cellSize);
     }
   });
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
@@ -298,7 +305,7 @@ function NetTrucks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
           rotation={[-Math.PI / 2, 0, 0]}
           renderOrder={13}
         >
-          <circleGeometry args={[0.7 * cellSize, 16]} />
+          <circleGeometry args={[0.32 * cellSize, 16]} />
           <meshBasicMaterial color={colors.get(t.lineId) ?? '#888'} depthTest={false} />
         </mesh>
       ))}

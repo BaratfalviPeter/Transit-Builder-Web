@@ -46,7 +46,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   szalag 1,5 mező/s), később visszajön.
 - Járatok (`transport.ts`): teherautó $1500, 20 egység, sebesség 3. Fizetés:
   egység × érték × (1 + táv/25). Hálózati nézet metrótérkép-stílusban
-  (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak).
+  (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
+  megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
+  fölött látszanak), világegységben 0,38 cella szélesen.
+- Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
+  (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
@@ -65,6 +69,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Headless böngésző: Playwright (`require('playwright')`), indítás ezzel:
   `--use-gl=angle --use-angle=swiftshader --ignore-gpu-blocklist`
   - Képernyőképeket a scratchpadba ments, és nézd meg őket.
+  - Tesztjárathoz ideiglenesen `window.__tb`-be tehető a terrain/transport store egy
+    `App.tsx`-be rakott hookkal (utána `git checkout src/App.tsx`). Úthoz:
+    `findTrackPath(map, a, b, CellType.Road)` + `terrain.buildPath(path)`.
+  - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
@@ -75,7 +83,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #65–#71 (dev fül és modellszerkesztő, modellnéző, olajfúró, állomások,
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
-- Folyamatban: belső nézet kikapcsolva, fix termelés. **A felhasználó prioritása: a
+- Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
+- Folyamatban: járatnézet az út szintjén, vízemelés javítás. **A felhasználó prioritása: a
   szállítás legyen jó** (kamionok, vonatok, járatok).
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)

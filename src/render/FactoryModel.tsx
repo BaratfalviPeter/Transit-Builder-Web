@@ -16,8 +16,8 @@
  *   - front-right: a small slewing jib crane, a parked truck;
  *   - yellow safety railings along the yard edges.
  *
- * Performance: shared module materials, one warm pointLight per factory (no
- * shadow), crates/sparks reuse the unit box. Animations (useFrame): conveyor
+ * Performance: shared module materials, no lights (the furnaces glow through
+ * emissive materials), crates/sparks reuse the unit box. Animations (useFrame): conveyor
  * crates, furnace flicker, sparks, smoke, forklift, jib crane.
  */
 
@@ -240,7 +240,6 @@ function Hall() {
 // --- Furnaces + sparks ----------------------------------------------------------------------
 
 function Furnaces({ phase }: { phase: number }) {
-  const light = useRef<THREE.PointLight>(null);
   const glows = useRef<Array<THREE.Mesh | null>>([]);
   const sparks = useRef<Array<THREE.Mesh | null>>([]);
   const seeds = useMemo(
@@ -257,8 +256,6 @@ function Furnaces({ phase }: { phase: number }) {
   );
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
-    const flick = 0.85 + 0.1 * Math.sin(t * 13) + 0.08 * Math.sin(t * 7.3 + 1.1);
-    if (light.current) light.current.intensity = 2.2 * flick;
     glows.current.forEach((g, i) => {
       if (g) g.scale.y = FURN_H * 0.62 * (0.92 + 0.08 * Math.sin(t * 9 + i * 2));
     });
@@ -298,15 +295,6 @@ function Furnaces({ phase }: { phase: number }) {
           <Box p={[0, 0.045, 0.06]} s={[FURN_W * 0.9, 0.03, 0.02]} m={M.glow} />
         </group>
       ))}
-      {/* One flickering warm light between the two furnaces (no shadow) */}
-      <pointLight
-        ref={light}
-        position={[(FURNACES[0] + FURNACES[1]) / 2, 0.35, z + 0.3]}
-        color="#ff8a3a"
-        intensity={2.2}
-        distance={2.6}
-        decay={1.5}
-      />
       {seeds.map((_, i) => (
         <mesh
           key={i}

@@ -18,6 +18,7 @@ import {
   useDev,
   type GizmoMode,
 } from '../dev/modelEditorStore';
+import { usePerf } from '../dev/perf';
 import './devTab.css';
 
 const MODES: Array<{ id: GizmoMode; label: string; key: string }> = [
@@ -32,6 +33,7 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
   const dev = useDev();
   const info = dev.chain[dev.index];
   const inViewer = new URLSearchParams(window.location.search).has('model');
+  const perf = usePerf();
 
   const toggleEditor = () => {
     const on = !dev.editorOn;
@@ -50,6 +52,19 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
 
   return (
     <>
+      {!inViewer && (
+        <div className="dev__perf" title="A térkép nézet mérései (félmásodpercenként)">
+          <span>
+            <b>{perf.fps}</b> FPS
+          </span>
+          <span>
+            <b>{perf.calls}</b> rajzolás
+          </span>
+          <span>
+            <b>{Math.round(perf.triangles / 1000)}k</b> háromszög
+          </span>
+        </div>
+      )}
       <button
         type="button"
         className={'panel__tool' + (dev.visualOpen ? ' is-active' : '')}

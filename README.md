@@ -45,6 +45,22 @@ public/
   models/   # ide kerülnek a .obj/.glb modellek (lásd models/README.md)
 ```
 
+### Teljesítmény
+
+- **Statikus összevonás** (`src/render/StaticBatch.tsx`): az ipari modellek és
+  a megállók sok száz kis hálóból állnak. Betöltés után kb. 1,2 mp-ig figyeli
+  őket, majd anyagonként összevonja a hálókat — hierarchikusan: minden háló a
+  legfelső olyan ősébe kerül, amihez képest nem mozdul (a statikus részek a
+  modell gyökerébe, egy daru darabjai a daru mozgó csoportjába). Az eredetiek
+  egy nem renderelt rétegre kerülnek, és félmásodpercenként ellenőrzi őket:
+  ami mégis megmozdul / eltűnik, azt visszaveszi. A modellszerkesztő alatt
+  ki van kapcsolva. Eredmény egy átlagos térképen: **~5000 → ~920** rajzolási
+  hívás képkockánként.
+- **Nincs pontfény a modellekben:** a izzó részek emisszív anyaggal
+  világítanak (minden fény a teljes jelenet minden pixelén fizetendő).
+- **Füst:** egy füstoszlop egyetlen instancolt háló.
+- **Dev fül:** FPS / rajzolási hívás / háromszög kijelzés (`src/dev/perf.tsx`).
+
 ### Teljesítmény-elv
 
 A sok mozgó jármű **nem** React re-renderen keresztül fog frissülni, hanem a

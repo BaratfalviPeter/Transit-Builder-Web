@@ -20,7 +20,7 @@
  *
  * Performance: every log of every stack is ONE InstancedMesh (bark side + cut
  * ends via a material array), planks/offcuts another; shared module materials;
- * only the warm saw-bay pointLight (no shadow). Animations (useFrame): saw
+ * no lights (glow is emissive). Animations (useFrame): saw
  * blade, conveyor logs, sawdust, crane cycle (slew + trolley + hoist + claws),
  * chimney smoke. `phase` desyncs multiple mills.
  */
@@ -135,8 +135,6 @@ export function LumberMillModel({
       <SawdustPile />
       <CartTrack />
       <Trucks />
-      {/* Warm light in the open saw bay */}
-      <pointLight position={[0.1, 0.4, -0.25]} color="#ffb766" intensity={1.6} distance={3} decay={1.5} />
     </group>
   );
 }

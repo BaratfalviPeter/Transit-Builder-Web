@@ -29,6 +29,7 @@ import { Roads } from './Roads';
 import { Rails } from './Rails';
 import { Industries } from './Industries';
 import { EditorGizmo, EditorPick } from '../dev/ModelEditor';
+import { PerfProbe } from '../dev/perf';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
 import { BuildingIcons } from './BuildingIcons';
@@ -525,6 +526,7 @@ function Scene() {
     <>
       <CameraRig />
       <GameClock />
+      <PerfProbe />
       <ShadowController mapSig={mapSig} live={liveShadows} sunSig={sunSig} />
 
       {/* Lighting — warm "diorama" look: soft warm ambient, a cool sky / green

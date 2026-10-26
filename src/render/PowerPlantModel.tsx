@@ -15,7 +15,7 @@
  *   - piping (straight runs + 90° torus elbows) with yellow/red valves,
  *   - a coal yard feeding the boiler house via a conveyor,
  *   - transformers, crates, barrels and yellow railings,
- *   - a glowing energy cell on the roof with a pointLight.
+ *   - a glowing energy cell on the roof (emissive, no light source).
  *
  * Animations (useFrame): rising steam from both towers and the chimney (plus a
  * little dark smoke from the boiler stack), coal chunks travelling up the
@@ -24,8 +24,8 @@
  * plants on the map don't animate in lockstep.
  *
  * Performance: static parts share module-level materials and one unit box
- * geometry; only the large parts cast shadows; the point light does not cast
- * shadows (point shadows render the scene 6× per light).
+ * geometry; only the large parts cast shadows; no light sources (every extra
+ * light is paid on every pixel of the whole scene).
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -99,8 +99,6 @@ Object.values(M).forEach((m) => patchCloudShadows(m));
 const TOWER_A: [number, number] = [-0.97, -0.38];
 const TOWER_B: [number, number] = [-0.2, -0.97];
 
-/** Base point-light intensity of the energy cell (pulses around this). */
-const CELL_LIGHT = 8;
 
 /** A box from the shared unit geometry, positioned/scaled in lot units. */
 export function Box({
@@ -250,7 +248,6 @@ function MainHall({ phase }: { phase: number }) {
 function EnergyCell({ phase }: { phase: number }) {
   const core = useRef<THREE.Mesh>(null);
   const halo = useRef<THREE.Mesh>(null);
-  const light = useRef<THREE.PointLight>(null);
   const sparks = useRef<THREE.Group>(null);
 
   // Per-instance (animated) materials.
@@ -283,7 +280,6 @@ function EnergyCell({ phase }: { phase: number }) {
     core.current?.scale.setScalar(1 + s * 0.12);
     halo.current?.scale.setScalar(1 + s * 0.18);
     haloMat.opacity = 0.18 + (s * 0.5 + 0.5) * 0.15;
-    if (light.current) light.current.intensity = CELL_LIGHT * (1 + s * 0.25);
     if (sparks.current) sparks.current.rotation.y = t * 1.5;
   });
 
@@ -313,15 +309,6 @@ function EnergyCell({ phase }: { phase: number }) {
       <Box p={[0, 0.42, 0.19]} s={[0.4, 0.025, 0.025]} m={M.frame} />
       <Box p={[-0.19, 0.42, 0]} s={[0.025, 0.025, 0.4]} m={M.frame} />
       <Box p={[0.19, 0.42, 0]} s={[0.025, 0.025, 0.4]} m={M.frame} />
-      {/* Active light at the core. distance/decay are in world units. */}
-      <pointLight
-        ref={light}
-        position={[0, 0.22, 0]}
-        color="#ffaa00"
-        intensity={CELL_LIGHT}
-        distance={7}
-        decay={2}
-      />
       {/* Orbiting sparks */}
       <group ref={sparks} position={[0, 0.22, 0]}>
         {[0, 1, 2, 3, 4].map((i) => {
@@ -689,9 +676,17 @@ export function Steam({
   phase: number;
   color?: string;
 }) {
-  const refs = useRef<Array<THREE.Mesh | null>>([]);
-
-  // One material per puff so each can fade independently.
+  // One instanced mesh per plume (one draw call): the puffs share a
+  // material, so instead of fading out they swell and then shrink away.
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const mat = useMemo(
+    () =>
+      patchCloudShadows(
+        new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7, roughness: 1, depthWrite: false, flatShading: true }),
+      ),
+    [color],
+  );
+  useEffect(() => () => mat.dispose(), [mat]);
   const puffs = useMemo(
     () =>
       Array.from({ length: count }).map((_, i) => ({
@@ -700,47 +695,33 @@ export function Steam({
         dirX: Math.sin(i * 2.4) * spread,
         dirZ: Math.cos(i * 1.9) * spread,
         spin: 0.4 + (i % 2) * 0.5,
-        mat: new THREE.MeshStandardMaterial({
-          color,
-          transparent: true,
-          opacity: 0,
-          roughness: 1,
-          depthWrite: false,
-          flatShading: true,
-        }),
       })),
-    [count, spread, color],
+    [count, spread],
   );
-  useEffect(() => () => puffs.forEach((p) => p.mat.dispose()), [puffs]);
+  const tmp = useMemo(() => new THREE.Object3D(), []);
 
   useFrame((state) => {
+    const mesh = ref.current;
+    if (!mesh) return;
     const t = state.clock.getElapsedTime() + phase;
     for (let i = 0; i < puffs.length; i++) {
-      const m = refs.current[i];
-      if (!m) continue;
       const p = puffs[i];
       const k = (p.offset + t * p.speed) % 1; // 0..1 lifetime
-      m.position.set(p.dirX * k, k * rise, p.dirZ * k);
-      m.scale.setScalar(size * (0.6 + k * 1.1));
-      m.rotation.set(t * p.spin, t * p.spin * 0.7, 0);
-      // Fade in quickly, fade out toward the top.
-      p.mat.opacity = Math.sin(k * Math.PI) * 0.85;
+      tmp.position.set(p.dirX * k, k * rise, p.dirZ * k);
+      // Grow while rising, vanish at both ends of the life.
+      tmp.scale.setScalar(size * (0.6 + k * 1.1) * Math.sin(k * Math.PI));
+      tmp.rotation.set(t * p.spin, t * p.spin * 0.7, 0);
+      tmp.updateMatrix();
+      mesh.setMatrixAt(i, tmp.matrix);
     }
+    mesh.instanceMatrix.needsUpdate = true;
   });
 
   return (
     <group position={origin}>
-      {puffs.map((p, i) => (
-        <mesh
-          key={i}
-          ref={(el) => {
-            refs.current[i] = el;
-          }}
-          material={p.mat}
-        >
-          {i % 2 === 0 ? <icosahedronGeometry args={[1, 0]} /> : <boxGeometry args={[1, 1, 1]} />}
-        </mesh>
-      ))}
+      <instancedMesh ref={ref} args={[undefined, mat, count]} frustumCulled={false}>
+        <icosahedronGeometry args={[1, 0]} />
+      </instancedMesh>
     </group>
   );
 }

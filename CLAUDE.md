@@ -55,11 +55,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
   (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
   Terhelési teszt: hub + 10 járat, ütközés ≈ 0 (1–2 kamion/járat).
+  Mozgás: `t.v` sebesség, ACCEL 2,4 / DECEL 4,5; `brakeCap` (kanyar: `bendLimit`, √(A_LAT·r),
+  és megállási pont), `trafficCap` (elöl haladó kamion, kereszteződés: várakozásnál a
+  vonalig fékez, szabadon JUNCTION_SPEED). Kereszteződési várakozásnál a vonalig fékez
+  (`toJunctionLine`), nem helyben áll meg. Megállóból a parkoló helyéről indul (`startS`),
+  a `startBlocked` a mögötte érkezőket is nézi.
 - Forgalomirányítás (`traffic.ts`): `map.controls` (cellaindex → light | roundabout | yield |
   stop), olvasáskor validálva (`activeControl`). Lámpa/körforgalom kereszteződésre, tábla a
   kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
   a vonalig gurul, NEM foglal); körforgalom a `buildLane`-ben (R 0,3, óramutatóval
   ellentétes). Lámpaciklus a `TransportSim.clock`-ból. Eszközök: `TRAFFIC_TOOLS`.
+- Kamera (`CameraRig.tsx`): WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
+  kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
+  a forgatás/zoom sebességét is szorozza.
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–8 eszközök, Szóköz, T,
   J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
@@ -76,8 +84,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Egyirányú behajtó: be lx 0 (`depotEntrance`), ki lx 5 (`depotExit`); a `roadRoute`
   `oneWay` módban nem lép visszafelé rajta. Kamion: `state 'depot'`, `DepotVisit`
   fázisok wait → in → back → load → out; betolatás = a `bayPath` sávon visszafelé
-  (sP → sDock). Udvarzár (`yardHolder`): egyszerre egy manőverező; a stopvonalnál
-  (`gateHold`, kereszteződés ELŐTT) foglal. `zones`: átmenő forgalom kerüli a
+  (sP → sDock). Udvar: `yard` (manőverezők: in/out + állás); egyszerre kettő is, ha az
+  állásaik ≥ BAY_APART (3) távolságra vannak és a behajtó a bejárathoz közelebbi állásra
+  megy (`yardFits`). A stopvonalnál (`gateHold`, kereszteződés ELŐTT) állást foglal:
+  `pickBay` = a legtávolabbi illeszkedő szabad állás. `zones`: átmenő forgalom kerüli a
   betolatási zónát. Átrakás / forrás: `serveStop`, `ProductionSim.store/originOf`.
   Tesztek: scratchpad `depot.ts` (hub-szimuláció; a teszt utakat a behajtó zárásával
   építi, különben azon vezetne át).
@@ -113,6 +123,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
   StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot).
+- Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
+  stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
 
 ## Állapot (2026-10-26)
@@ -122,8 +134,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
 - Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
 - Mergelve: #75 (forgalomirányítás + új UI és gyorsbillentyűk).
-- Nyitva: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
-  Következő: a vonatok (járatok, mozgás a sínen, a raktár vasúti oldala).
+- Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
+- Folyamatban: hibajavítások (gyorsabb, párhuzamos raktári beállás, fokozatos fékezés,
+  kanyarlassítás, kamera-érzékenység). Utána: a vonatok.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

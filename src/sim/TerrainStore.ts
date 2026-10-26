@@ -332,10 +332,20 @@ export class TerrainStore {
     let changed = false;
     let typeChanged = false;
 
+    // Water cells that a raise FILLS: they become land level with the shore
+    // (height 0) instead of climbing a step above it.
+    const filled = new Set<string>();
+
     // 1) Apply all height deltas first (so adjacency/water sees final heights).
     for (const { x, z, delta } of edits) {
       if (!this.canTerraform(x, z)) continue;
       const cur = heights[x][z];
+      if (delta > 0 && cells[x][z] === CellType.Water) {
+        heights[x][z] = Math.max(0, cur);
+        filled.add(`${x},${z}`);
+        changed = true;
+        continue;
+      }
       const next = clamp(cur + delta, MIN_HEIGHT, MAX_HEIGHT);
       if (next === cur) continue;
       heights[x][z] = next;
@@ -348,7 +358,9 @@ export class TerrainStore {
       if (!this.inBounds(x, z)) continue;
       const h = heights[x][z];
       const before = cells[x][z];
-      if (h < 0) {
+      if (filled.has(`${x},${z}`)) {
+        cells[x][z] = CellType.Empty;
+      } else if (h < 0) {
         cells[x][z] = CellType.Water;
       } else if (h === 0 && this.adjacentToWaterIn(cells, x, z)) {
         cells[x][z] = CellType.Water;

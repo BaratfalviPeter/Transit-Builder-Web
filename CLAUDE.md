@@ -46,7 +46,16 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   szalag 1,5 mező/s), később visszajön.
 - Járatok (`transport.ts`): teherautó $1500, 20 egység, sebesség 3. Fizetés:
   egység × érték × (1 + táv/25). Hálózati nézet metrótérkép-stílusban
-  (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak).
+  (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
+  megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
+  fölött látszanak), világegységben 0,38 cella szélesen.
+- Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer`, origó a nyeregnél, 5 háló /
+  kamion), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
+  pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
+  (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
+  Terhelési teszt: hub + 10 járat, ütközés ≈ 0 (1–2 kamion/járat).
+- Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
+  (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
@@ -59,12 +68,18 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
     localStorage-ban tárolódik.
 
 ## Tesztelés a felhős gépen
-- `npx tsc --noEmit -p .` és `npm run build`
+- `npx tsc --noEmit -p tsconfig.app.json` és `npm run build` (a `-p .` NEM ellenőriz semmit: a gyökér tsconfig csak hivatkozás)
 - Dev szerver: `npx vite --port 5173` a háttérben. Leállítás: `pkill -f "[v]ite --port 5173"`
   (a szögletes zárójel kell, különben a saját shellt is kilövi).
 - Headless böngésző: Playwright (`require('playwright')`), indítás ezzel:
   `--use-gl=angle --use-angle=swiftshader --ignore-gpu-blocklist`
   - Képernyőképeket a scratchpadba ments, és nézd meg őket.
+  - Tesztjárathoz ideiglenesen `window.__tb`-be tehető a terrain/transport store egy
+    `App.tsx`-be rakott hookkal (utána `git checkout src/App.tsx`). Úthoz:
+    `findTrackPath(map, a, b, CellType.Road)` + `terrain.buildPath(path)`.
+  - Közeli képhez a kamerát egy ideiglenes `useThree`-s komponenssel lehet `window`-ra tenni
+    a `GameCanvas`-ban (utána visszaállítani). Játékidő: `game.setSpeed(0|1|3)`.
+  - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
@@ -75,7 +90,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #65–#71 (dev fül és modellszerkesztő, modellnéző, olajfúró, állomások,
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
-- Folyamatban: belső nézet kikapcsolva, fix termelés. **A felhasználó prioritása: a
+- Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
+- Nyitva: #74 (járatnézet az út szintjén, vízemelés, új csuklós kamion + KRESZ). **A felhasználó prioritása: a
   szállítás legyen jó** (kamionok, vonatok, járatok).
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)

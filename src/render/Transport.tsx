@@ -15,61 +15,59 @@ import {
   INDUSTRY_NAME,
   stopCenter,
   stopKind,
+  TRAILER_AXLE,
+  TRUCK_HITCH,
   useTransport,
   useTransportSnapshot,
   type Line,
   type TerrainMap,
 } from '../sim';
 import { groundAtGrid } from './railGeometry';
+import { Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
 import './transport.css';
 
-/** Height (world) of the grey veil and the network drawn over it. */
+/** Height (world) of the grey veil over the map. */
 const VEIL_Y = 12;
+/** The network is drawn this high above the ground (cells) — on the roads,
+ *  like a highlight of them — and over the veil (no depth test). */
+const NET_LIFT = 0.12;
+/** Line width (cells, world units: it scales with the zoom like the road). */
+const LINE_WIDTH = 0.38;
 /** Gap between lines sharing a road (cells). */
 const LINE_GAP = 0.42;
 
 type Cell = [number, number];
+/** Top of the road coat above the ground (cells): the trucks drive on it. */
+const ROAD_TOP = 0.026;
 
 // ---------------------------------------------------------------- trucks
 
-const TRUCK = {
-  trailer: new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.8 }),
-  dark: new THREE.MeshStandardMaterial({ color: '#2a2c30', roughness: 0.9 }),
-  glass: new THREE.MeshStandardMaterial({ color: '#2d3a46', roughness: 0.3 }),
-};
-const BOX = new THREE.BoxGeometry(1, 1, 1);
-
-function TruckModel({ color }: { color: string }) {
-  const cab = useMemo(() => new THREE.MeshStandardMaterial({ color, roughness: 0.7 }), [color]);
-  return (
-    <group>
-      {/* Facing +X: cab in front, trailer behind (cell units) */}
-      <mesh geometry={BOX} material={cab} position={[0.24, 0.13, 0]} scale={[0.16, 0.18, 0.24]} castShadow />
-      <mesh geometry={BOX} material={TRUCK.glass} position={[0.32, 0.16, 0]} scale={[0.01, 0.08, 0.2]} />
-      <mesh geometry={BOX} material={TRUCK.trailer} position={[-0.08, 0.15, 0]} scale={[0.46, 0.2, 0.26]} castShadow />
-      <mesh geometry={BOX} material={cab} position={[-0.08, 0.255, 0]} scale={[0.46, 0.012, 0.262]} />
-      <mesh geometry={BOX} material={TRUCK.dark} position={[0.03, 0.04, 0]} scale={[0.6, 0.06, 0.22]} />
-    </group>
-  );
-}
-
-/** One truck, placed every frame from the simulation. */
-function TruckView({ id, color, map, cellSize }: { id: number; color: string; map: TerrainMap; cellSize: number }) {
+/** One articulated truck, placed every frame from the simulation. */
+function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckColors; map: TerrainMap; cellSize: number }) {
   const sim = useTransport();
-  const ref = useRef<THREE.Group>(null);
+  const root = useRef<THREE.Group>(null);
+  const tractor = useRef<THREE.Group>(null);
+  const trailer = useRef<THREE.Group>(null);
   const half = (map.size - 1) / 2;
   useFrame(() => {
-    const g = ref.current;
+    const g = root.current, tr = tractor.current, tl = trailer.current;
     const t = sim.allTrucks().find((q) => q.id === id);
-    if (!g || !t) return;
-    const p = sim.pose(t, map);
+    if (!g || !tr || !tl || !t) return;
+    const p = sim.pose(t);
+    g.visible = !!p; // in the depot: not on the map yet
     if (!p) return;
-    g.position.set((p.x - half) * cellSize, (groundAtGrid(map, p.x, p.z) + 0.02) * cellSize, (p.z - half) * cellSize);
-    g.rotation.y = p.yaw;
+    const ground = (x: number, z: number) => groundAtGrid(map, x, z) + ROAD_TOP;
+    const gh = ground(p.x, p.z);
+    const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
+    // Both parts pivot at the fifth wheel; they pitch with the ground.
+    g.position.set((p.x - half) * cellSize, gh * cellSize, (p.z - half) * cellSize);
+    tr.rotation.set(0, p.yaw, Math.atan2(ground(p.front[0], p.front[1]) - gh, TRUCK_HITCH));
+    tl.rotation.set(0, p.trailerYaw, Math.atan2(gh - ground(ax, az), TRAILER_AXLE));
   });
   return (
-    <group ref={ref} scale={cellSize}>
-      <TruckModel color={color} />
+    <group ref={root} scale={cellSize} visible={false}>
+      <Tractor ref={tractor} colors={colors} />
+      <Trailer ref={trailer} colors={colors} />
     </group>
   );
 }
@@ -81,7 +79,7 @@ export function Trucks({ map, cellSize }: { map: TerrainMap; cellSize: number })
   return (
     <group>
       {sim.allTrucks().map((t) => (
-        <TruckView key={t.id} id={t.id} color={colors.get(t.lineId) ?? '#888'} map={map} cellSize={cellSize} />
+        <TruckView key={t.id} id={t.id} colors={{ ...truckColors(t.id), stripe: colors.get(t.lineId) ?? '#888' }} map={map} cellSize={cellSize} />
       ))}
       <Payments map={map} cellSize={cellSize} />
     </group>
@@ -223,7 +221,9 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
   }, [snap.draft, map, sim, stops]);
 
   const y = VEIL_Y;
-  const toV = (pts: Array<[number, number]>, dy = 0) => pts.map(([x, z]) => new THREE.Vector3(W(x), y + dy, W(z)));
+  /** World height of the network at grid point (x, z): just above the road. */
+  const netY = (x: number, z: number, dy = 0) => (groundAtGrid(map, x, z) + NET_LIFT + dy) * cellSize;
+  const toV = (pts: Array<[number, number]>, dy = 0) => pts.map(([x, z]) => new THREE.Vector3(W(x), netY(x, z, dy), W(z)));
 
   return (
     <group>
@@ -237,16 +237,16 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {snap.lines.map((l) => {
         const pts = drawn.get(l.id);
         if (!pts || pts.length < 2) return null;
-        return <DreiLine key={l.id} points={toV(pts, 0.05)} color={l.color} lineWidth={7} depthTest={false} renderOrder={10} />;
+        return <DreiLine key={l.id} points={toV(pts)} color={l.color} lineWidth={LINE_WIDTH * cellSize} worldUnits depthTest={false} renderOrder={10} />;
       })}
-      {draftPts && <DreiLine points={toV(draftPts, 0.08)} color="#ffffff" lineWidth={5} dashed dashSize={0.8} gapSize={0.5} depthTest={false} renderOrder={11} />}
+      {draftPts && <DreiLine points={toV(draftPts, 0.02)} color="#ffffff" lineWidth={LINE_WIDTH * 0.7 * cellSize} worldUnits dashed dashSize={0.8} gapSize={0.5} depthTest={false} renderOrder={11} />}
       {/* Stops */}
       {stops.map((s) => {
         const truck = stopKind(s) === 'truck';
         const [cx, cz] = stopCenter(s);
         const picked = snap.draft?.includes(s.id);
         return (
-          <group key={s.id} position={[W(cx), y + 0.1, W(cz)]}>
+          <group key={s.id} position={[W(cx), netY(cx, cz, 0.04), W(cz)]}>
             <mesh
               rotation={[-Math.PI / 2, 0, 0]}
               renderOrder={12}
@@ -255,7 +255,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
                 if (truck && snap.draft) sim.addDraftStop(s.id);
               }}
             >
-              <circleGeometry args={[1.6 * cellSize, 24]} />
+              <circleGeometry args={[1.1 * cellSize, 24]} />
               <meshBasicMaterial color={picked ? '#ffffff' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={truck ? 1 : 0.5} />
             </mesh>
             <Html center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
@@ -280,9 +280,10 @@ function NetTrucks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   useFrame(() => {
     for (const t of sim.allTrucks()) {
       const m = refs.current.get(t.id);
-      const p = sim.pose(t, map);
+      const p = sim.pose(t);
+      if (m) m.visible = !!p;
       if (!m || !p) continue;
-      m.position.set((p.x - half) * cellSize, VEIL_Y + 0.15, (p.z - half) * cellSize);
+      m.position.set((p.x - half) * cellSize, (groundAtGrid(map, p.x, p.z) + NET_LIFT + 0.06) * cellSize, (p.z - half) * cellSize);
     }
   });
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
@@ -298,7 +299,7 @@ function NetTrucks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
           rotation={[-Math.PI / 2, 0, 0]}
           renderOrder={13}
         >
-          <circleGeometry args={[0.7 * cellSize, 16]} />
+          <circleGeometry args={[0.32 * cellSize, 16]} />
           <meshBasicMaterial color={colors.get(t.lineId) ?? '#888'} depthTest={false} />
         </mesh>
       ))}

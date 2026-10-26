@@ -20,6 +20,7 @@ import {
 } from '../dev/modelEditorStore';
 import { usePerf } from '../dev/perf';
 import { QUALITY_LABEL, setQuality, useQuality, type QualityPreset } from '../render/quality';
+import { CAMERA_SENS_MAX, CAMERA_SENS_MIN, setCameraSens, useCameraSens } from '../render/cameraSettings';
 import './devTab.css';
 
 const MODES: Array<{ id: GizmoMode; label: string; key: string }> = [
@@ -36,6 +37,7 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
   const inViewer = new URLSearchParams(window.location.search).has('model');
   const perf = usePerf();
   const quality = useQuality();
+  const camSens = useCameraSens();
 
   const toggleEditor = () => {
     const on = !dev.editorOn;
@@ -64,6 +66,18 @@ export function DevTab({ onEditorOn }: { onEditorOn?: () => void }) {
           ))}
         </div>
       </div>
+      <label className="dev__quality dev__camera" title="Kamera érzékenysége: WASD mozgatás, forgatás, zoom">
+        <span>Kamera</span>
+        <input
+          type="range"
+          min={CAMERA_SENS_MIN}
+          max={CAMERA_SENS_MAX}
+          step={0.05}
+          value={camSens}
+          onChange={(e) => setCameraSens(Number(e.target.value))}
+        />
+        <b>{Math.round(camSens * 100)}%</b>
+      </label>
       {!inViewer && (
         <div className="dev__perf" title="A térkép nézet mérései (félmásodpercenként)">
           <span>

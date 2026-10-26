@@ -152,7 +152,7 @@ const turnPoint = (i: number, dir: DepotDir) => BAY_LX[i] + dir * (TURN + CLEAR)
 /** Can a truck working `dir` use bay i (its turn point must be on the lot)? */
 export function bayUsable(i: number, dir: DepotDir): boolean {
   const p = turnPoint(i, dir);
-  return p >= -0.05 && p <= DEPOT_SIZE - 0.45;
+  return p >= -0.05 && p <= DEPOT_SIZE - 0.3;
 }
 
 /** The end a truck arrives at (dir +1: lx 0) and the one it leaves by. */

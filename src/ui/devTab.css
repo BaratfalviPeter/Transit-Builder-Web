@@ -162,3 +162,21 @@
   background: rgba(96, 165, 250, 0.3);
   border-color: rgba(96, 165, 250, 0.8);
 }
+
+.dev__camera {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.dev__camera input {
+  width: 100%;
+  accent-color: #60a5fa;
+}
+
+.dev__camera b {
+  min-width: 3.2em;
+  text-align: right;
+  font-size: 12px;
+}

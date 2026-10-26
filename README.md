@@ -150,6 +150,9 @@ A jobb oldali **panel** három füle:
     kereszteződést lefoglalják, amíg a pótkocsi ki nem ér); a megállóból
     kihajtó elsőbbséget ad; egyébként jobbkéz-szabály. Valódi körbe-várakozás
     (holtpont) esetén a körből egy kamion rövid ideig áthaladhat.
+  - **Mozgás:** fokozatosan gyorsulnak és fékeznek; kanyar előtt lassítanak
+    (szűk kanyarban jobban), az elöl haladó és a kereszteződés előtt
+    időben fékeznek, várakozáskor a vonalig gurulnak.
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):
   6×6-os átrakóhely sík, üres területre (**Q**: forgatás). Két vágány
   (vonatoknak, később), csarnok, 5 rakodóállás és egy **egyirányú behajtó**
@@ -159,7 +162,9 @@ A jobb oldali **panel** három füle:
   - **Kamionok a raktárnál:** a behajtó előtt (kereszteződés előtt) várnak,
     amíg nincs szabad állás vagy más manőverezik (piros lámpa); aztán
     elhaladnak a szabad állás mellett, **betolatnak**, ki- és berakodnak,
-    majd a kijáraton távoznak. Egyszerre egy kamion manőverezik az udvaron.
+    majd a kijáraton távoznak. Két kamion is manőverezhet egyszerre, ha az
+    állásaik elég messze vannak (pl. az első és az utolsó): az érkező a
+    legtávolabbi szabad állásra megy, hogy a következő a közelebbire állhasson.
     A kapuk fölötti lámpák mutatják a foglalt / szabad állásokat.
   - **Átrakás és válogatás:** a raktárban azt rakják le, amit a járatuk
     egyik ipari megállója sem vesz át; és azt veszik fel, amit valamelyik
@@ -240,7 +245,8 @@ akárhány cella is gyors; a mesh fix méretű bufferben, helyben patch-elődik.
 
 Vezérlés:
 - **Bal gomb**: építés / tereprendezés / törlés (kattintás vagy húzás)
-- **Mozgás (pan)**: WASD vagy nyílbillentyűk · **Jobb húzás**: forgatás ·
+- **Mozgás (pan)**: WASD vagy nyílbillentyűk (lágyan gyorsul, tartva egyre
+  gyorsabb; az érzékenység a Dev fül „Kamera” csúszkájával állítható) · **Jobb húzás**: forgatás ·
   **Görgő / középső gomb**: zoom
 
 A rács `cellSize` értéke a `src/render/config.ts`-ben állítható.

@@ -23,9 +23,14 @@
  *   - a real deadlock (trucks waiting for each other in a circle — not just a
  *     long queue) is broken: one truck of the circle drives on for a moment.
  *
- * Depots (depot.ts) are stops too: a truck waits at the entrance while all
- * bays are taken (or another truck is manoeuvring — one at a time in the
- * yard), drives past a free bay, backs in, unloads what no other
+ * Trucks speed up and brake gradually (ACCEL / DECEL): they slow down for
+ * bends (lateral grip A_LAT), for a truck ahead, for a junction they will
+ * have to wait at and for the end of their route.
+ *
+ * Depots (depot.ts) are stops too: a truck waits at the entrance while no
+ * bay is free that it can reach without crossing another manoeuvring truck
+ * (two may work at once if their bays are far enough apart), drives past
+ * the bay, backs in, unloads what no other
  * stop of its line takes and loads what one does (that's the sorting), then
  * leaves by the exit. Cargo remembers where it came from: the final
  * delivery pays for the whole distance from that origin.
@@ -87,8 +92,17 @@ export interface TransportSnapshot {
 export const TRUCK_PRICE = 1500;
 /** Truck load (units). */
 export const TRUCK_CAPACITY = 20;
-/** Truck speed (cells per game second). */
+/** Truck top speed (cells per game second). */
 const TRUCK_SPEED = 3;
+/** Acceleration and (comfortable) braking (cells/s²). */
+const ACCEL = 2.4;
+const DECEL = 4.5;
+/** Lateral grip: the speed in a bend of radius r is at most √(A_LAT·r). */
+const A_LAT = 5.5;
+/** Speed through a free junction (cells/s). */
+const JUNCTION_SPEED = 1.7;
+/** Slowest creep while closing up to something (cells/s). */
+const CREEP = 0.3;
 /** Lane offset to the right of the road centre (cells). */
 const LANE = 0.2;
 /** Front of the tractor → its fifth wheel (hitch), and hitch → trailer axles (cells). */
@@ -129,6 +143,8 @@ export interface Truck {
   s: number;
   /** Smooth right-lane path built from `path` (s runs along it). */
   lane: Lane | null;
+  /** Current speed (cells/s; backwards while backing into a bay). */
+  v: number;
   /** 'depot': in a depot's yard (see `depot`). */
   state: 'stop' | 'drive' | 'noroute' | 'depot';
   /** The visit to a depot under way (state 'depot'). */
@@ -165,8 +181,21 @@ export interface DepotVisit {
 /** How far (cells) before a depot's drive a truck waits while its bays are full. */
 const GATE_HOLD = 1.0;
 /** Speed (cells/s) in a depot's yard, and backing in. */
-const YARD_SPEED = 1.6;
-const REVERSE_SPEED = 0.9;
+const YARD_SPEED = 2.2;
+const REVERSE_SPEED = 1.3;
+/**
+ * Two trucks may manoeuvre in a yard at once when their bays are at least
+ * this many apart and the one driving in goes to the bay nearer the
+ * entrance (so neither crosses the other's path).
+ */
+const BAY_APART = 3;
+
+/** A truck manoeuvring in a depot's yard: driving in to / pulling out of a bay. */
+interface YardClaim {
+  truck: number;
+  kind: 'in' | 'out';
+  bay: number;
+}
 
 /** A recent payment (shown as a floating "+$" over the stop). */
 export interface Payment {
@@ -413,6 +442,59 @@ export function nearestS(l: Lane, p: [number, number], within = Infinity): numbe
   return best;
 }
 
+/** Sample step (cells) of a lane's bend speed limits. */
+const LIMIT_STEP = 0.1;
+const bendLimits = new WeakMap<Lane, Float32Array>();
+
+/** The bend speed limit along a lane, every LIMIT_STEP (cached per lane). */
+function bendLimit(l: Lane): Float32Array {
+  let a = bendLimits.get(l);
+  if (a) return a;
+  a = new Float32Array(Math.ceil(l.length / LIMIT_STEP) + 2);
+  const h = 0.15;
+  for (let i = 0; i < a.length; i++) {
+    const s = i * LIMIT_STEP;
+    const p0 = laneAt(l, s - h), p1 = laneAt(l, s), p2 = laneAt(l, s + h);
+    let turn = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+    turn = Math.abs(((turn + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    const k = turn / (2 * h); // curvature (1 / radius)
+    a[i] = k > 1e-3 ? Math.min(TRUCK_SPEED, Math.sqrt(A_LAT / k)) : TRUCK_SPEED;
+  }
+  bendLimits.set(l, a);
+  return a;
+}
+
+/**
+ * The fastest a truck at `s` on lane `l` may go (topped at `top`) and still
+ * brake at DECEL for the bends ahead and stop by `stopAt` (lane distance).
+ */
+function brakeCap(l: Lane, s: number, top: number, stopAt = Infinity): number {
+  let cap = top;
+  const lim = bendLimit(l);
+  const range = (top * top) / (2 * DECEL);
+  for (let d = 0; d <= range; d += LIMIT_STEP) {
+    const i = Math.round((s + d) / LIMIT_STEP);
+    if (i < 0) continue;
+    if (i >= lim.length) break;
+    cap = Math.min(cap, Math.sqrt(lim[i] * lim[i] + 2 * DECEL * d));
+  }
+  if (stopAt < Infinity) cap = Math.min(cap, Math.sqrt(2 * DECEL * Math.max(0, stopAt - s)));
+  return cap;
+}
+
+/**
+ * Where on a new lane a parked truck (pose `p`) carries on from: the point
+ * by its front when the lane runs that way past it, else the lane's start.
+ */
+function startS(l: Lane, p: TruckPose | undefined): number {
+  if (!p) return 0;
+  const s = nearestS(l, p.front, 3.5);
+  const [x, z] = laneAt(l, s);
+  const [x2, z2] = laneAt(l, s + 0.1);
+  const along = ((x2 - x) * Math.cos(p.yaw) - (z2 - z) * Math.sin(p.yaw)) / 0.1;
+  return Math.hypot(x - p.front[0], z - p.front[1]) < 0.3 && along > 0.7 ? s : 0;
+}
+
 /** Where an articulated truck is (grid coords; yaw about Y, 0 = +X). */
 export interface TruckPose {
   /** Fifth wheel (hitch): the tractor's and the trailer's pivot. */
@@ -448,8 +530,8 @@ export class TransportSim {
   private routeCache = new Map<string, Cell[] | null>();
   /** Yard zones claimed this tick by trucks driving to / backing into a bay. */
   private zones: Array<{ st: Station; bay: number; dir: DepotDir; owner: number }> = [];
-  /** Depot id → the truck manoeuvring in its yard (one at a time). */
-  private yardHolder = new Map<number, number>();
+  /** Depot id → the trucks manoeuvring in its yard. */
+  private yard = new Map<number, YardClaim[]>();
   /** Depot id → which truck holds each loading bay (null = free). */
   private bays = new Map<number, Array<number | null>>();
   /** Game seconds since the start (drives the traffic lights). */
@@ -594,16 +676,21 @@ export class TransportSim {
         const next = (t.target + 1) % line.stops.length;
         // Pulling out (or out of the depot) gives way to the traffic.
         const r = this.route(map, here, byId.get(line.stops[next]) ?? null);
-        if (r && r.length && this.startBlocked(t, this.laneOf(r, map), poses)) {
+        const lane = r && r.length ? this.laneOf(r, map) : null;
+        // It pulls out from where it stands (no jump back onto the queue).
+        const s0 = lane ? startS(lane, poses.get(t.id)) : 0;
+        if (lane && this.startBlocked(t, lane, s0, poses)) {
           t.timer = 0.3;
           t.blocked += 0.3;
           continue;
         }
         t.blocked = 0;
         t.waitFor = null;
+        t.v = 0;
         this.serveStop(t, line, here, byId, map, prod, earn);
         // Head for the next stop.
-        this.setPath(t, this.route(map, here, byId.get(line.stops[next]) ?? null), map);
+        this.setPath(t, r, map);
+        if (t.lane) t.s = s0;
         t.target = next;
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
@@ -617,32 +704,57 @@ export class TransportSim {
         t.state = t.path ? 'drive' : 'noroute';
         t.timer = 2;
       } else if (t.lane) {
-        // Coming to a depot whose bays (on this side) are all taken: wait
-        // at its stop line, out on the road — not in the yard.
-        // At the stop line it takes the yard (one truck manoeuvres at a time).
-        if (isDepot(here) && t.lane.length - t.s < this.gateHold(t, map) && this.yardHolder.get(here.id) !== t.id) {
-          if (!this.hasFreeBay(here, 1) || !this.takeYard(here, t)) {
+        // Coming to a depot with no bay it can reach now: wait at its stop
+        // line, out on the road — not in the yard. At the line it claims a
+        // bay and its way in.
+        const gate = isDepot(here) && !t.depot ? t.lane.length - this.gateHold(t, map) : Infinity;
+        if (t.s >= gate) {
+          const bay = this.pickBay(here, t);
+          if (bay < 0) {
             t.blocked += dt;
-            const h = this.yardHolder.get(here.id);
-            t.waitFor = h !== undefined && h !== t.id ? h : null;
+            t.v = 0;
+            t.waitFor = this.yardList(here.id)[0]?.truck ?? null;
             continue;
           }
+          this.bayList(here.id)[bay] = t.id;
+          this.yardList(here.id).push({ truck: t.id, kind: 'in', bay });
+          t.depot = { phase: 'wait', dir: 1, bay, bayLane: null, sP: 0, sDock: 0 };
         }
-        if (this.junctionWait(t, map, poses) || this.heldUp(t, poses)) {
+        if (this.junctionWait(t, map, poses)) {
+          // Not to enter yet: brake to a halt at the line (still clear of
+          // the truck ahead), not on the spot.
+          const w = t.waitFor;
+          const room = this.heldUp(t, poses) ? 0 : this.toJunctionLine(t, map);
+          t.waitFor = w;
           t.blocked += dt;
+          if (room > 0.03) {
+            t.v = Math.min(t.v, Math.sqrt(2 * DECEL * 1.6 * room));
+            t.s += Math.min(t.v * dt, room);
+            this.updatePose(t, poses);
+          } else t.v = 0;
+          continue;
+        }
+        if (this.heldUp(t, poses)) {
+          t.blocked += dt;
+          t.v = 0;
           continue;
         }
         t.blocked = 0;
         t.waitFor = null;
-        t.s += dt * TRUCK_SPEED;
+        const stopAt = Math.min(t.lane.length, gate < Infinity && this.pickBay(here, t) < 0 ? gate : Infinity);
+        let cap = Math.min(brakeCap(t.lane, t.s, TRUCK_SPEED, stopAt), this.trafficCap(t, map, poses));
+        if (stopAt - t.s > 0.02) cap = Math.max(cap, CREEP);
+        t.v = Math.min(t.v + ACCEL * dt, cap);
+        t.s = Math.min(t.s + t.v * dt, t.lane.length);
         this.updatePose(t, poses);
         if (t.s >= t.lane.length) {
           t.s = t.lane.length;
           this.release(t); // parked at the stop: the junction is free again
+          t.v = 0;
           if (isDepot(here)) {
-            const dir: DepotDir = 1; // in at the entrance (the drive is one-way)
+            // In at the entrance (the drive is one-way).
             t.state = 'depot';
-            t.depot = { phase: 'wait', dir, bay: -1, bayLane: null, sP: 0, sDock: 0 };
+            t.depot ??= { phase: 'wait', dir: 1, bay: -1, bayLane: null, sP: 0, sDock: 0 };
           } else {
             t.state = 'stop';
             t.timer = STOP_TIME;
@@ -831,6 +943,80 @@ export class TransportSim {
     return 'go';
   }
 
+  /**
+   * Speed cap for what's ahead on the road: brake to stay LOOK_AHEAD behind
+   * a truck ahead, and for a junction — to a stop at its line when it looks
+   * like a wait there (taken, red light, a sign), else to JUNCTION_SPEED.
+   */
+  private trafficCap(t: Truck, map: TerrainMap, poses: Map<number, TruckPose>): number {
+    const lane = t.lane;
+    const me = poses.get(t.id);
+    if (!lane || !me || t.pass > 0) return TRUCK_SPEED;
+    const range = (TRUCK_SPEED * TRUCK_SPEED) / (2 * DECEL) + LOOK_AHEAD;
+    let cap = TRUCK_SPEED;
+    // The nearest truck body on the lane ahead.
+    const near: Array<[number, number]> = [];
+    for (const o of this.trucks) {
+      const op = o !== t && poses.get(o.id);
+      if (!op || Math.hypot(op.x - me.x, op.z - me.z) > range + 1.5) continue;
+      if (Math.hypot(op.x - me.x, op.z - me.z) < 0.1) continue; // same spot (see heldUp)
+      near.push(op.front, [op.x, op.z], op.rear, [(op.x + op.rear[0]) / 2, (op.z + op.rear[1]) / 2]);
+    }
+    if (near.length)
+      for (let d = 0.12; d <= range; d += 0.1) {
+        if (t.s + d > lane.length + 0.05) break;
+        const [px, pz] = laneAt(lane, t.s + d);
+        if (near.some(([bx, bz]) => Math.hypot(bx - px, bz - pz) < BODY_GAP)) {
+          cap = Math.sqrt(2 * DECEL * Math.max(0, d - LOOK_AHEAD));
+          break;
+        }
+      }
+    // The next junction ahead (one this truck hasn't reserved yet).
+    if (!t.holds.length) {
+      const n = map.size;
+      const jm = this.junctionMap(map);
+      const cellAt = (d: number) => {
+        const [x, z] = laneAt(lane, d);
+        const cx = Math.round(x), cz = Math.round(z);
+        return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
+      };
+      const here = cellAt(t.s);
+      if (here < 0 || jm[here] !== 1)
+        for (let d = 0.1; d <= range && t.s + d <= lane.length; d += 0.1) {
+          const c = cellAt(t.s + d);
+          if (c < 0 || jm[c] !== 1) continue;
+          const arm = cellAt(Math.max(0, t.s + d - 0.35));
+          const jx = Math.floor(c / n), jz = c % n;
+          const ax = Math.floor(arm / n), az = arm % n;
+          const h = this.reserved.get(c);
+          const sign = arm >= 0 ? activeControl(map, ax, az) : null;
+          const wait =
+            (h !== undefined && h !== t.id) ||
+            sign === 'stop' ||
+            sign === 'yield' ||
+            (activeControl(map, jx, jz) === 'light' && lightState(this.clock, ax !== jx ? 'x' : 'z') !== 'green');
+          const toLine = Math.max(0, d - STOP_LINE - 0.05);
+          cap = Math.min(cap, Math.sqrt((wait ? 0 : JUNCTION_SPEED ** 2) + 2 * DECEL * toLine));
+          break;
+        }
+    }
+    return cap;
+  }
+
+  /** Lane distance from `t` to the stop line of the junction just ahead (0: none / at it). */
+  private toJunctionLine(t: Truck, map: TerrainMap): number {
+    const lane = t.lane;
+    if (!lane) return 0;
+    const n = map.size;
+    const jm = this.junctionMap(map);
+    for (let d = 0.05; d <= 0.8 && t.s + d <= lane.length; d += 0.05) {
+      const [x, z] = laneAt(lane, t.s + d);
+      const cx = Math.round(x), cz = Math.round(z);
+      if (cx >= 0 && cz >= 0 && cx < n && cz < n && jm[cx * n + cz] === 1) return Math.max(0, d - STOP_LINE);
+    }
+    return 0;
+  }
+
   /** Later trucks in the same tick see where this one went. */
   private updatePose(t: Truck, poses: Map<number, TruckPose>): void {
     const p = this.pose(t);
@@ -865,7 +1051,7 @@ export class TransportSim {
     // Keep out of a depot yard zone where another truck is backing into a bay.
     if (this.zones.length) {
       const lane = t.lane;
-      // (Through traffic only: the yard's own trucks take turns, see yardHolder.)
+      // (Through traffic only: the yard's own trucks share it by their claims, see yardFits.)
       const [fx, fz] = laneAt(lane, t.s);
       for (const zn of this.zones) {
         if (t.depot || zn.owner === t.id) continue;
@@ -904,11 +1090,12 @@ export class TransportSim {
   }
 
   /**
-   * Would a truck starting on `lane` touch another one? A new truck (leaving
-   * the depot) checks its whole length; one pulling out of a stop only the
-   * road ahead (not the queue waiting behind it — that would lock both).
+   * Would a truck starting on `lane` at `s0` touch another one? It checks
+   * its whole length and, pulling out of a stop, a bit more behind (traffic
+   * coming up) — but not trucks waiting for it (the queue behind it: that
+   * would lock both).
    */
-  private startBlocked(t: Truck, lane: Lane, poses: Map<number, TruckPose>): boolean {
+  private startBlocked(t: Truck, lane: Lane, s0: number, poses: Map<number, TruckPose>): boolean {
     if (t.pass > 0) return false;
     const fresh = !t.path;
     const me = poses.get(t.id);
@@ -918,8 +1105,8 @@ export class TransportSim {
       // Someone waiting for US to leave: leaving is what frees them.
       if (me && o.state === 'drive' && this.inWay(o, me)) continue;
       const body: Array<[number, number]> = [op.front, [op.x, op.z], op.rear];
-      for (let d = fresh ? -TRUCK_HITCH - TRAILER_AXLE - 0.2 : 0.12; d <= LOOK_AHEAD; d += 0.11) {
-        const [px, pz] = laneAt(lane, d);
+      for (let d = -TRUCK_HITCH - TRAILER_AXLE - (fresh ? 0.2 : 0.6); d <= LOOK_AHEAD; d += 0.11) {
+        const [px, pz] = laneAt(lane, s0 + d);
         for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP + 0.05) return this.waitOn(t, o);
       }
     }
@@ -954,30 +1141,50 @@ export class TransportSim {
     return Math.max(GATE_HOLD, path.length - 1 - k - 0.45);
   }
 
-  /** Is a bay free that a truck coming in from `dir` can use? */
-  private hasFreeBay(st: Station, dir: DepotDir): boolean {
-    const bays = this.bayList(st.id);
-    return bays.some((b, i) => b === null && bayUsable(i, dir));
+  /** The trucks manoeuvring in a depot's yard (gone trucks dropped). */
+  private yardList(id: number): YardClaim[] {
+    let y = this.yard.get(id);
+    if (!y) this.yard.set(id, (y = []));
+    for (let i = y.length - 1; i >= 0; i--) if (!this.trucks.some((q) => q.id === y![i].truck)) y.splice(i, 1);
+    return y;
   }
 
-  /** Take the depot's yard (true) unless another truck is manoeuvring in it. */
-  private takeYard(st: Station, t: Truck): boolean {
-    const h = this.yardHolder.get(st.id);
-    if (h !== undefined && h !== t.id && this.trucks.some((q) => q.id === h)) return false;
-    this.yardHolder.set(st.id, t.id);
+  /**
+   * May truck `t` (null: any) start manoeuvring `kind` at bay `bay` beside
+   * the others in the yard? One driving in must stay clear of everyone (its
+   * bay BAY_APART nearer the entrance than theirs); one pulling out must not
+   * pass anyone backing in (they are BAY_APART nearer the entrance).
+   */
+  private yardFits(id: number, kind: 'in' | 'out', bay: number, t: Truck | null): boolean {
+    for (const c of this.yardList(id)) {
+      if (c.truck === t?.id) continue;
+      if (kind === 'in' ? c.bay - bay < BAY_APART : c.kind === 'out' || bay - c.bay < BAY_APART) return false;
+    }
     return true;
   }
 
-  private freeYard(t: Truck): void {
-    for (const [id, h] of this.yardHolder) if (h === t.id) this.yardHolder.delete(id);
+  /**
+   * The bay a truck arriving now would back into: the free one farthest from
+   * the entrance that fits beside the yard's traffic (so the next truck can
+   * take a near one at the same time), or -1.
+   */
+  private pickBay(st: Station, t: Truck | null): number {
+    const bays = this.bayList(st.id);
+    for (let i = bays.length - 1; i >= 0; i--)
+      if (bays[i] === null && bayUsable(i, 1) && this.yardFits(st.id, 'in', i, t)) return i;
+    return -1;
   }
 
+  /** Drop a truck's yard claims (it docked / left). */
+  private freeYard(t: Truck): void {
+    for (const y of this.yard.values())
+      for (let i = y.length - 1; i >= 0; i--) if (y[i].truck === t.id) y.splice(i, 1);
+  }
 
-  /** May a truck drive into the depot now (a bay free and nobody manoeuvring)? */
+  /** May a truck drive into the depot now (the entrance signal is green)? */
   depotOpen(id: number): boolean {
-    const free = this.bayList(id).some((b, i) => b === null && bayUsable(i, 1));
-    const h = this.yardHolder.get(id);
-    return free && (h === undefined || !this.trucks.some((q) => q.id === h));
+    const st: Station = { id, anchor: [0, 0], side: 'S', kind: 'depot' };
+    return this.pickBay(st, null) >= 0;
   }
 
   /** Which bays of a depot hold (or are reserved by) a truck. */
@@ -1021,48 +1228,51 @@ export class TransportSim {
       return;
     }
     if (v.phase === 'wait') {
-      const bays = this.bayList(here.id);
-      // The free bay nearest the end it came in at (that it can turn into).
-      let free = -1;
-      for (let k = 0; k < bays.length; k++) {
-        const i = v.dir > 0 ? k : bays.length - 1 - k;
-        if (bays[i] === null && bayUsable(i, v.dir)) {
-          free = i;
-          break;
+      // Normally the bay was claimed at the stop line already.
+      if (v.bay < 0) {
+        const bay = this.pickBay(here, t);
+        if (bay < 0) {
+          t.blocked += dt; // the entrance signal is red
+          return;
         }
+        this.bayList(here.id)[bay] = t.id;
+        this.yardList(here.id).push({ truck: t.id, kind: 'in', bay });
+        v.bay = bay;
       }
-      if (free < 0 || !this.takeYard(here, t)) {
-        t.blocked += dt; // the entrance signal is red
-        return;
-      }
-      bays[free] = t.id;
-      const path = bayPath(here, free, v.dir);
-      v.bay = free;
+      const path = bayPath(here, v.bay, v.dir);
       v.bayLane = polyLane(path.pts);
       v.sP = path.sP;
       v.sDock = path.sDock;
-      t.lane = polyLane(bayApproach(here, free, v.dir));
+      t.lane = polyLane(bayApproach(here, v.bay, v.dir));
       t.s = 0;
       t.blocked = 0;
       v.phase = 'in';
     } else if (v.phase === 'in' && t.lane) {
       if (this.heldUp(t, poses)) {
         t.blocked += dt;
+        t.v = 0;
         return;
       }
       t.blocked = 0;
-      t.s += dt * YARD_SPEED;
+      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED, t.lane.length), this.trafficCap(t, map, poses)), CREEP);
+      t.v = Math.min(t.v + ACCEL * dt, cap);
+      t.s += dt * t.v;
       if (t.s >= t.lane.length) {
         // Stopped past the bay: from here on it moves along the bay's path.
         t.lane = v.bayLane;
         t.s = v.sP;
+        t.v = 0;
         v.phase = 'back';
       }
     } else if (v.phase === 'back') {
       t.blocked = 0;
-      t.s -= dt * REVERSE_SPEED;
+      // Backing in: ease off, creep the last bit up to the dock.
+      const cap = Math.max(Math.min(REVERSE_SPEED, Math.sqrt(2 * DECEL * 0.5 * Math.max(0, t.s - v.sDock))), CREEP * 0.6);
+      t.v = Math.min(t.v + ACCEL * 0.6 * dt, cap);
+      t.s -= dt * t.v;
       if (t.s <= v.sDock) {
         t.s = v.sDock;
+        t.v = 0;
         this.serveStop(t, line, here, byId, map, prod, earn);
         t.timer = STOP_TIME;
         v.phase = 'load';
@@ -1070,14 +1280,26 @@ export class TransportSim {
       }
     } else if (v.phase === 'load') {
       t.timer -= dt;
-      if (t.timer <= 0 && this.takeYard(here, t)) v.phase = 'out';
+      if (t.timer <= 0) {
+        if (this.yardFits(here.id, 'out', v.bay, t)) {
+          this.yardList(here.id).push({ truck: t.id, kind: 'out', bay: v.bay });
+          v.phase = 'out';
+          t.blocked = 0;
+        } else {
+          t.blocked += dt;
+          t.waitFor = this.yardList(here.id)[0]?.truck ?? null;
+        }
+      }
     } else if (v.phase === 'out' && t.lane) {
       if (this.heldUp(t, poses)) {
         t.blocked += dt;
+        t.v = 0;
         return;
       }
       t.blocked = 0;
-      t.s += dt * YARD_SPEED;
+      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
+      t.v = Math.min(t.v + ACCEL * dt, cap);
+      t.s += dt * t.v;
       if (t.s < t.lane.length) {
         this.updatePose(t, poses);
         return;
@@ -1093,6 +1315,7 @@ export class TransportSim {
         const ahead = { ...t, lane, s: s0, path: route } as Truck;
         if (this.heldUp(ahead, poses)) {
           t.s = t.lane.length;
+          t.v = 0;
           t.blocked += dt;
           t.waitFor = ahead.waitFor;
           return;
@@ -1195,6 +1418,7 @@ export class TransportSim {
           lane: null,
           s: 0,
           state: 'stop',
+          v: 0,
           timer: STOP_TIME + i * 3,
           blocked: 0,
           holds: [],

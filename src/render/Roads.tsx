@@ -26,8 +26,9 @@ export interface RoadsProps {
 const ROAD_STYLE = CELL_STYLE[CellType.Road];
 // Flat grass tile top; hill surface + hill roads sit relative to this.
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
-// Small lift so the road never z-fights the hill surface it rests on.
-const SURFACE_LIFT = 0.02;
+// Small lift so the road never z-fights the hill surface it rests on (the
+// road is a thin coat, like paint, not a raised slab).
+const SURFACE_LIFT = 0.012;
 
 /**
  * A road cell is drawn FLAT only if all four of its corner heights are equal
@@ -77,12 +78,13 @@ const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 patchRef(MARKING_MAT);
 // Single, uniform Y for ALL flat markings so corner ends meet straights
 // exactly. Must sit just ABOVE the asphalt tile top (tile top ≈ scaleY +
-// SURFACE_LIFT ≈ 0.10 cell), else the marks are buried inside the asphalt.
-const MARK_Y = ROAD_STYLE.scaleY + SURFACE_LIFT + 0.015; // ≈ 0.115 cell units
-const DASH = 0.17;
-const GAP = DASH / 2; // gap = half the dash length (airy)
-const PITCH = DASH + GAP; // 0.255
-const DASH_W = 0.055; // half-width of a dash/line ribbon
+// SURFACE_LIFT ≈ 0.024 cell), else the marks are buried inside the asphalt.
+const MARK_Y = ROAD_STYLE.scaleY + SURFACE_LIFT + 0.006; // ≈ 0.03 cell units
+// Sized to the trucks (≈ 0.21 cell wide ≈ 2.5 m): a ~15 cm line, short dashes.
+const DASH = 0.14;
+const GAP = 0.12;
+const PITCH = DASH + GAP; // 0.26
+const DASH_W = 0.016; // half-width of a dash/line ribbon
 
 /**
  * Does cell (x,z) connect to a road one step away? (Rails no longer count:
@@ -361,7 +363,7 @@ function buildHillRoadMarkings(
   // Lift the centre-line clearly above the sloped asphalt. On a tilt a tiny
   // offset loses to the surface at grazing angles, so we raise it more than the
   // flat-road markings and also keep polygonOffset on the material.
-  const base = FLAT_TOP * cellSize + (SURFACE_LIFT + 0.05) * cellSize;
+  const base = FLAT_TOP * cellSize + (SURFACE_LIFT + 0.02) * cellSize;
 
   const isRoadLike = (x: number, z: number): boolean => {
     if (x < 0 || z < 0 || x >= size || z >= size) return false;
@@ -370,7 +372,7 @@ function buildHillRoadMarkings(
   };
 
   const positions: number[] = [];
-  const DASH_W = 0.11; // full width, same as the flat-road dashes (2 × 0.055)
+  const DASH_W = 0.032; // full width, same as the flat-road dashes (2 × 0.016)
   let any = false;
 
   for (let x = 0; x < size; x++) {

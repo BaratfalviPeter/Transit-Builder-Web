@@ -37,6 +37,8 @@ const LINE_WIDTH = 0.38;
 const LINE_GAP = 0.42;
 
 type Cell = [number, number];
+/** Top of the road coat above the ground (cells): the trucks drive on it. */
+const ROAD_TOP = 0.026;
 
 // ---------------------------------------------------------------- trucks
 
@@ -54,7 +56,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     const p = sim.pose(t);
     g.visible = !!p; // in the depot: not on the map yet
     if (!p) return;
-    const ground = (x: number, z: number) => groundAtGrid(map, x, z) + 0.02;
+    const ground = (x: number, z: number) => groundAtGrid(map, x, z) + ROAD_TOP;
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.

@@ -134,6 +134,19 @@ A jobb oldali **panel** három füle:
     kereszteződést lefoglalják, amíg a pótkocsi ki nem ér); a megállóból
     kihajtó elsőbbséget ad; egyébként jobbkéz-szabály. Valódi körbe-várakozás
     (holtpont) esetén a körből egy kamion rövid ideig áthaladhat.
+- **Forgalomirányítás** (az Infrastruktúra fül alján, `src/sim/traffic.ts`,
+  `src/render/TrafficControls.tsx`):
+  - **Elsőbbségadás tábla** ($60) és **STOP tábla** ($60): közvetlenül egy
+    kereszteződés előtti útcellára. A táblás irányból érkező kamion a
+    vonalnál elengedi a tábla nélküli irányokból érkezőket; STOP-nál előbb
+    mindig megáll (1 mp).
+  - **Lámpa** ($800): kereszteződésre (3–4 irányú útcella). Minden ágon
+    lámpaoszlop; a két tengely felváltva kap zöldet (6 mp zöld, 2 mp sárga /
+    piros). Piroson és sárgán a kamionok a vonalnál várnak.
+  - **Körforgalom** ($1200): kereszteződésre (mellette nem lehet másik
+    kereszteződés). Füves sziget; a kamionok az óramutatóval ellentétesen
+    kerülik meg.
+  - Bontás eszközzel előbb a tábla / lámpa / körforgalom tűnik el (az út marad).
 - **Pénzügyek (Economy):** egyenleg, összes bevétel és kiadás.
 
 ### Termelés (fix)

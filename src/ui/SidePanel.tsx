@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import {
   TERRAFORM_TOOLS,
   TRANSPORT_TOOLS,
+  TRAFFIC_TOOLS,
   TOOLS,
   useGame,
   useGameSnapshot,
@@ -33,6 +34,10 @@ const ICON: Record<ToolId, string> = {
   rail: '🚆',
   station: '🚉',
   truckstop: '🚚',
+  yield: '🔻',
+  stop: '🛑',
+  light: '🚦',
+  roundabout: '🔄',
 };
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -115,12 +120,21 @@ export function SidePanel() {
         )}
 
         {tab === 'transport' && (
-          <ToolList
-            ids={TRANSPORT_TOOLS}
-            activeTool={snap.activeTool}
-            money={snap.money}
-            onPick={(id) => game.setActiveTool(id)}
-          />
+          <>
+            <ToolList
+              ids={TRANSPORT_TOOLS}
+              activeTool={snap.activeTool}
+              money={snap.money}
+              onPick={(id) => game.setActiveTool(id)}
+            />
+            <div className="panel__group">Forgalomirányítás</div>
+            <ToolList
+              ids={TRAFFIC_TOOLS}
+              activeTool={snap.activeTool}
+              money={snap.money}
+              onPick={(id) => game.setActiveTool(id)}
+            />
+          </>
         )}
 
         {tab === 'lines' && <LinesPanel />}

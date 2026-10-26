@@ -9,6 +9,7 @@
  * Grid indexing matches `generateTerrain`: cells[x][z], x,z in [0, size).
  */
 
+import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import {
   CellType,
   MAX_GEN_LEVEL,
@@ -212,6 +213,26 @@ export class TerrainStore {
     return true;
   }
 
+  /**
+   * Place a traffic control (see traffic.ts) — or remove one (`kind` null).
+   * Doesn't touch cells or heights (no geometry rebuild). Returns false if
+   * the rules forbid it / nothing to remove.
+   */
+  setControl(x: number, z: number, kind: ControlKind | null): boolean {
+    if (!this.inBounds(x, z)) return false;
+    const key = cellIndex(this.map, x, z);
+    const controls = new Map(this.map.controls ?? []);
+    if (kind === null) {
+      if (!controls.delete(key)) return false;
+    } else {
+      if (controlProblem(this.map, x, z, kind)) return false;
+      controls.set(key, kind);
+    }
+    this.map = { ...this.map, controls };
+    this.emit();
+    return true;
+  }
+
   /** Remove a whole stop (platform + its track / road). */
   private removeStation(id: number): void {
     const st = this.map.stations?.find((s) => s.id === id);
@@ -245,6 +266,9 @@ export class TerrainStore {
     const current = this.map.cells[x][z];
     const key = cellKey(this.map.size, x, z);
     const cleared = this.map.cleared ?? new Set<number>();
+
+    // A traffic control goes first (the road under it stays).
+    if (this.map.controls?.has(cellIndex(this.map, x, z))) return this.setControl(x, z, null);
 
     // A station's platform or track: the whole station goes.
     const st = stationAt(this.map, x, z);

@@ -54,6 +54,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
   (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
   Terhelési teszt: hub + 10 járat, ütközés ≈ 0 (1–2 kamion/járat).
+- Forgalomirányítás (`traffic.ts`): `map.controls` (cellaindex → light | roundabout | yield |
+  stop), olvasáskor validálva (`activeControl`). Lámpa/körforgalom kereszteződésre, tábla a
+  kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
+  a vonalig gurul, NEM foglal); körforgalom a `buildLane`-ben (R 0,3, óramutatóval
+  ellentétes). Lámpaciklus a `TransportSim.clock`-ból. Eszközök: `TRAFFIC_TOOLS`.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
@@ -83,7 +88,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
-  StationModel, TruckStopModel).
+  StationModel, TruckStopModel, Truck).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
 
 ## Állapot (2026-10-26)
@@ -91,8 +96,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
 - Mergelve: #73 (belső nézet kikapcsolva, fix termelés).
-- Nyitva: #74 (járatnézet az út szintjén, vízemelés, új csuklós kamion + KRESZ). **A felhasználó prioritása: a
-  szállítás legyen jó** (kamionok, vonatok, járatok).
+- Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
+- Folyamatban: forgalomirányítás (táblák, lámpa, körforgalom), utána UI-átdolgozás +
+  gyorsbillentyűk (a felhasználó kérte). **Prioritás: a szállítás legyen jó.**
+- A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések (felajánlva, a felhasználó még nem választott)
 - Vonatok a hálózati nézetben, vasútállomások között

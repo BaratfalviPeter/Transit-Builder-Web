@@ -70,8 +70,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (hopper / tank / box / flat; CAR_LEN 1,15), origó a kocsi közepén sínkorona-magasságban.
   A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
 - Raktár (`DepotModel.tsx`, még csak modell): 6×6, ipari tervezési egységben (×2). Sorok z
-  szerint: 2 vágány (Rails rajzolja) + portáldaru, csarnok (peron, iroda, szélkerék), 2
-  kamionsáv (útcellák). Mozgó: szélkerék, darumacska, targonca. Előnézet: `?model=Depot`.
+  szerint: 2 vágány (Rails rajzolja) + portáldaru; csarnok (peron, iroda, szélkerék);
+  5 rakodóállás (`BAY_X`, `BAY_Z`: a kamionok betolatnak a dokkolókapuhoz, kapunként
+  zöld/piros lámpa); egysávos behajtó út (útcellák) portásfülkével és behajtó lámpával
+  (piros, ha minden állás foglalt). Prop: `bays` (foglaltság), `fill`. Előnézet:
+  `?model=Depot` (minden állás foglalt → piros lámpa, egy kamion vár).
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).

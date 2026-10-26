@@ -9,10 +9,14 @@
  *   z ∈ [−1.5, −1.0]  track 1  ┐ drawn by Rails.tsx (rail cells), under a
  *   z ∈ [−1.0, −0.5]  track 2  ┘ gantry crane
  *   z ∈ [−0.5,  0.5]  the hall: rail platform with canopy and sliding doors
- *                     on the track side, two dock doors on the road side,
- *                     the office and the wind-wheel tower at the east end
- *   z ∈ [ 0.5,  1.0]  truck lane 1 ┐ road cells (Roads.tsx); trucks stop
- *   z ∈ [ 1.0,  1.5]  truck lane 2 ┘ alongside the docks
+ *                     on the track side, BAY_COUNT dock doors on the road
+ *                     side, the office and the wind-wheel tower at the east
+ *   z ∈ [ 0.5,  1.0]  loading bays: trucks back in to a dock door (painted
+ *                     bay lines, wheel stops); a lamp over each door shows
+ *                     free (green) / taken (red)
+ *   z ∈ [ 1.0,  1.5]  the one-lane drive (road cells, Roads.tsx): in at the
+ *                     west end past the gatehouse and a signal that is red
+ *                     while every bay is taken, out at the east end
  *
  * Y = 0 is the ground. Static parts are merged into a few meshes (lowPoly);
  * the wind wheel, the crane trolley and a forklift move.
@@ -23,6 +27,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { box, buildParts, cyl, FIXED_MAT, type Part } from './lowPoly';
 import { CAR_GAP, CAR_LEN, Locomotive, LOCO_COLORS, LOCO_LEN, Wagon } from './TrainModel';
+import { Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
 
 type V3 = [number, number, number];
 
@@ -33,7 +38,17 @@ export interface DepotModelProps {
   phase?: number;
   /** How full the store is (0…1): pallets pile up on the platforms. */
   fill?: number;
+  /** Which loading bays hold a truck (west → east); missing = free. */
+  bays?: readonly boolean[];
 }
+
+/** Loading bays (dock doors) on the road side. */
+export const BAY_COUNT = 5;
+/** Bay centres along X (units) and the bays' depth range along Z. */
+export const BAY_X: readonly number[] = Array.from({ length: BAY_COUNT }, (_, i) => -1.12 + i * 0.47);
+export const BAY_Z: readonly [number, number] = [0.44, 1.0];
+/** The entrance signal (and its stop line) along X, past the gatehouse. */
+const SIGNAL_X = -1.2;
 
 const CONCRETE = '#c9c2b5';
 const CONCRETE_D = '#9e978b';
@@ -59,6 +74,10 @@ const BARREL = '#4f6e8c';
 const BARREL_R = '#a8402e';
 const GRAVEL = '#7d7468';
 const LAMP = '#ffe3a0';
+const ASPHALT = '#45484d';
+const PAINT = '#e9e5d6';
+const DARK_BOX = '#202226';
+const BARRIER = '#d23c2c';
 
 /** Hall footprint (units). */
 const HALL = { x0: -1.38, x1: 0.98, z0: -0.3, z1: 0.42, h: 0.42, rise: 0.17 };
@@ -120,18 +139,49 @@ const STATIC: Part[] = (() => {
   for (const x of [x0 + 0.5, cx, x1 - 0.5]) p.push(cyl(ROOF_D, 'y', [x, h + rise + 0.04, cz], 0.025, 0.07, 8));
   p.push(cyl(STEEL, 'y', [x0 + 0.25, h + rise + 0.06, cz], 0.03, 0.12, 8)); // chimney
 
-  // Rail-side sliding doors (3), truck-side dock doors (2) with bumpers, lights.
+  // Rail-side sliding doors (3).
   for (const x of [x0 + 0.45, cx, x1 - 0.45]) {
     p.push(box(DOOR, [x, 0.17, z0 - 0.004], [0.32, 0.26, 0.006]));
     p.push(box(DOOR_D, [x, 0.31, z0 - 0.006], [0.36, 0.025, 0.01]));
   }
-  for (const x of [cx - 0.45, cx + 0.45]) {
-    p.push(box(DOOR_D, [x, 0.16, z1 + 0.004], [0.3, 0.24, 0.006]));
-    for (let k = 0; k < 4; k++) p.push(box(DOOR, [x, 0.07 + k * 0.06, z1 + 0.007], [0.29, 0.004, 0.004]));
-    p.push(box(RUBBER, [x - 0.17, 0.08, z1 + 0.02], [0.03, 0.06, 0.03]));
-    p.push(box(RUBBER, [x + 0.17, 0.08, z1 + 0.02], [0.03, 0.06, 0.03]));
-    p.push(box(LAMP, [x, 0.32, z1 + 0.012], [0.04, 0.02, 0.02]));
-    p.push(box(CONCRETE_D, [x, 0.02, z1 + 0.04], [0.34, 0.04, 0.08])); // dock lip
+  // Loading bays: an apron in front of the hall, a dock door per bay with
+  // bumpers and a dock leveller, painted bay lines, yellow wheel stops.
+  const [bz0, bz1] = BAY_Z;
+  p.push(box(ASPHALT, [0, 0.008, (bz0 + bz1) / 2 + 0.03], [3, 0.016, bz1 - bz0 + 0.06]));
+  for (let i = 0; i <= BAY_COUNT; i++) {
+    const x = BAY_X[0] - 0.235 + i * 0.47;
+    p.push(box(PAINT, [x, 0.017, (bz0 + bz1) / 2 + 0.02], [0.012, 0.002, bz1 - bz0 - 0.04]));
+  }
+  p.push(box(PAINT, [0, 0.017, bz1 - 0.02], [BAY_COUNT * 0.47, 0.002, 0.012])); // bay mouth line
+  for (const x of BAY_X) {
+    p.push(box(DOOR_D, [x, 0.16, z1 + 0.004], [0.26, 0.24, 0.006]));
+    for (let k = 0; k < 4; k++) p.push(box(DOOR, [x, 0.07 + k * 0.06, z1 + 0.007], [0.25, 0.004, 0.004]));
+    p.push(box(DOOR_D, [x, 0.295, z1 + 0.03], [0.3, 0.012, 0.06])); // door canopy
+    p.push(box(RUBBER, [x - 0.15, 0.08, z1 + 0.018], [0.03, 0.06, 0.03]));
+    p.push(box(RUBBER, [x + 0.15, 0.08, z1 + 0.018], [0.03, 0.06, 0.03]));
+    p.push(box(CONCRETE_D, [x, 0.03, z1 + 0.03], [0.28, 0.06, 0.06])); // dock + leveller
+    p.push(box(STEEL, [x, 0.061, z1 + 0.03], [0.22, 0.004, 0.05]));
+    p.push(box(YELLOW, [x - 0.06, 0.012, z1 + 0.13], [0.06, 0.016, 0.02])); // wheel stops
+    p.push(box(YELLOW, [x + 0.06, 0.012, z1 + 0.13], [0.06, 0.016, 0.02]));
+    p.push(box(DARK_BOX, [x, 0.335, z1 + 0.01], [0.07, 0.03, 0.02])); // bay lamp housing
+  }
+
+  // Gatehouse at the drive's entrance (west end), with a raised barrier arm.
+  p.push(box(OFFICE, [-1.4, 0.09, 0.82], [0.14, 0.18, 0.18]));
+  p.push(box(WINDOW, [-1.329, 0.12, 0.82], [0.004, 0.06, 0.12]));
+  p.push(box(WINDOW, [-1.4, 0.12, 0.911], [0.1, 0.06, 0.004]));
+  p.push(box(BASE, [-1.4, 0.185, 0.82], [0.17, 0.012, 0.21]));
+  p.push(box(STEEL_D, [-1.36, 0.06, 0.95], [0.03, 0.12, 0.03]));
+  p.push(box(BARRIER, [-1.36, 0.28, 0.98], [0.012, 0.36, 0.012], [0.12, 0, 0])); // arm up
+  // Entrance signal: pole + head (the lamps light up — see EntranceSignal).
+  p.push(box(STEEL_D, [SIGNAL_X, 0.18, 1.47], [0.015, 0.36, 0.015]));
+  p.push(box(DARK_BOX, [SIGNAL_X, 0.36, 1.47], [0.04, 0.1, 0.04]));
+  p.push(box(PAINT, [SIGNAL_X - 0.03, 0.003, 1.25], [0.02, 0.002, 0.46])); // stop line
+  // Arrow markings on the drive: in at the west, out at the east.
+  for (const x of [-0.95, 1.15]) {
+    p.push(box(PAINT, [x, 0.003, 1.25], [0.12, 0.002, 0.012]));
+    p.push(box(PAINT, [x + 0.05, 0.003, 1.235], [0.04, 0.002, 0.012], [0, 0.7, 0]));
+    p.push(box(PAINT, [x + 0.05, 0.003, 1.265], [0.04, 0.002, 0.012], [0, -0.7, 0]));
   }
 
   // Office: 3 floors at the east end, flat roof, windows, entrance, sign.
@@ -291,9 +341,41 @@ const FORKLIFT_GEO = buildParts([
   cyl(RUBBER, 'z', [-0.022, 0.012, -0.024], 0.012, 0.008, 8),
 ]);
 
+/** Lamp materials: lit / dark, red / green (shared by every depot). */
+const LIT_RED = new THREE.MeshStandardMaterial({ color: '#ff3b2f', emissive: '#ff3b2f', emissiveIntensity: 2, toneMapped: false });
+const LIT_GREEN = new THREE.MeshStandardMaterial({ color: '#36e06a', emissive: '#36e06a', emissiveIntensity: 2, toneMapped: false });
+const UNLIT = new THREE.MeshStandardMaterial({ color: '#3a3a3a', roughness: 0.5 });
+const LAMP_GEO = new THREE.BoxGeometry(0.022, 0.018, 0.006);
+const SIG_GEO = new THREE.SphereGeometry(0.014, 10, 8);
+
+/** Green / red lamp over each dock door. */
+function BayLamps({ bays }: { bays: readonly boolean[] }) {
+  return (
+    <>
+      {BAY_X.map((x, i) => (
+        <group key={i} position={[x, 0.335, HALL.z1 + 0.021]}>
+          <mesh geometry={LAMP_GEO} material={bays[i] ? UNLIT : LIT_GREEN} position={[-0.014, 0, 0]} />
+          <mesh geometry={LAMP_GEO} material={bays[i] ? LIT_RED : UNLIT} position={[0.014, 0, 0]} />
+        </group>
+      ))}
+    </>
+  );
+}
+
+/** The entrance signal: red while every bay is taken, else green. */
+function EntranceSignal({ open }: { open: boolean }) {
+  return (
+    <group position={[SIGNAL_X - 0.021, 0.36, 1.47]}>
+      <mesh geometry={SIG_GEO} material={open ? UNLIT : LIT_RED} position={[0, 0.025, 0]} />
+      <mesh geometry={SIG_GEO} material={open ? LIT_GREEN : UNLIT} position={[0, -0.025, 0]} />
+    </group>
+  );
+}
+
 // ---------------------------------------------------------------- model
 
-export function DepotModel({ position = [0, 0, 0], scale = 1, rotationY = 0, phase = 0, fill = 0.5 }: DepotModelProps) {
+export function DepotModel({ position = [0, 0, 0], scale = 1, rotationY = 0, phase = 0, fill = 0.5, bays = [] }: DepotModelProps) {
+  const taken = BAY_X.map((_, i) => !!bays[i]);
   const shown = Math.round(Math.max(0, Math.min(1, fill)) * STOCK_SPOTS.length);
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
@@ -301,6 +383,8 @@ export function DepotModel({ position = [0, 0, 0], scale = 1, rotationY = 0, pha
         <mesh key={k} geometry={g} material={FIXED_MAT} castShadow receiveShadow />
       ))}
       {shown > 0 && <mesh geometry={stockSlice(shown)} material={FIXED_MAT} castShadow />}
+      <BayLamps bays={taken} />
+      <EntranceSignal open={taken.some((b) => !b)} />
       <WindWheel phase={phase} />
       <CraneTrolley phase={phase} />
       <Forklift phase={phase} />
@@ -323,9 +407,11 @@ function stockSlice(n: number): THREE.BufferGeometry {
 // ---------------------------------------------------------------- viewer
 
 /**
- * Model viewer: the depot with its two tracks and two truck lanes drawn in
+ * Model viewer: the depot with its two tracks and the drive drawn in
  * (in the game those are real rail / road cells).
  */
+const PREVIEW_BAYS = [true, true, true, true, true];
+
 export function DepotPreview({ phase }: { phase?: number }) {
   return (
     <group>
@@ -349,7 +435,7 @@ export function DepotPreview({ phase }: { phase?: number }) {
           ))}
         </group>
       ))}
-      {[0.75, 1.25].map((z) => (
+      {[1.25].map((z) => (
         <group key={z} position={[0, 0, z]}>
           <mesh position={[0, 0.006, 0]} receiveShadow>
             <boxGeometry args={[3, 0.012, 0.5]} />
@@ -363,7 +449,21 @@ export function DepotPreview({ phase }: { phase?: number }) {
           ))}
         </group>
       ))}
-      <DepotModel phase={phase} fill={0.6} />
+      <DepotModel phase={phase} fill={0.6} bays={PREVIEW_BAYS} />
+      {/* Trucks backed into every bay (so the entrance shows red), one waiting at the gate. */}
+      {BAY_X.map((x, i) => {
+        const c: TruckColors = { ...truckColors(i + 3), stripe: '#e74c3c' };
+        return (
+          <group key={i} position={[x, 0.013, 0.79]} rotation-y={-Math.PI / 2} scale={0.5}>
+            <Tractor colors={c} />
+            <Trailer colors={c} />
+          </group>
+        );
+      })}
+      <group position={[-1.38, 0.013, 1.29]} scale={0.5}>
+        <Tractor colors={{ ...truckColors(9), stripe: '#3498db' }} />
+        <Trailer colors={{ ...truckColors(9), stripe: '#3498db' }} />
+      </group>
       {/* A train on track 1 for scale (vehicles are in cells: × ½ unit). */}
       <group position={[0.2, 0.054, -1.25]} scale={0.5}>
         <group position={[1.6, 0, 0]}>

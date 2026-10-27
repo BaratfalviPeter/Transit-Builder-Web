@@ -12,7 +12,8 @@ import './pathPlanInfo.css';
 export function PathPlanInfo() {
   const snap = usePathPlanSnapshot();
   const { money } = useGameSnapshot();
-  if (snap.pathbuildingState !== 'selecting_end') return null;
+  if (snap.pathbuildingState === 'idle') return null;
+  const drawing = snap.pathbuildingState === 'drawing';
 
   const tool = TOOLS[snap.type === CellType.Rail ? 'rail' : 'road'];
   const cost = snap.newCells * tool.cost;
@@ -21,7 +22,9 @@ export function PathPlanInfo() {
     ? snap.rail?.reason ?? 'Akadály – ide nem vezethető'
     : poor
       ? 'Nincs elég pénz'
-      : 'Kattints a célpontra az építéshez';
+      : drawing
+        ? 'Engedd el az építéshez · visszahúzva törlődik'
+        : 'Kattints a célpontra az építéshez';
 
   return (
     <div className={`ppi ${snap.blocked || poor ? 'ppi--red' : ''}`}>
@@ -32,7 +35,7 @@ export function PathPlanInfo() {
         <span className="ppi__cost">${cost}</span>
       </div>
       <div className="ppi__status">{status}</div>
-      <div className="ppi__hint">Jobb klikk / Esc: mégse</div>
+      <div className="ppi__hint">{drawing ? 'Esc: mégse' : 'Jobb klikk / Esc: mégse'}</div>
     </div>
   );
 }

@@ -160,6 +160,13 @@ A jobb oldali **panel** három füle:
     vonatonként fizetsz egy kocsit; a vonatok a következő megállójukban veszik fel
     / adják le. A peronnál hosszabb vonat hátul kilóg.
   - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
+  - **Építés húzással:** az Út és a Sín eszközzel nyomd le az egeret és húzd:
+    a zöld előnézet követi a kurzort, visszahúzva törlődik, elengedve megépül.
+    A sín meglévő sín közelében magától beköt (váltóval vagy a sínvég
+    folytatásával); meglévő sínt / utat áthúzva keresztezi. Sima kattintás:
+    a régi A → B tervezés.
+  - **Szűk ívek:** a sín 90°-ban is fordulhat 1–2 cella sugárral (a vonat ott lassú).
+  - Az út kanyarjai és zsákutcavégei lekerekítettek.
   - **Peronhossz:** a Vasútállomás eszköznél **Q**-val 6 / 8 / 10 / 12 cella
     (a többletcella $100); a hosszabb peronra a hosszabb vonat is ráfér.
   - **Váltó iránya:** a sínépítő előnézetében sárga nyíl mutatja, merre tudnak

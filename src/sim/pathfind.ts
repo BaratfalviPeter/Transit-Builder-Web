@@ -275,6 +275,28 @@ export function findTrackPath(
   return { path, blocked: found < 0 };
 }
 
+/**
+ * May a track of `type` step from cell `a` to the 4-neighbour `b` (the same
+ * rules as the A* search: buildable, level crossings straight, ramps along
+ * their axis, one height level at most)?
+ */
+export function trackStepOk(map: TerrainMap, a: GridCell, b: GridCell, type: TrackType): boolean {
+  const ddx = b.x - a.x, ddz = b.z - a.z;
+  if (Math.abs(ddx) + Math.abs(ddz) !== 1 || !isTrackPassable(map, b.x, b.z, type)) return false;
+  const nd = ddx === 1 ? 0 : ddx === -1 ? 1 : ddz === 1 ? 2 : 3;
+  if (type === CellType.Road) {
+    const axis = isXDir(nd) ? 'x' : 'z';
+    const here = roadThroughAxis(map, a.x, a.z), there = roadThroughAxis(map, b.x, b.z);
+    if ((here && here !== axis) || (there && there !== axis)) return false;
+  }
+  const kind = (x: number, z: number): SlopeKind => {
+    const k = getSlopeKind(map, x, z);
+    return k === 'invalid' && map.cells[x][z] === type ? 'flat' : k;
+  };
+  if (!axisOk(kind(a.x, a.z), nd) || !axisOk(kind(b.x, b.z), nd)) return false;
+  return Math.abs(map.heights[b.x][b.z] - map.heights[a.x][a.z]) <= HILL_STEP + 1e-6;
+}
+
 /** Cells of `path` that would need building (not already `type`). */
 export function cellsToBuild(map: TerrainMap, path: GridCell[], type: TrackType): GridCell[] {
   return path.filter(({ x, z }) => map.cells[x][z] !== type);

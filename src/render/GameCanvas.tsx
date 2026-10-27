@@ -456,6 +456,22 @@ function Scene() {
   //   selecting_end --hover-->             A* preview (green / red hologram)
   //   selecting_end --click-->             build previewPath, pay, -> idle
   //   selecting_end --right-click / Esc--> cancel, -> idle
+  /** Release of a drawing drag: build what was drawn (if it can be and is paid for). */
+  const finishDrawing = useCallback(() => {
+    const p = pathPlan.getSnapshot();
+    if (p.pathbuildingState !== 'drawing') return;
+    const tool = TOOLS[p.type === CellType.Rail ? 'rail' : 'road'];
+    const cost = p.newCells * tool.cost;
+    if (!p.blocked && game.canAfford(cost)) {
+      let placed = 0;
+      if (p.type === CellType.Rail) {
+        if (p.rail && p.rail.pts.length >= 4) placed = terrain.buildRail(p.rail);
+      } else if (p.previewPath.length > 1) placed = terrain.buildPath(p.previewPath);
+      if (placed > 0) game.spend(placed * tool.cost);
+    }
+    pathPlan.clear();
+  }, [pathPlan, game, terrain]);
+
   const clickMode = useMemo(
     () => ({
       // Select: a click (not a drag — that pans) on an industry opens its interior.
@@ -499,6 +515,17 @@ function Scene() {
         if (!terrain.inBounds(Math.round(g.x), Math.round(g.z))) return;
         pathPlan.preview(terrain.getMap(), g);
       },
+      // Road / rail: dragging draws the track along the cursor (see PathPlan).
+      dragStart: (wx: number, wz: number) => {
+        const type = trackOf(game.getActiveTool());
+        if (type === null || pathPlan.getSnapshot().pathbuildingState === 'selecting_end') return false;
+        const g = gridOf(wx, wz);
+        return pathPlan.drawBegin(terrain.getMap(), g, type);
+      },
+      dragMove: (wx: number, wz: number) => {
+        pathPlan.drawTo(terrain.getMap(), gridOf(wx, wz));
+      },
+      dragEnd: () => finishDrawing(),
       onClick: (wx: number, wz: number) => {
         const tool = TOOLS[game.getActiveTool()];
         if (tool.id === 'select') {
@@ -573,7 +600,7 @@ function Scene() {
         pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport],
+    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport, finishDrawing],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -625,10 +652,12 @@ function Scene() {
   useEffect(() => {
     const onUp = () => {
       lastCell.current = null;
+      // A drawing drag released off the map: build it all the same.
+      if (pathPlan.getSnapshot().pathbuildingState === 'drawing') finishDrawing();
     };
     window.addEventListener('pointerup', onUp);
     return () => window.removeEventListener('pointerup', onUp);
-  }, []);
+  }, [pathPlan, finishDrawing]);
 
   // Shadow-map updates: static by default (compute once), live only when the
   // user turns on moving cloud/bird shadows. Sun settings trigger a recompute.
@@ -756,7 +785,7 @@ function Scene() {
 
       {/* Two-click road/rail planner: green hologram of the A* route, red if
           blocked or unaffordable. */}
-      {pathSnap.pathbuildingState === 'selecting_end' && (
+      {pathSnap.pathbuildingState !== 'idle' && (
         <PathPreview
           path={pathSnap.previewPath}
           red={

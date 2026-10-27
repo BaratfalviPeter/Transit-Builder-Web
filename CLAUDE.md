@@ -50,6 +50,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
   megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
   fölött látszanak), világegységben 0,38 cella szélesen.
+- Sima mozgás: a szimuláció 50 ms-onként lép (`useTransport` TICK_MS), a renderer a két
+  utolsó lépés között interpolál (`drawPose` / `trainDrawS`, `prevS` + `prevLane`/`prevPath`,
+  `tickAt`/`tickGap`). Új renderelő kódban NE a nyers `pose()`/`t.s`-t használd.
 - Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer`, origó a nyeregnél, 5 háló /
   kamion), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
   pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
@@ -150,8 +153,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #75 (forgalomirányítás + új UI és gyorsbillentyűk).
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
-- Folyamatban: vonatjáratok (hurokkal fordulnak; a felhasználó a valósághűt kérte),
-  zoom az egér felé.
+- Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
+- Folyamatban: szaggatás javítása (interpoláció a szimulációs lépések között).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

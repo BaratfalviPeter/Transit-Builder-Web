@@ -76,6 +76,7 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
     g.visible = !!t?.path;
     if (!t || !t.path) return;
     const p = t.path;
+    const front = sim.trainDrawS(t);
     const at = (s: number): [number, number, number] => {
       const [x, z] = laneAt(p, s);
       const q = pathAt(p, s);
@@ -84,7 +85,7 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
     CARS.forEach(({ c, b }, k) => {
       const car = cars.current[k];
       if (!car) return;
-      const f = at(t.s - c + b), r = at(t.s - c - b);
+      const f = at(front - c + b), r = at(front - c - b);
       car.position.set((f[0] + r[0]) / 2 - half, (f[1] + r[1]) / 2, (f[2] + r[2]) / 2 - half);
       const dx = f[0] - r[0], dz = f[2] - r[2];
       car.rotation.set(0, Math.atan2(-dz, dx), Math.atan2(f[1] - r[1], Math.hypot(dx, dz)));

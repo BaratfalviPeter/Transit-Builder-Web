@@ -175,6 +175,9 @@ export interface Truck {
   path: Cell[] | null;
   /** Distance travelled along `lane` (cells). */
   s: number;
+  /** `s` and `lane` at the previous tick (the renderer draws in between). */
+  prevS: number;
+  prevLane: Lane | null;
   /** Smooth right-lane path built from `path` (s runs along it). */
   lane: Lane | null;
   /** Current speed (cells/s; backwards while backing into a bay). */
@@ -258,6 +261,9 @@ export interface Train {
   /** Its path (null: not on the network yet / any more); the front is at `s`. */
   path: RailPath | null;
   s: number;
+  /** `s` and `path` at the previous tick (the renderer draws in between). */
+  prevS: number;
+  prevPath: RailPath | null;
   v: number;
   /** How far the front may go on `path` for now (short of a taken platform). */
   limit: number;
@@ -526,6 +532,9 @@ export class TransportSim {
   private bays = new Map<number, Array<number | null>>();
   /** Game seconds since the start (drives the traffic lights). */
   clock = 0;
+  /** Real time (ms) of the last tick and the usual gap between ticks (drawing in between). */
+  private tickAt = 0;
+  private tickGap = 50;
   /** Junction cell → the truck that reserved it. */
   private reserved = new Map<number, number>();
   /** 1 = junction cell (cached per map version). */
@@ -664,6 +673,19 @@ export class TransportSim {
     for (let i = this.payments.length - 1; i >= 0; i--) {
       this.payments[i].age += dt;
       if (this.payments[i].age > 3) this.payments.splice(i, 1);
+    }
+    // Remember where everyone was: the renderer moves them smoothly from
+    // there to the new place until the next tick.
+    const now = globalThis.performance?.now() ?? Date.now();
+    if (this.tickAt) this.tickGap += (Math.min(200, Math.max(10, now - this.tickAt)) - this.tickGap) * 0.2;
+    this.tickAt = now;
+    for (const t of this.trucks) {
+      t.prevS = t.s;
+      t.prevLane = t.lane;
+    }
+    for (const t of this.trains) {
+      t.prevS = t.s;
+      t.prevPath = t.path;
     }
     if (dt <= 0) return;
     this.clock += dt;
@@ -1860,6 +1882,8 @@ export class TransportSim {
             target: 0,
             path: null,
             s: 0,
+            prevS: 0,
+            prevPath: null,
             v: 0,
             limit: Infinity,
             state: 'stop',
@@ -1890,6 +1914,8 @@ export class TransportSim {
           path: null,
           lane: null,
           s: 0,
+          prevS: 0,
+          prevLane: null,
           state: 'stop',
           v: 0,
           timer: STOP_TIME + i * 3,
@@ -1917,6 +1943,25 @@ export class TransportSim {
     }
     // Trucks of stops that vanished keep waiting; lines are not auto-removed.
     if (changed) this.set({ fleet: this.snap.fleet + 1 });
+  }
+
+  /** How far real time has got from the last tick towards the next (0…1). */
+  private drawAlpha(): number {
+    const now = globalThis.performance?.now() ?? Date.now();
+    return Math.min(1, Math.max(0, (now - this.tickAt) / this.tickGap));
+  }
+
+  /** A truck's pose for drawing now: between the last two ticks (smooth at any frame rate). */
+  drawPose(t: Truck): TruckPose | null {
+    if (!t.lane) return null;
+    if (t.prevLane !== t.lane) return this.pose(t);
+    return poseOnLane(t.lane, t.prevS + (t.s - t.prevS) * this.drawAlpha());
+  }
+
+  /** A train's front for drawing now (path distance), between the last two ticks. */
+  trainDrawS(t: Train): number {
+    if (t.prevPath !== t.path) return t.s;
+    return t.prevS + (t.s - t.prevS) * this.drawAlpha();
   }
 
   /**

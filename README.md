@@ -153,6 +153,25 @@ A jobb oldali **panel** három füle:
   - **Mozgás:** fokozatosan gyorsulnak és fékeznek; kanyar előtt lassítanak
     (szűk kanyarban jobban), az elöl haladó és a kereszteződés előtt
     időben fékeznek, várakozáskor a vonalig gurulnak.
+- **Vonatok** (`src/sim/rail.ts`, `transport.ts`, `src/render/Trains.tsx`):
+  vonatjárat vasútállomások és raktárak között (Járatok → „Új vonatjárat”,
+  $8000; mozdony + 3 kocsi × 30 egység, 4 cella/s).
+  - A vonat **csak előre** megy, a váltókon a sín irányában (nem fordul
+    vissza): a végállomásoknál **fordítóhurok** kell (vagy az egész pálya kör).
+    Ha nincs, a járatnál „nincs út!” jelenik meg.
+  - A vonat a peronon áll meg úgy, hogy az egész szerelvény a peronon legyen;
+    a kocsik típusa a rakománytól függ (érc → garatos, olaj → tartály stb.).
+  - **Biztonság:** indulás előtt lefoglalja az utat a következő megállóig
+    (vágányszakaszok, váltók, keresztezések), és csak akkor indul, ha az
+    szabad; a vonat mögött felszabadul. Ha a cél peron foglalt, előrébb
+    megy, és egy olyan helyen vár (pl. **kitérőben**), ahol nem áll a másik
+    útjába. Szabad párhuzamos vágányt (kitérőt) magától választ.
+    Egyvágányú pályán kitérő nélkül csak egy vonat járhat; ha a vonatok
+    egymásra várnak, a járatnál „foglalt pálya” jelzés jelenik meg.
+  - **Szintbeli kereszteződés:** a kamionok megállnak, ha vonat közeledik
+    (8 cellán belül) vagy a sínen van; a vonat fékez, ha kamion van rajta.
+  - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
+    új hálózaton megy tovább.
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):
   6×6-os átrakóhely sík, üres területre (**Q**: forgatás). Két vágány
   (vonatoknak, később), csarnok, 5 rakodóállás és egy **egyirányú behajtó**
@@ -245,6 +264,7 @@ akárhány cella is gyors; a mesh fix méretű bufferben, helyben patch-elődik.
 
 Vezérlés:
 - **Bal gomb**: építés / tereprendezés / törlés (kattintás vagy húzás)
+- **Zoom**: görgő — az egérmutató alatti pont felé
 - **Mozgás (pan)**: WASD vagy nyílbillentyűk (lágyan gyorsul, tartva egyre
   gyorsabb; az érzékenység a Dev fül „Kamera” csúszkájával állítható) · **Jobb húzás**: forgatás ·
   **Görgő / középső gomb**: zoom

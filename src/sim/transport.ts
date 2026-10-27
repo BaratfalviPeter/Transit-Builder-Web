@@ -35,7 +35,14 @@
  * leaves by the exit. Cargo remembers where it came from: the final
  * delivery pays for the whole distance from that origin.
  *
- * Lines are immutable snapshot data (for the UI); the trucks are mutable
+ * Rail lines run TRAINS (rail.ts routes them): forward only, so the line
+ * needs loops to turn round. Before leaving a stop a train reserves its whole
+ * way to the next one (the track edges and the cells it shares with other
+ * tracks); it leaves only when nobody else holds any of it, and frees the
+ * track behind its last wagon. Level crossings close for trucks while a
+ * train is near; a train brakes for a truck still on one.
+ *
+ * Lines are immutable snapshot data (for the UI); the vehicles are mutable
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
 
@@ -63,18 +70,41 @@ import {
   type DepotDir,
 } from './depot';
 import type { ProductionSim } from './production';
+import { brakeCapOn, laneAt, nearestS, polyLane, type Lane } from './lane';
+
+export { laneAt, nearestS, polyLane, type Lane };
 import { activeControl, lightState } from './traffic';
+import {
+  CAR_GAP,
+  CAR_LEN,
+  clipPath,
+  edgeLength,
+  locate,
+  LOCO_LEN,
+  makePath,
+  netOf,
+  pathAt,
+  pathCells,
+  pathValid,
+  railRoute,
+  stopTargets,
+  type RailPath,
+} from './rail';
+import { hasRailAt as railAt } from './railNet';
 
 export interface Line {
   readonly id: number;
   readonly name: string;
   readonly color: string;
-  readonly kind: 'truck';
+  readonly kind: LineKind;
   /** Stop (station) ids, visited in order and then back to the first. */
   readonly stops: readonly number[];
   /** Trucks assigned. */
   readonly vehicles: number;
 }
+
+/** Truck lines run on the roads, rail lines (trains) on the tracks. */
+export type LineKind = 'truck' | 'rail';
 
 export interface TransportSnapshot {
   lines: readonly Line[];
@@ -82,6 +112,10 @@ export interface TransportSnapshot {
   view: boolean;
   /** Stops picked so far for a new line, or null when not drafting. */
   draft: readonly number[] | null;
+  /** What kind of line the draft is. */
+  draftKind: LineKind;
+  /** Rail lines whose trains have been waiting long for the track (it's taken). */
+  stalled: readonly number[];
   /** Lines whose trucks find no road between two stops. */
   noRoute: readonly number[];
   /** Bumped when trucks are added / removed (re-render the truck list). */
@@ -197,6 +231,48 @@ interface YardClaim {
   bay: number;
 }
 
+/** Price of a train (loco + wagons); half is refunded when one is sold. */
+export const TRAIN_PRICE = 8000;
+/** Wagons per train and what each carries (units). */
+export const TRAIN_WAGONS = 3;
+export const WAGON_CAPACITY = 30;
+/** A train from the loco's front to the last wagon's end (cells). */
+export const TRAIN_LEN = LOCO_LEN + TRAIN_WAGONS * (CAR_LEN + CAR_GAP);
+/** Train top speed, acceleration, braking (cells, s) and grip in bends. */
+const TRAIN_SPEED = 4;
+const TRAIN_ACCEL = 0.8;
+const TRAIN_DECEL = 1.6;
+const TRAIN_A_LAT = 4;
+/** Seconds a train stands at a stop (un)loading. */
+const TRAIN_STOP_TIME = 4;
+/** A level crossing closes for trucks when a train's front is this close (cells). */
+const CROSSING_CLOSE = 8;
+/** Seconds a train may wait for the track before its line shows a warning. */
+const STALL_WARN = 20;
+
+export interface Train {
+  readonly id: number;
+  readonly lineId: number;
+  /** Index (in the line's stops) of the stop it's at / heading to. */
+  target: number;
+  /** Its path (null: not on the network yet / any more); the front is at `s`. */
+  path: RailPath | null;
+  s: number;
+  v: number;
+  /** How far the front may go on `path` for now (short of a taken platform). */
+  limit: number;
+  state: 'stop' | 'drive' | 'noroute';
+  timer: number;
+  /** Seconds waiting for the track. */
+  blocked: number;
+  cargo: Partial<Record<Item, number>>;
+  origin: Partial<Record<Item, [number, number]>>;
+  /** Reserved track ('e' + edge id, 'c' + shared cell) → path distance the front leaves it at. */
+  holds: Map<string, number>;
+  /** Level crossings on its path: road cell → [enter, leave] path distances of the front. */
+  crossings: Map<number, [number, number]>;
+}
+
 /** A recent payment (shown as a floating "+$" over the stop). */
 export interface Payment {
   amount: number;
@@ -247,15 +323,6 @@ export function stopLabel(map: TerrainMap, st: Station | null | undefined): stri
   if (isDepot(st)) return '🏬 Raktár';
   const t = map.cells[st.anchor[0]][st.anchor[1]];
   return `${INDUSTRY_ICON[t] ?? ''} ${INDUSTRY_NAME[t] ?? ''}`.trim() || '?';
-}
-
-/** A lane straight through world points (no lane offset: already placed). */
-export function polyLane(pts: Array<[number, number]>): Lane {
-  const xs = pts.map((p) => p[0]);
-  const zs = pts.map((p) => p[1]);
-  const cum = [0];
-  for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
-  return { xs, zs, cum, length: cum[cum.length - 1] };
 }
 
 /** Centre of a stop's road row (grid coords); a depot's lot centre. */
@@ -325,15 +392,6 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
 }
 
 // ---------------------------------------------------------------- lanes
-
-/** A polyline with cumulative lengths: the right lane along a route. */
-export interface Lane {
-  xs: number[];
-  zs: number[];
-  /** Length up to each point. */
-  cum: number[];
-  length: number;
-}
 
 /**
  * The right lane along a cell route: offset by LANE to the right, corners
@@ -407,80 +465,8 @@ export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => b
   return { xs, zs, cum, length: cum[cum.length - 1] };
 }
 
-/** Point at distance `s` along a lane (extended straight beyond both ends). */
-export function laneAt(l: Lane, s: number): [number, number] {
-  const n = l.xs.length;
-  if (n === 1) return [l.xs[0], l.zs[0]];
-  let i: number;
-  if (s <= 0) i = 0;
-  else if (s >= l.length) i = n - 2;
-  else {
-    let lo = 0, hi = n - 1;
-    while (hi - lo > 1) {
-      const m = (lo + hi) >> 1;
-      if (l.cum[m] <= s) lo = m;
-      else hi = m;
-    }
-    i = lo;
-  }
-  const seg = l.cum[i + 1] - l.cum[i] || 1;
-  const f = (s - l.cum[i]) / seg;
-  return [l.xs[i] + (l.xs[i + 1] - l.xs[i]) * f, l.zs[i] + (l.zs[i + 1] - l.zs[i]) * f];
-}
-
-/** Lane distance (within the first `within` cells) closest to point p. */
-export function nearestS(l: Lane, p: [number, number], within = Infinity): number {
-  let best = 0, bd = Infinity;
-  for (let s = 0; s <= Math.min(l.length, within); s += 0.05) {
-    const [x, z] = laneAt(l, s);
-    const d = Math.hypot(x - p[0], z - p[1]);
-    if (d < bd) {
-      bd = d;
-      best = s;
-    }
-  }
-  return best;
-}
-
-/** Sample step (cells) of a lane's bend speed limits. */
-const LIMIT_STEP = 0.1;
-const bendLimits = new WeakMap<Lane, Float32Array>();
-
-/** The bend speed limit along a lane, every LIMIT_STEP (cached per lane). */
-function bendLimit(l: Lane): Float32Array {
-  let a = bendLimits.get(l);
-  if (a) return a;
-  a = new Float32Array(Math.ceil(l.length / LIMIT_STEP) + 2);
-  const h = 0.15;
-  for (let i = 0; i < a.length; i++) {
-    const s = i * LIMIT_STEP;
-    const p0 = laneAt(l, s - h), p1 = laneAt(l, s), p2 = laneAt(l, s + h);
-    let turn = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
-    turn = Math.abs(((turn + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-    const k = turn / (2 * h); // curvature (1 / radius)
-    a[i] = k > 1e-3 ? Math.min(TRUCK_SPEED, Math.sqrt(A_LAT / k)) : TRUCK_SPEED;
-  }
-  bendLimits.set(l, a);
-  return a;
-}
-
-/**
- * The fastest a truck at `s` on lane `l` may go (topped at `top`) and still
- * brake at DECEL for the bends ahead and stop by `stopAt` (lane distance).
- */
-function brakeCap(l: Lane, s: number, top: number, stopAt = Infinity): number {
-  let cap = top;
-  const lim = bendLimit(l);
-  const range = (top * top) / (2 * DECEL);
-  for (let d = 0; d <= range; d += LIMIT_STEP) {
-    const i = Math.round((s + d) / LIMIT_STEP);
-    if (i < 0) continue;
-    if (i >= lim.length) break;
-    cap = Math.min(cap, Math.sqrt(lim[i] * lim[i] + 2 * DECEL * d));
-  }
-  if (stopAt < Infinity) cap = Math.min(cap, Math.sqrt(2 * DECEL * Math.max(0, stopAt - s)));
-  return cap;
-}
+/** The truck speed cap at `s` for the bends ahead and a stop at `stopAt` (see lane.ts). */
+const brakeCap = (l: Lane, s: number, top: number, stopAt = Infinity) => brakeCapOn(l, s, top, DECEL, A_LAT, stopAt);
 
 /**
  * Where on a new lane a parked truck (pose `p`) carries on from: the point
@@ -523,10 +509,14 @@ function poseOnLane(l: Lane, s: number): TruckPose {
 // ---------------------------------------------------------------- sim
 
 export class TransportSim {
-  private snap: TransportSnapshot = { lines: [], view: false, draft: null, noRoute: [], fleet: 0 };
+  private snap: TransportSnapshot = { lines: [], view: false, draft: null, draftKind: 'truck', noRoute: [], stalled: [], fleet: 0 };
   private trucks: Truck[] = [];
+  private trains: Train[] = [];
   private nextLine = 1;
   private nextTruck = 1;
+  private nextTrain = 1;
+  /** Reserved track (see Train.holds) → the train holding it. */
+  private railHeld = new Map<string, number>();
   private routeCache = new Map<string, Cell[] | null>();
   /** Yard zones claimed this tick by trucks driving to / backing into a bay. */
   private zones: Array<{ st: Station; bay: number; dir: DepotDir; owner: number }> = [];
@@ -559,13 +549,18 @@ export class TransportSim {
     return this.trucks;
   }
 
+  /** Current trains (mutable runtime objects; read-only for callers). */
+  allTrains(): readonly Train[] {
+    return this.trains;
+  }
+
   setView(on: boolean): void {
     if (this.snap.view === on) return;
     this.set({ view: on, draft: on ? this.snap.draft : null });
   }
 
-  startDraft(): void {
-    this.set({ draft: [] });
+  startDraft(kind: LineKind = 'truck'): void {
+    this.set({ draft: [], draftKind: kind });
   }
 
   cancelDraft(): void {
@@ -588,7 +583,7 @@ export class TransportSim {
       id,
       name: `${id}. járat`,
       color: LINE_COLORS[(id - 1) % LINE_COLORS.length],
-      kind: 'truck',
+      kind: this.snap.draftKind,
       stops: d.slice(),
       vehicles: 1,
     };
@@ -603,6 +598,8 @@ export class TransportSim {
         this.leaveDepot(t);
       }
     this.trucks = this.trucks.filter((t) => t.lineId !== id);
+    for (const t of this.trains) if (t.lineId === id) this.releaseTrack(t);
+    this.trains = this.trains.filter((t) => t.lineId !== id);
     this.set({ lines: this.snap.lines.filter((l) => l.id !== id), fleet: this.snap.fleet + 1 });
   }
 
@@ -614,6 +611,37 @@ export class TransportSim {
   linePaths(map: TerrainMap, line: Line): Array<Cell[] | null> {
     const st = (id: number) => map.stations?.find((s) => s.id === id) ?? null;
     return line.stops.map((a, i) => this.route(map, st(a), st(line.stops[(i + 1) % line.stops.length])));
+  }
+
+  /**
+   * A rail line's way round (from its first stop through all of them and
+   * back), as one polyline — or null if a leg has no forward route.
+   */
+  railLinePath(map: TerrainMap, stops: readonly number[], closed = true): Array<[number, number]> | null {
+    const net = netOf(map);
+    const st = (id: number) => map.stations?.find((s) => s.id === id) ?? null;
+    const first = st(stops[0]);
+    if (!first || stops.length < 2) return null;
+    const legs = closed ? stops.length : stops.length - 1;
+    // Start from any way of standing at the first stop that gets round.
+    for (const start of stopTargets(net, first)) {
+      const pts: Array<[number, number]> = [];
+      let from = start as { edge: number; along: number; fwd: boolean };
+      let ok = true;
+      for (let i = 0; i < legs && ok; i++) {
+        const to = st(stops[(i + 1) % stops.length]);
+        const r = to ? railRoute(net, from, stopTargets(net, to)) : null;
+        if (!r) {
+          ok = false;
+          break;
+        }
+        const p = makePath(net, r.segs);
+        for (let k = 0; k < p.xs.length; k++) pts.push([p.xs[k], p.zs[k]]);
+        from = r.target;
+      }
+      if (ok) return pts;
+    }
+    return null;
   }
 
   /** Route between two stops (cached per map version). */
@@ -687,7 +715,7 @@ export class TransportSim {
         t.blocked = 0;
         t.waitFor = null;
         t.v = 0;
-        this.serveStop(t, line, here, byId, map, prod, earn);
+        this.serveStop(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn);
         // Head for the next stop.
         this.setPath(t, r, map);
         if (t.lane) t.s = s0;
@@ -719,6 +747,19 @@ export class TransportSim {
           this.bayList(here.id)[bay] = t.id;
           this.yardList(here.id).push({ truck: t.id, kind: 'in', bay });
           t.depot = { phase: 'wait', dir: 1, bay, bayLane: null, sP: 0, sDock: 0 };
+        }
+        const xing = this.crossingAhead(t, map, 0.9);
+        if (xing >= 0) {
+          // A level crossing closed for a train: halt before it.
+          t.blocked += dt;
+          const room = this.heldUp(t, poses) ? 0 : xing;
+          t.waitFor = null;
+          if (room > 0.03) {
+            t.v = Math.min(t.v, Math.sqrt(2 * DECEL * 1.6 * room));
+            t.s += Math.min(t.v * dt, room);
+            this.updatePose(t, poses);
+          } else t.v = 0;
+          continue;
         }
         if (this.junctionWait(t, map, poses)) {
           // Not to enter yet: brake to a halt at the line (still clear of
@@ -763,8 +804,12 @@ export class TransportSim {
       }
     }
     this.breakDeadlocks();
+    const stalled = new Set<number>();
+    this.tickTrains(dt, map, byId, prod, earn, noRoute, stalled, poses);
     const nr = [...noRoute].sort((a, b) => a - b);
     if (nr.join() !== this.snap.noRoute.join()) this.set({ noRoute: nr });
+    const sl = [...stalled].sort((a, b) => a - b);
+    if (sl.join() !== this.snap.stalled.join()) this.set({ stalled: sl });
   }
 
   /** Note that `t` waits for `o`; returns true (= wait). */
@@ -971,6 +1016,9 @@ export class TransportSim {
           break;
         }
       }
+    // A level crossing closed ahead.
+    const xing = this.crossingAhead(t, map, range);
+    if (xing >= 0) cap = Math.min(cap, Math.sqrt(2 * DECEL * xing));
     // The next junction ahead (one this truck hasn't reserved yet).
     if (!t.holds.length) {
       const n = map.size;
@@ -1273,7 +1321,7 @@ export class TransportSim {
       if (t.s <= v.sDock) {
         t.s = v.sDock;
         t.v = 0;
-        this.serveStop(t, line, here, byId, map, prod, earn);
+        this.serveStop(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn);
         t.timer = STOP_TIME;
         v.phase = 'load';
         this.freeYard(t); // docked: the next truck may manoeuvre
@@ -1332,9 +1380,10 @@ export class TransportSim {
     this.updatePose(t, poses);
   }
 
-  /** Unload what this stop takes (and get paid), then load for later stops. */
+  /** Unload what this stop takes (and get paid), then load (up to `cap`) for later stops. */
   private serveStop(
-    t: Truck,
+    t: Pick<Truck, 'cargo' | 'origin'>,
+    cap: number,
     line: Line,
     here: Station,
     byId: Map<number, Station>,
@@ -1389,9 +1438,9 @@ export class TransportSim {
     let load = 0;
     for (const v of Object.values(t.cargo)) load += v ?? 0;
     for (const item of wanted) {
-      if (load >= TRUCK_CAPACITY) break;
+      if (load >= cap) break;
       const from = depot ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
-      const k = prod.take(here.id, item, TRUCK_CAPACITY - load);
+      const k = prod.take(here.id, item, cap - load);
       if (k <= 0) continue;
       const had = t.cargo[item] ?? 0;
       const o = t.origin[item];
@@ -1403,10 +1452,434 @@ export class TransportSim {
     }
   }
 
+  // ------------------------------------------------------------ trains
+
+  /** Advance the trains (see the header): stand, reserve the way on, run, arrive. */
+  private tickTrains(
+    dt: number,
+    map: TerrainMap,
+    byId: Map<number, Station>,
+    prod: ProductionSim,
+    earn: (amount: number) => void,
+    noRoute: Set<number>,
+    stalled: Set<number>,
+    poses: Map<number, TruckPose>,
+  ): void {
+    const net = netOf(map);
+    for (const t of this.trains) {
+      const line = this.snap.lines.find((l) => l.id === t.lineId);
+      if (!line) continue;
+      // Its track changed (a switch built into it, a piece pulled up): find
+      // it on the new network and carry on — or, if it's gone, start over.
+      if (t.path && !pathValid(net, t.path) && !this.refindTrain(t, line, byId, map)) {
+        this.releaseTrack(t);
+        t.path = null;
+        t.state = 'stop';
+        t.v = 0;
+      }
+      if (!t.path) {
+        t.timer -= dt;
+        if (t.timer > 0) continue;
+        t.timer = 1;
+        const r = this.placeTrain(t, line, byId, map);
+        if (r === 'noroute') noRoute.add(line.id);
+        if (r !== 'go') continue;
+      }
+      const path = t.path!;
+      if (t.state === 'stop' || t.state === 'noroute') {
+        t.timer -= dt;
+        if (t.timer > 0) {
+          if (t.state === 'noroute') noRoute.add(line.id);
+          if (t.blocked > STALL_WARN) stalled.add(line.id);
+          continue;
+        }
+        const r = this.departTrain(t, line, byId, map, prod, earn);
+        if (r === 'noroute') {
+          t.state = 'noroute';
+          t.timer = 1;
+          noRoute.add(line.id);
+        } else if (r === 'wait') {
+          t.state = 'stop';
+          t.timer = 0.5;
+          t.blocked += 0.5;
+          if (t.blocked > STALL_WARN) stalled.add(line.id);
+        } else {
+          t.state = 'drive';
+          t.blocked = 0;
+        }
+        continue;
+      }
+      // Held short of a taken platform: go on once the rest is free.
+      if (t.limit < path.length && t.s >= t.limit - 0.02) {
+        const need = this.trainNeeds(map, path, t.s);
+        if (this.canReserve(t, need)) {
+          this.reserve(t, need);
+          t.limit = Infinity;
+          t.blocked = 0;
+        } else {
+          t.v = 0;
+          t.blocked += dt;
+          if (t.blocked > STALL_WARN) stalled.add(line.id);
+          continue;
+        }
+      }
+      // Driving: brake for the bends, a truck stuck on a crossing, the stop.
+      const end = Math.min(path.length, t.limit);
+      let cap = brakeCapOn(path, t.s, TRAIN_SPEED, TRAIN_DECEL, TRAIN_A_LAT, end);
+      if (end - t.s > 0.02) cap = Math.max(cap, 0.2);
+      cap = Math.min(cap, this.crossingCapTrain(t, map, poses));
+      t.v = Math.min(t.v + TRAIN_ACCEL * dt, cap);
+      t.s = Math.min(t.s + t.v * dt, end);
+      this.freeBehind(t);
+      if (t.s >= path.length - 1e-6) {
+        t.v = 0;
+        t.state = 'stop';
+        t.timer = TRAIN_STOP_TIME;
+      }
+    }
+  }
+
+  /**
+   * After the track under a train changed: rebuild its path from its tail
+   * (on the new edges) to where it was heading. False if it can't be found.
+   */
+  private refindTrain(t: Train, line: Line, byId: Map<number, Station>, map: TerrainMap): boolean {
+    const net = netOf(map);
+    const old = t.path!;
+    const back = Math.min(TRAIN_LEN + 1, t.s);
+    const [tx, tz] = laneAt(old, t.s - back);
+    const [hx, hz] = laneAt(old, t.s - back + 0.2);
+    const tail = locate(net, tx, tz, hx - tx, hz - tz);
+    const st = byId.get(line.stops[t.target]);
+    if (!tail || !st) return false;
+    const going = t.state === 'drive' && t.s < old.length - 1e-6;
+    let pieces: Array<[number, number, number]> | null = null;
+    if (going) pieces = railRoute(net, tail, stopTargets(net, st))?.segs ?? null;
+    else {
+      // Standing: just the stretch it stands on.
+      const [fx, fz] = laneAt(old, t.s);
+      const front = locate(net, fx, fz, hx - tx, hz - tz);
+      if (front) pieces = railRoute(net, tail, [{ ...front, platform: 0 }])?.segs ?? null;
+    }
+    if (!pieces) return false;
+    const np = makePath(net, pieces);
+    this.releaseTrack(t);
+    t.path = np;
+    t.s = Math.min(back, np.length);
+    t.limit = Infinity;
+    this.reserve(t, this.trainNeeds(map, np, t.s)); // it is there already: no waiting
+    t.crossings = pathCells(map, np, 0, np.length).roads;
+    return true;
+  }
+
+  /** Put a new train on the network, standing at its line's first stop (if it's free). */
+  private placeTrain(t: Train, line: Line, byId: Map<number, Station>, map: TerrainMap): 'go' | 'wait' | 'noroute' {
+    const net = netOf(map);
+    const st = byId.get(line.stops[t.target]);
+    if (!st) return 'noroute';
+    const next = byId.get(line.stops[(t.target + 1) % line.stops.length]);
+    const targets = stopTargets(net, st);
+    if (!targets.length) return 'noroute';
+    // Facing a way that leads on to the next stop, if there is one.
+    const onward = (tg: (typeof targets)[number]) => (next ? !!railRoute(net, tg, stopTargets(net, next)) : false);
+    const order = [...targets.filter(onward), ...targets.filter((tg) => !onward(tg))];
+    for (const tg of order) {
+      // The platform from its tail end to the stopping point.
+      const w = makePath(net, [[tg.edge, tg.fwd ? Math.max(0, tg.along - TRAIN_LEN) : Math.min(edgeLength(net, tg.edge), tg.along + TRAIN_LEN), tg.along]]);
+      if (w.length < 1) continue;
+      const need = this.trainNeeds(map, w, 0);
+      if (!this.canReserve(t, need)) continue;
+      t.path = w;
+      t.s = w.length;
+      t.v = 0;
+      t.limit = Infinity;
+      this.reserve(t, need);
+      t.crossings = pathCells(map, w, 0, w.length).roads;
+      t.state = 'stop';
+      t.timer = TRAIN_STOP_TIME;
+      return 'go';
+    }
+    return 'wait';
+  }
+
+  /**
+   * A standing train's departure: (un)load and head for the next stop —
+   * if the way there is free all along (it reserves it), else wait.
+   */
+  private departTrain(
+    t: Train,
+    line: Line,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    prod: ProductionSim,
+    earn: (amount: number) => void,
+  ): 'go' | 'wait' | 'noroute' {
+    const net = netOf(map);
+    const path = t.path!;
+    const here = byId.get(line.stops[t.target]);
+    const nextI = (t.target + 1) % line.stops.length;
+    const to = byId.get(line.stops[nextI]);
+    if (!here || !to) return 'noroute';
+    const from = pathAt(path, t.s);
+    const targets = stopTargets(net, to);
+    // Routes to each platform (and way of facing) of the next stop, nearest
+    // first — preferring ones round track others hold (a passing loop).
+    const held = (e: number) => {
+      const h = this.railHeld.get('e' + e);
+      return h !== undefined && h !== t.id;
+    };
+    const routesTo = (avoid?: (e: number) => boolean) =>
+      targets
+        .map((tg) => railRoute(net, from, [tg], avoid))
+        .filter((r): r is NonNullable<typeof r> => !!r)
+        .map((r) => ({ r, len: r.segs.reduce((a, [, x, y]) => a + Math.abs(y - x), 0) }))
+        .sort((x, y) => x.len - y.len);
+    const any = routesTo();
+    if (!any.length) return 'noroute';
+    // Keep the bit of the old path the train stands on.
+    const cut = Math.max(0, t.s - TRAIN_LEN - 1);
+    const keep = clipPath(path, cut, t.s);
+    const s0 = t.s - cut;
+    const go = (np: RailPath, need: Map<string, number>, limit: number) => {
+      this.serveStop(t, TRAIN_WAGONS * WAGON_CAPACITY, line, here, byId, map, prod, earn);
+      for (const [k, u] of t.holds) t.holds.set(k, u - cut);
+      t.path = np;
+      t.s = s0;
+      t.limit = limit;
+      this.reserve(t, need);
+      t.crossings = pathCells(map, np, 0, np.length).roads;
+      t.target = nextI;
+      return 'go' as const;
+    };
+    for (const { r } of [...routesTo(held), ...any]) {
+      const np = makePath(net, [...keep, ...r.segs]);
+      const need = this.trainNeeds(map, np, s0);
+      if (this.canReserve(t, need)) return go(np, need, Infinity);
+    }
+    // The way is taken: drive on as far as is safe to wait (short of the
+    // taken track, where it blocks nobody's way on) — or wait here.
+    const np = makePath(net, [...keep, ...any[0].r.segs]);
+    const part = this.partialReserve(t, map, np, s0);
+    return part ? go(np, part.need, part.limit) : 'wait';
+  }
+
+  /**
+   * Where on path `p` (front now at `from`) a train may drive to and wait for
+   * taken track ahead: the furthest node before it such that the track up to
+   * there is free and every train holding the track ahead can still get on
+   * its way round what this one would hold. Null: nowhere — wait here.
+   */
+  private partialReserve(t: Train, map: TerrainMap, p: RailPath, from: number): { need: Map<string, number>; limit: number } | null {
+    const enter = new Map<string, number>();
+    const leave = new Map<string, number>();
+    for (const sg of p.segs) {
+      const k = 'e' + sg.edge;
+      if (!enter.has(k)) enter.set(k, sg.s0);
+      leave.set(k, Math.max(leave.get(k) ?? -Infinity, sg.s0 + Math.abs(sg.b - sg.a)));
+    }
+    for (const [c, [a, b]] of pathCells(map, p, from - TRAIN_LEN, p.length).shared) {
+      enter.set('c' + c, a - 0.3);
+      leave.set('c' + c, b + 0.3);
+    }
+    const takenBy = (k: string) => {
+      const h = this.railHeld.get(k);
+      return h !== undefined && h !== t.id && this.trains.some((q) => q.id === h && q.path) ? h : null;
+    };
+    let conflict = Infinity;
+    for (const [k, e] of enter) if (leave.get(k)! > from - TRAIN_LEN && takenBy(k) !== null) conflict = Math.min(conflict, e);
+    if (conflict === Infinity || conflict <= from) return null;
+    // Candidate waiting points: a cell short of each node before the conflict.
+    const nodes = p.segs.map((sg) => sg.s0).filter((x) => x > from + 0.5 && x <= conflict + 1e-6);
+    nodes.push(conflict);
+    for (const node of [...new Set(nodes)].sort((a, b) => b - a)) {
+      // Short of the node and of the cells round it shared with other track
+      // (a switch's throat), so the other way past stays clear.
+      let zone = node;
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const [k, e] of enter)
+          if (k[0] === 'c' && e < zone && e <= node + 0.5 && leave.get(k)! >= zone - 0.6) {
+            zone = e;
+            grew = true;
+          }
+      }
+      const limit = zone - 0.4;
+      if (limit <= from + 0.5) continue;
+      const need = new Map<string, number>();
+      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > from - TRAIN_LEN - 0.2) need.set(k, leave.get(k)!);
+      if (!this.canReserve(t, need)) continue;
+      // Everyone holding the track ahead must get past without the track
+      // this train will stand on while it waits there.
+      const mine = new Set<string>();
+      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > limit - TRAIN_LEN - 0.15) mine.add(k);
+      const holders = new Set<number>();
+      for (const [k, e] of enter) {
+        const h = e >= limit && takenBy(k);
+        if (h) holders.add(h);
+      }
+      let ok = true;
+      for (const h of holders) {
+        const q = this.trains.find((x) => x.id === h)!;
+        if (!this.canGetOn(q, map, mine)) ok = false;
+      }
+      if (ok) return { need, limit };
+    }
+    return null;
+  }
+
+  /** Could train `q` still go on its way (to its next stop) without the track in `taken` (edges 'e…', cells 'c…')? */
+  private canGetOn(q: Train, map: TerrainMap, taken: Set<string>): boolean {
+    const p = q.path;
+    if (!p) return true;
+    const clear = (path: RailPath, from: number) =>
+      !clipPath(path, from, path.length).some(([e]) => taken.has('e' + e)) &&
+      ![...pathCells(map, path, from, path.length).shared.keys()].some((c) => taken.has('c' + c));
+    if (q.limit < p.length) return clear(p, q.s); // waiting on its own path: it needs that path
+    const line = this.snap.lines.find((l) => l.id === q.lineId);
+    if (!line) return true;
+    const stops = map.stations ?? [];
+    const next = stops.find((x) => x.id === line.stops[(q.target + 1) % line.stops.length]);
+    if (!next) return true;
+    const net = netOf(map);
+    const from = pathAt(p, p.length);
+    for (const tg of stopTargets(net, next)) {
+      const r = railRoute(net, from, [tg], (e) => taken.has('e' + e));
+      if (r && clear(makePath(net, r.segs), 0)) return true;
+    }
+    return false;
+  }
+
+  /** The track a train on `p` needs from its front at `from` on: edges and shared cells. */
+  private trainNeeds(map: TerrainMap, p: RailPath, from: number): Map<string, number> {
+    const need = new Map<string, number>();
+    for (const sg of p.segs) {
+      const end = sg.s0 + Math.abs(sg.b - sg.a);
+      if (end < from - TRAIN_LEN - 0.2) continue;
+      const k = 'e' + sg.edge;
+      need.set(k, Math.max(need.get(k) ?? -Infinity, end));
+    }
+    for (const [c, [, s]] of pathCells(map, p, from - TRAIN_LEN, p.length).shared) need.set('c' + c, s + 0.3);
+    return need;
+  }
+
+  private canReserve(t: Train, need: Map<string, number>): boolean {
+    for (const k of need.keys()) {
+      const h = this.railHeld.get(k);
+      if (h !== undefined && h !== t.id && this.trains.some((q) => q.id === h && q.path)) return false;
+    }
+    return true;
+  }
+
+  private reserve(t: Train, need: Map<string, number>): void {
+    for (const [k, u] of need) {
+      t.holds.set(k, Math.max(t.holds.get(k) ?? -Infinity, u));
+      this.railHeld.set(k, t.id);
+    }
+  }
+
+  /** Free the track the last wagon has left. */
+  private freeBehind(t: Train): void {
+    const tail = t.s - TRAIN_LEN - 0.15;
+    for (const [k, u] of t.holds)
+      if (u < tail) {
+        t.holds.delete(k);
+        if (this.railHeld.get(k) === t.id) this.railHeld.delete(k);
+      }
+  }
+
+  private releaseTrack(t: Train): void {
+    for (const k of t.holds.keys()) if (this.railHeld.get(k) === t.id) this.railHeld.delete(k);
+    t.holds.clear();
+    t.crossings.clear();
+  }
+
+  /** Is the level crossing at road cell `c` closed (a train near or on it)? */
+  crossingClosed(c: number): boolean {
+    for (const t of this.trains) {
+      const r = t.path && t.crossings.get(c);
+      if (r && t.s >= r[0] - CROSSING_CLOSE && t.s - TRAIN_LEN <= r[1] + 0.4) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Distance from a truck to where it must halt before a closed level
+   * crossing within `range` ahead, or -1 (none; or it is on it already).
+   */
+  private crossingAhead(t: Truck, map: TerrainMap, range: number): number {
+    const lane = t.lane;
+    if (!lane || !this.trains.length) return -1;
+    const n = map.size;
+    const cellAt = (d: number) => {
+      const [x, z] = laneAt(lane, d);
+      const cx = Math.round(x), cz = Math.round(z);
+      return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
+    };
+    const here = cellAt(t.s);
+    for (let d = 0.1; d <= range && t.s + d <= lane.length; d += 0.1) {
+      const c = cellAt(t.s + d);
+      if (c < 0 || c === here) continue;
+      const x = Math.floor(c / n), z = c % n;
+      if (map.cells[x][z] !== CellType.Road || !railAt(map, x, z)) continue;
+      return this.crossingClosed(c) ? Math.max(0, d - 0.15) : -1;
+    }
+    return -1;
+  }
+
+  /** Speed cap for a train: stop before a level crossing a truck is still on. */
+  private crossingCapTrain(t: Train, map: TerrainMap, poses: Map<number, TruckPose>): number {
+    if (!t.crossings.size || !this.trucks.length) return Infinity;
+    const range = (TRAIN_SPEED * TRAIN_SPEED) / (2 * TRAIN_DECEL) + 1;
+    let cap = Infinity;
+    for (const [c, [a]] of t.crossings) {
+      const ahead = a - t.s;
+      if (ahead < 0.2 || ahead > range) continue;
+      const n = map.size;
+      const cx = Math.floor(c / n), cz = c % n;
+      for (const p of poses.values()) {
+        const pts = [p.front, [p.x, p.z], p.rear];
+        if (pts.some(([x, z]) => Math.abs(x - cx) < 0.7 && Math.abs(z - cz) < 0.7)) {
+          cap = Math.min(cap, Math.sqrt(2 * TRAIN_DECEL * Math.max(0, ahead - 0.9)));
+          break;
+        }
+      }
+    }
+    return cap;
+  }
+
   /** Match the trucks on each line to its `vehicles` count. */
   private syncFleet(): void {
     let changed = false;
     for (const line of this.snap.lines) {
+      if (line.kind === 'rail') {
+        const mine = this.trains.filter((t) => t.lineId === line.id);
+        for (let i = mine.length; i < line.vehicles; i++) {
+          this.trains.push({
+            id: this.nextTrain++,
+            lineId: line.id,
+            target: 0,
+            path: null,
+            s: 0,
+            v: 0,
+            limit: Infinity,
+            state: 'stop',
+            timer: 0,
+            blocked: 0,
+            cargo: {},
+            origin: {},
+            holds: new Map(),
+            crossings: new Map(),
+          });
+          changed = true;
+        }
+        if (mine.length > line.vehicles) {
+          const drop = new Set(mine.slice(line.vehicles).map((t) => t.id));
+          for (const t of mine.slice(line.vehicles)) this.releaseTrack(t);
+          this.trains = this.trains.filter((t) => !drop.has(t.id));
+          changed = true;
+        }
+        continue;
+      }
       const mine = this.trucks.filter((t) => t.lineId === line.id);
       for (let i = mine.length; i < line.vehicles; i++) {
         // New trucks start at the first stop, a few seconds apart.

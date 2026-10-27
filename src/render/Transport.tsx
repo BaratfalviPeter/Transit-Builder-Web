@@ -15,7 +15,9 @@ import {
   stopLabel,
   stopCenter,
   stopKind,
+  laneAt,
   TRAILER_AXLE,
+  TRAIN_LEN,
   TRUCK_HITCH,
   useTransport,
   useTransportSnapshot,
@@ -196,6 +198,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
   const paths = useMemo(() => {
     const m = new Map<number, Cell[]>();
     for (const l of snap.lines) {
+      if (l.kind === 'rail') continue;
       const legs = sim.linePaths(map, l);
       const all: Cell[] = [];
       for (const leg of legs) if (leg) all.push(...leg);
@@ -203,18 +206,27 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
     }
     return m;
   }, [snap.lines, map, sim]);
-  const drawn = useMemo(() => metroLines(snap.lines, paths), [snap.lines, paths]);
+  const drawn = useMemo(() => {
+    const out = metroLines(
+      snap.lines.filter((l) => l.kind !== 'rail'),
+      paths,
+    );
+    // Rail lines: along the track itself.
+    for (const l of snap.lines) if (l.kind === 'rail') out.set(l.id, sim.railLinePath(map, l.stops) ?? sim.railLinePath(map, l.stops, false) ?? []);
+    return out;
+  }, [snap.lines, paths, sim, map]);
 
   const draftPts = useMemo(() => {
     const d = snap.draft;
     if (!d || d.length < 2) return null;
+    if (snap.draftKind === 'rail') return sim.railLinePath(map, d, false);
     const pts: Array<[number, number]> = [];
     for (let i = 0; i + 1 < d.length; i++) {
       const r = sim.route(map, stops.find((s) => s.id === d[i]) ?? null, stops.find((s) => s.id === d[i + 1]) ?? null);
       if (r) pts.push(...r);
     }
     return pts.length > 1 ? pts : null;
-  }, [snap.draft, map, sim, stops]);
+  }, [snap.draft, snap.draftKind, map, sim, stops]);
 
   const y = VEIL_Y;
   /** World height of the network at grid point (x, z): just above the road. */
@@ -240,6 +252,9 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {stops.map((s) => {
         const depot = isDepot(s);
         const truck = stopKind(s) === 'truck' || depot;
+        const rail = stopKind(s) === 'rail' || depot;
+        // Lit: stops of the kind being drafted (else the truck ones, as before).
+        const lit = snap.draft ? (snap.draftKind === 'rail' ? rail : truck) : true;
         const [cx, cz] = stopCenter(s);
         const picked = snap.draft?.includes(s.id);
         return (
@@ -249,14 +264,14 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
               renderOrder={12}
               onClick={(e) => {
                 e.stopPropagation();
-                if (truck && snap.draft) sim.addDraftStop(s.id);
+                if (lit && snap.draft) sim.addDraftStop(s.id);
               }}
             >
               <circleGeometry args={[1.1 * cellSize, 24]} />
-              <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={truck ? 1 : 0.5} />
+              <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={lit ? 1 : 0.35} />
             </mesh>
             <Html center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
-              <div className={'net-stop' + (truck ? '' : ' is-rail') + (picked ? ' is-picked' : '')}>
+              <div className={'net-stop' + (lit ? '' : ' is-rail') + (picked ? ' is-picked' : '')}>
                 {depot ? '' : truck ? '🚚 ' : '🚉 '}
                 {nameOf(s.id)}
               </div>
@@ -265,6 +280,44 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
         );
       })}
       <NetTrucks map={map} cellSize={cellSize} />
+      <NetTrains map={map} cellSize={cellSize} />
+    </group>
+  );
+}
+
+/** Trains as (bigger) dots on the network view. */
+function NetTrains({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
+  const sim = useTransport();
+  const snap = useTransportSnapshot();
+  const half = (map.size - 1) / 2;
+  const refs = useRef<Map<number, THREE.Mesh>>(new Map());
+  useFrame(() => {
+    for (const t of sim.allTrains()) {
+      const m = refs.current.get(t.id);
+      if (!m) continue;
+      m.visible = !!t.path;
+      if (!t.path) continue;
+      const [x, z] = laneAt(t.path, t.s - TRAIN_LEN / 2);
+      m.position.set((x - half) * cellSize, (groundAtGrid(map, x, z) + NET_LIFT + 0.07) * cellSize, (z - half) * cellSize);
+    }
+  });
+  const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
+  return (
+    <group>
+      {sim.allTrains().map((t) => (
+        <mesh
+          key={t.id}
+          ref={(m) => {
+            if (m) refs.current.set(t.id, m);
+            else refs.current.delete(t.id);
+          }}
+          rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={13}
+        >
+          <ringGeometry args={[0.3 * cellSize, 0.62 * cellSize, 20]} />
+          <meshBasicMaterial color={colors.get(t.lineId) ?? '#888'} depthTest={false} />
+        </mesh>
+      ))}
     </group>
   );
 }

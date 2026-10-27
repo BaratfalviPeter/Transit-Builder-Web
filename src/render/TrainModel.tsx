@@ -22,13 +22,12 @@ import * as THREE from 'three';
 import { ball, box, buildParts, cyl, FIXED_MAT, paintMat, profile, type Part } from './lowPoly';
 import type { Item } from '../sim';
 
-export const LOCO_LEN = 1.45;
-export const CAR_LEN = 1.15;
+// Car lengths live in the simulation (it spaces the cars); re-exported here.
+export { CAR_GAP, CAR_LEN, LOCO_LEN } from '../sim/rail';
+import { CAR_GAP, CAR_LEN, LOCO_LEN } from '../sim/rail';
 /** Bogie centres from a car's centre (loco / wagon). */
 export const LOCO_BOGIE = 0.47;
 export const CAR_BOGIE = 0.4;
-/** Gap between two cars' couplers. */
-export const CAR_GAP = 0.05;
 /** Track half-gauge (the wheels sit on the rails; see Rails.tsx). */
 export const HALF_GAUGE = 0.075;
 

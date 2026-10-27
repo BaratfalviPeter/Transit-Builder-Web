@@ -65,7 +65,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
   a vonalig gurul, NEM foglal); körforgalom a `buildLane`-ben (R 0,3, óramutatóval
   ellentétes). Lámpaciklus a `TransportSim.clock`-ból. Eszközök: `TRAFFIC_TOOLS`.
-- Kamera (`CameraRig.tsx`): WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
+- Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–8 eszközök, Szóköz, T,
@@ -74,8 +74,22 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
   és a raktár.
-- Vonat (`TrainModel.tsx`, még csak modell, a referenciaképek alapján): `Locomotive` (LOCO_LEN 1,45) + `Wagon`
-  (hopper / tank / box / flat; CAR_LEN 1,15), origó a kocsi közepén sínkorona-magasságban.
+- Vonat modell (`TrainModel.tsx`): `Locomotive` (LOCO_LEN 1,45) + `Wagon` (hopper / tank / box /
+  flat; CAR_LEN 1,15; a hosszak a `sim/rail.ts`-ben), origó a kocsi közepén sínkorona-magasságban.
+- Vonatok működése: útkeresés `rail.ts` (gráf: élek végpontjai = csomópontok; csomóponton csak
+  ~egyenesen (cos > 0,9) mehet tovább, NEM fordul vissza → végállomáson hurok kell; `railRoute`
+  Dijkstra irányított éleken; megálló = peronszakasz (`platforms`, `stopTargets`: eleje a túlsó
+  végnél); `RailPath` = Lane + szegmensek (`pathAt` → él + hossz, a renderer magasságához)).
+  Szimuláció a `transport.ts`-ben (`Train`, `tickTrains`): `TRAIN_PRICE` 8000, 3 kocsi × 30,
+  seb. 4, gyorsulás 0,8, fék 1,6. Foglalás (`railHeld`): 'e'+él és 'c'+közös cella (váltó,
+  keresztezés); indulás (`departTrain`) csak ha a teljes út a következő megállóig szabad
+  (előbb a foglalt éleket kerülő útvonal = kitérő); különben `partialReserve`: előrébb megy egy
+  csomópont + váltótorok elé, ha a foglaló vonat (`canGetOn`) így is tovább tud menni. `limit` =
+  meddig mehet. Elengedés a szerelvény vége után (`freeBehind`). Átépítéskor `refindTrain`.
+  Sorompó: `crossingClosed` (vonat eleje ≤ 8 cella), kamion `crossingAhead`, vonat
+  `crossingCapTrain`. „foglalt pálya”: `snap.stalled`. Render: `Trains.tsx` (forgóvázak a pályán).
+  Tesztek: scratchpad `trains.ts` (szintetikus súlyzó-pálya hurkokkal; `pass` = kitérővel, 2 vonat),
+  `realrail.ts` (a játék sínépítőjével épített hurok).
   A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
 - Raktár: modell `DepotModel.tsx` (6×6, ipari egység ×2; `DepotDynamic` = lámpák +
   raklapok, a StaticBatch-en KÍVÜL), logika `depot.ts` + `transport.ts`. Megálló
@@ -135,13 +149,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #74 (járatnézet, vízemelés, csuklós kamion + KRESZ, vékony utak).
 - Mergelve: #75 (forgalomirányítás + új UI és gyorsbillentyűk).
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
-- Folyamatban: hibajavítások (gyorsabb, párhuzamos raktári beállás, fokozatos fékezés,
-  kanyarlassítás, kamera-érzékenység). Utána: a vonatok.
+- Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
+- Folyamatban: vonatjáratok (hurokkal fordulnak; a felhasználó a valósághűt kérte),
+  zoom az egér felé.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Vonatok (járatok vasútállomások / raktárak között, mozgás a sínen)
+- Vasúti jelzők (szakaszolás, több vonat egy vonalon), sorompó animáció, vonathossz választás
+- Huroképítés segítése (a sínépítő mutassa, merre néz a váltó)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

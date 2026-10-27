@@ -21,4 +21,5 @@ export * from './useInterior';
 export * from './transport';
 export * from './traffic';
 export * from './depot';
+export * from './rail';
 export * from './useTransport';

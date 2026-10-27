@@ -90,13 +90,13 @@ const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
 
 /** What to do with the active tool (the hint line above the dock). */
 const HINT: Record<ToolId, string> = {
-  select: 'Kijelölés — WASD / nyilak: mozgás · jobb húzás: forgatás · görgő: zoom · H: gyorsbillentyűk',
+  select: 'Kijelölés — WASD / nyilak: mozgás · jobb húzás: forgatás · görgő: zoom (az egér felé) · H: gyorsbillentyűk',
   raise: 'Emelés — húzd végig a cellákon (piros), majd Építés',
   lower: 'Süllyesztés — húzd végig a cellákon (piros), majd Építés',
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
   road: 'Út — kattints a kezdőpontra, majd a célpontra · jobb klikk / Esc: mégse',
-  rail: 'Sín — kattints a kezdőpontra, majd a célpontra · jobb klikk / Esc: mégse',
-  station: 'Vasútállomás — egy ipar telkének oldalára kattints',
+  rail: 'Sín — kattints a kezdőpontra, majd a célpontra · meglévő sínre kattintva váltó lesz · a vonat nem tolat: a végállomásnál fordítóhurok kell',
+  station: 'Vasútállomás — egy ipar telkének oldalára kattints · a vágány mindkét végét bekötheted (pl. hurokba)',
   truckstop: 'Kamionrakodó — egy ipar telkének oldalára kattints (úthoz csatlakozik)',
   depot: 'Raktár — 6×6 sík terület · Q: forgatás · a behajtóhoz ÉS a kihajtóhoz is kell út · amit egy járat lerak, egy másik továbbviszi',
   yield: 'Elsőbbségadás — a kereszteződés előtti útcellára: innen elengedik a többieket',
@@ -267,7 +267,7 @@ export function GameUI() {
                   <b className="is-minus">−{money(snap.totalSpent)}</b>
                 </div>
                 <div className="ui-note">
-                  Bevétel: a járatok leszállított rakománya (Járatok). Kiadás: építés, tereprendezés, kamionok.
+                  Bevétel: a járatok leszállított rakománya (Járatok). Kiadás: építés, tereprendezés, járművek (kamion, vonat).
                 </div>
               </>
             )}

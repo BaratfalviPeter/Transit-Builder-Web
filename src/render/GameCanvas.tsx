@@ -33,6 +33,7 @@ import { PerfProbe } from '../dev/perf';
 import { FrameLimiter, useQuality } from './quality';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
+import { Trains } from './Trains';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { DepotPlacement } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
@@ -675,6 +676,7 @@ function Scene() {
       )}
       {/* Trucks on their lines (+ the "+$" of deliveries). */}
       <Trucks map={map} cellSize={cellSize} />
+      <Trains map={map} cellSize={cellSize} />
       {/* Network view: grey veil, stops, metro-style lines (Járatok tab). */}
       {networkView && <NetworkView map={map} cellSize={cellSize} />}
       {stationHover && (

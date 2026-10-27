@@ -4,7 +4,7 @@
  * MapControls gives the classic strategy-game feel:
  *   - Left drag  => pan across the ground plane
  *   - Right drag => rotate / orbit
- *   - Wheel      => zoom
+ *   - Wheel      => zoom (towards the point under the mouse)
  *
  * On top of that we add smooth, continuous WASD / arrow-key panning. A useFrame
  * loop reads the current keyboard state each frame and slides BOTH the camera
@@ -160,6 +160,8 @@ export function CameraRig() {
       dampingFactor={0.1}
       rotateSpeed={0.6 * sens}
       zoomSpeed={0.7 * sens}
+      // The wheel zooms towards the point under the mouse.
+      zoomToCursor
       mouseButtons={mouseButtons}
       // Keep the camera above the horizon so you always look down onto the map.
       minPolarAngle={0}

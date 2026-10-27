@@ -90,7 +90,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   csomópont + váltótorok elé, ha a foglaló vonat (`canGetOn`) így is tovább tud menni. `limit` =
   meddig mehet. Elengedés a szerelvény vége után (`freeBehind`). Átépítéskor `refindTrain`.
   Sorompó: `crossingClosed` (vonat eleje ≤ 8 cella), kamion `crossingAhead`, vonat
-  `crossingCapTrain`. „foglalt pálya”: `snap.stalled`. Render: `Trains.tsx` (forgóvázak a pályán).
+  `crossingCapTrain`. Látvány: `LevelCrossings.tsx` (félsorompó útcellánként két
+  irányból, jobb oldalt: oszlop, András-kereszt, 2 villogó lámpa, csíkos kar ellensúllyal;
+  előbb villog, DELAY 0,8 s múlva ereszkedik, MOVE 1,4 s). Modellnéző: `?model=Crossing`. „foglalt pálya”: `snap.stalled`. Render: `Trains.tsx` (forgóvázak a pályán).
   Jelzők (`signals.ts`): `map.signals` (x, z, tx, tz, mode fwd|back — EGYIRÁNYÚ, a kétirányú
   holtpontot okozott), lerakáskor `splitAtPoint` (a jelző csomópont), `signalSpot` szabályai (nem
   peronon, váltótoroktól/keresztezéstől ±1,4 cellán belül nincs közös cella, egymástól 1,6).
@@ -146,7 +148,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
-  StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot).
+  StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
@@ -161,12 +163,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
-- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők).
+- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők; sorompó modell + animáció).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Sorompó animáció, vonathossz választás, jelzők a hálózati nézetben
+- Vonathossz választás, jelzők a hálózati nézetben
 - Huroképítés segítése (a sínépítő mutassa, merre néz a váltó)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként

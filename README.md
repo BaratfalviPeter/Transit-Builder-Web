@@ -179,6 +179,9 @@ A jobb oldali **panel** három füle:
     a kitérő két végén egy-egy jelzővel).
   - **Szintbeli kereszteződés:** a kamionok megállnak, ha vonat közeledik
     (8 cellán belül) vagy a sínen van; a vonat fékez, ha kamion van rajta.
+    Félsorompó mindkét irányból (`src/render/LevelCrossings.tsx`):
+    András-kereszt, két felváltva villogó piros lámpa, piros-fehér kar;
+    közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):

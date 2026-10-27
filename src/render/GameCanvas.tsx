@@ -35,6 +35,7 @@ import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
 import { Trains } from './Trains';
 import { RailSignals, SignalPreview } from './Signals';
+import { LevelCrossings } from './LevelCrossings';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { DepotPlacement } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
@@ -704,6 +705,7 @@ function Scene() {
       <Trucks map={map} cellSize={cellSize} />
       <Trains map={map} cellSize={cellSize} />
       <RailSignals map={map} cellSize={cellSize} />
+      <LevelCrossings map={map} cellSize={cellSize} />
       {signalHover && activeTool === 'signal' && (
         <SignalPreview map={map} cellSize={cellSize} spot={signalHover} canAfford={money >= TOOLS.signal.cost} />
       )}

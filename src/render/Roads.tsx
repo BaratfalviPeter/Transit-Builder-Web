@@ -43,22 +43,68 @@ function isFlatRoad(map: TerrainMap, x: number, z: number): boolean {
   return h00 === h10 && h10 === h11 && h11 === h01;
 }
 
+/**
+ * The rounded outline of a flat road cell, or null for a plain square tile:
+ * a corner is a quarter disc (radius 1) round the inner corner, so the
+ * outer corner is cut round; a dead end ends in a half disc. Local cell
+ * coordinates (−0.5…0.5).
+ */
+function roundedOutline(map: TerrainMap, x: number, z: number): Array<[number, number]> | null {
+  if (hasRailAt(map, x, z) || activeControl(map, x, z)) return null;
+  const n = connects(map, x, z, 0, -1), s = connects(map, x, z, 0, 1);
+  const e = connects(map, x, z, 1, 0), w = connects(map, x, z, -1, 0);
+  const count = +n + +s + +e + +w;
+  const pts: Array<[number, number]> = [];
+  if (count === 2 && !(n && s) && !(e && w)) {
+    // Arms towards (dirX, 0) and (0, dirZ): the disc's centre is that corner.
+    const dirX = e ? 1 : -1, dirZ = s ? 1 : -1;
+    const ccx = dirX * 0.5, ccz = dirZ * 0.5;
+    pts.push([ccx, ccz]);
+    const a0 = Math.atan2(0, -dirX), a1 = Math.atan2(-dirZ, 0);
+    let sweep = a1 - a0;
+    if (sweep > Math.PI) sweep -= 2 * Math.PI;
+    if (sweep < -Math.PI) sweep += 2 * Math.PI;
+    for (let i = 0; i <= 16; i++) {
+      const a = a0 + (sweep * i) / 16;
+      pts.push([ccx + Math.cos(a), ccz + Math.sin(a)]);
+    }
+    return pts;
+  }
+  if (count === 1) {
+    // The open side towards the neighbour; a half disc on the other.
+    const [ox, oz] = n ? [0, -1] : s ? [0, 1] : e ? [1, 0] : [-1, 0];
+    const px = -oz, pz = ox; // along the end edge
+    pts.push([ox * 0.5 + px * 0.5, oz * 0.5 + pz * 0.5]);
+    for (let i = 0; i <= 16; i++) {
+      const a = (Math.PI * i) / 16; // from +p round the far side to −p
+      pts.push([px * 0.5 * Math.cos(a) - ox * 0.5 * Math.sin(a), pz * 0.5 * Math.cos(a) - oz * 0.5 * Math.sin(a)]);
+    }
+    pts.push([ox * 0.5 - px * 0.5, oz * 0.5 - pz * 0.5]);
+    return pts;
+  }
+  return null;
+}
+
 export function Roads({ map, cellSize }: RoadsProps) {
-  const flatCoords = useMemo(() => {
+  const { flatCoords, rounded, allFlat } = useMemo(() => {
     const out: Array<[number, number]> = [];
+    const round: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
         if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z)) {
-          out.push([x, z]);
+          const pts = roundedOutline(map, x, z);
+          if (pts) round.push({ x, z, pts });
+          else out.push([x, z]);
         }
       }
     }
-    return out;
+    return { flatCoords: out, rounded: round, allFlat: out.concat(round.map((r) => [r.x, r.z] as [number, number])) };
   }, [map]);
 
   return (
     <group>
-      <FlatRoads coords={flatCoords} map={map} cellSize={cellSize} />
+      <FlatRoads coords={flatCoords} marked={allFlat} map={map} cellSize={cellSize} />
+      <RoundedRoads cells={rounded} map={map} cellSize={cellSize} />
       <HillRoads map={map} cellSize={cellSize} />
     </group>
   );
@@ -132,10 +178,14 @@ function ribbon(
  */
 function FlatRoads({
   coords,
+  marked,
   map,
   cellSize,
 }: {
+  /** Square tiles. */
   coords: Array<[number, number]>;
+  /** All flat road cells (their centre-lines). */
+  marked: Array<[number, number]>;
   map: TerrainMap;
   cellSize: number;
 }) {
@@ -145,7 +195,7 @@ function FlatRoads({
   const { markGeom } = useMemo(() => {
     const M: number[] = []; // marking (white) triangles
 
-    for (const [x, z] of coords) {
+    for (const [x, z] of marked) {
       // Level crossing: no lane markings across the tracks; a roundabout has
       // its island instead.
       if (hasRailAt(map, x, z) || activeControl(map, x, z) === 'roundabout') continue;
@@ -257,7 +307,7 @@ function FlatRoads({
       mk.computeVertexNormals();
     }
     return { markGeom: mk };
-  }, [coords, map, cellSize, half]);
+  }, [marked, map, cellSize, half]);
 
   useLayoutEffect(() => {
     const mesh = ref.current;
@@ -282,11 +332,9 @@ function FlatRoads({
     mesh.computeBoundingSphere();
   }, [coords, cellSize, half, map]);
 
-  if (coords.length === 0) return null;
-
   return (
     <group>
-      <instancedMesh
+      {coords.length > 0 && <instancedMesh
         ref={ref}
         args={[UNIT_BOX, undefined, coords.length]}
         castShadow
@@ -300,9 +348,51 @@ function FlatRoads({
           polygonOffsetFactor={-1}
           polygonOffsetUnits={-1}
         />
-      </instancedMesh>
+      </instancedMesh>}
       {markGeom && <mesh geometry={markGeom} material={MARKING_MAT} />}
     </group>
+  );
+}
+
+/** Rounded flat road cells (corners, dead ends): one merged top surface. */
+function RoundedRoads({
+  cells,
+  map,
+  cellSize,
+}: {
+  cells: Array<{ x: number; z: number; pts: Array<[number, number]> }>;
+  map: TerrainMap;
+  cellSize: number;
+}) {
+  const half = (map.size - 1) / 2;
+  const geom = useMemo(() => {
+    if (!cells.length) return null;
+    const pos: number[] = [];
+    const top = (ROAD_STYLE.scaleY + SURFACE_LIFT) * cellSize;
+    for (const { x, z, pts } of cells) {
+      const y = (FLAT_TOP + cellCornerHeights(map, x, z)[0]) * cellSize + top;
+      const cx = (x - half) * cellSize, cz = (z - half) * cellSize;
+      // A fan from the first point (it sees the whole outline: corner / end centre).
+      const [ax, az] = pts[0];
+      for (let i = 1; i + 1 < pts.length; i++) {
+        const [bx, bz] = pts[i], [qx, qz] = pts[i + 1];
+        // Wound so the face points up (+Y).
+        const cross = (bx - ax) * (qz - az) - (bz - az) * (qx - ax);
+        const [p1, p2] = cross < 0 ? [pts[i], pts[i + 1]] : [pts[i + 1], pts[i]];
+        pos.push(cx + ax * cellSize, y, cz + az * cellSize, cx + p1[0] * cellSize, y, cz + p1[1] * cellSize, cx + p2[0] * cellSize, y, cz + p2[1] * cellSize);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [cells, map, cellSize, half]);
+  useLayoutEffect(() => () => geom?.dispose(), [geom]);
+  if (!geom) return null;
+  return (
+    <mesh geometry={geom} receiveShadow>
+      <meshStandardMaterial ref={patchRef} color={ROAD_STYLE.color} roughness={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+    </mesh>
   );
 }
 

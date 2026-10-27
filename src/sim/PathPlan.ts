@@ -9,13 +9,18 @@
  *   - `rail`: RAIL plan — a smooth centre-line (railRoute.ts).
  * Both are drawn as the green (or red, if `blocked`) hologram.
  *
+ * DRAWING ('drawing'): instead of two clicks the player drags — the road
+ * follows the cursor cell by cell, the rail piece by piece (railRoute.ts
+ * railDraw*); dragging back over it takes it off again; on release it is
+ * built. The same `previewPath` / `rail` show it.
+ *
  * Points are grid coordinates (cell centre = integer). The building itself is
  * done by the canvas (TerrainStore + GameState).
  */
 
-import { cellsToBuild, findTrackPath, isTrackPassable, type GridCell, type TrackType } from './pathfind';
+import { cellsToBuild, findTrackPath, isTrackPassable, trackStepOk, type GridCell, type TrackType } from './pathfind';
 import { canRailCell, EMPTY_NET, snapToNet } from './railNet';
-import { planRail, type RailPlan } from './railRoute';
+import { planRail, railDrawBegin, railDrawPlan, railDrawTo, type RailDraw, type RailPlan } from './railRoute';
 import { CellType, type TerrainMap } from './terrain';
 
 export type PlanStep = GridCell;
@@ -32,7 +37,7 @@ export function canStartRoute(map: TerrainMap, p: GridPoint, type: TrackType): b
   return isTrackPassable(map, c.x, c.z, type);
 }
 
-export type PathBuildingState = 'idle' | 'selecting_end';
+export type PathBuildingState = 'idle' | 'selecting_end' | 'drawing';
 
 export interface PathPlanSnapshot {
   pathbuildingState: PathBuildingState;
@@ -68,6 +73,8 @@ export class PathPlan {
   /** Last hovered goal key, to skip recomputing while the cursor stays put. */
   private lastGoal: string | null = null;
   private goalPt: GridPoint | null = null;
+  /** Rail being drawn (state 'drawing', rail). */
+  private railDraw: RailDraw | null = null;
 
   getSnapshot(): PathPlanSnapshot {
     return this.snap;
@@ -111,9 +118,76 @@ export class PathPlan {
     this.emit();
   }
 
+  /** Start drawing (drag) at grid point `p`. False if no track can start there. */
+  drawBegin(map: TerrainMap, p: GridPoint, type: TrackType): boolean {
+    this.lastGoal = null;
+    this.goalPt = null;
+    if (type === CellType.Rail) {
+      const d = railDrawBegin(map, p);
+      if (typeof d === 'string') return false;
+      this.railDraw = d;
+      this.snap = { ...IDLE, pathbuildingState: 'drawing', type, startPt: { ...p }, rail: railDrawPlan(map, d) };
+    } else {
+      const c = { x: Math.round(p.x), z: Math.round(p.z) };
+      if (!isTrackPassable(map, c.x, c.z, type)) return false;
+      this.railDraw = null;
+      this.snap = { ...IDLE, pathbuildingState: 'drawing', type, startNode: c, startPt: { ...p }, previewPath: [c], newCells: cellsToBuild(map, [c], type).length };
+    }
+    this.emit();
+    return true;
+  }
+
+  /** Drawing: follow the cursor at grid point `p` (lay on / take off track). */
+  drawTo(map: TerrainMap, p: GridPoint): void {
+    const s = this.snap;
+    if (s.pathbuildingState !== 'drawing') return;
+    if (s.type === CellType.Rail) {
+      if (!this.railDraw) return;
+      const key = `${Math.round(p.x * 4)},${Math.round(p.z * 4)}`;
+      if (key === this.lastGoal) return;
+      this.lastGoal = key;
+      this.railDraw = railDrawTo(map, this.railDraw, p);
+      const rail = railDrawPlan(map, this.railDraw);
+      this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
+    } else {
+      const t = { x: Math.round(p.x), z: Math.round(p.z) };
+      let cells = s.previewPath.slice();
+      for (let guard = 0; guard < 400; guard++) {
+        const last = cells[cells.length - 1];
+        if (last.x === t.x && last.z === t.z) break;
+        // Back over the drawn road: cut it there.
+        const back = cells.findIndex((c) => c.x === t.x && c.z === t.z);
+        if (back >= 0) {
+          cells = cells.slice(0, back + 1);
+          break;
+        }
+        const dx = t.x - last.x, dz = t.z - last.z;
+        const prev = cells[cells.length - 2];
+        const alongX = prev ? prev.z === last.z : true;
+        // Step along the longer axis (keeping the current one on a tie).
+        const stepX = Math.abs(dx) > Math.abs(dz) || (Math.abs(dx) === Math.abs(dz) && alongX);
+        const next = stepX ? { x: last.x + Math.sign(dx), z: last.z } : { x: last.x, z: last.z + Math.sign(dz) };
+        if (prev && prev.x === next.x && prev.z === next.z) cells.pop();
+        else cells.push(next);
+      }
+      let blocked = cells.length < 2;
+      for (let i = 1; i < cells.length && !blocked; i++) if (!trackStepOk(map, cells[i - 1], cells[i], s.type)) blocked = true;
+      this.snap = { ...s, previewPath: cells, blocked, newCells: cellsToBuild(map, cells, s.type).length };
+    }
+    this.emit();
+  }
+
   /** The map changed under an active plan: re-route to the same goal. */
   refresh(map: TerrainMap): void {
     const s = this.snap;
+    if (s.pathbuildingState === 'drawing') {
+      if (s.type === CellType.Rail && this.railDraw) {
+        const rail = railDrawPlan(map, this.railDraw);
+        this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4 };
+        this.emit();
+      }
+      return;
+    }
     if (s.pathbuildingState !== 'selecting_end' || !s.startPt) return;
     // The start itself may have become unusable (e.g. the city grew).
     if (!canStartRoute(map, s.startPt, s.type)) {
@@ -128,6 +202,7 @@ export class PathPlan {
     if (this.snap.pathbuildingState === 'idle') return;
     this.lastGoal = null;
     this.goalPt = null;
+    this.railDraw = null;
     this.snap = { ...IDLE, type: this.snap.type };
     this.emit();
   }

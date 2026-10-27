@@ -36,7 +36,16 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Rács: 121×121 cella (GRID_SCALE 2), cellSize 1. A nagy iparágak 6×6-os telken
   állnak, a modellek 3×3-ra készültek, és `INDUSTRY_MODEL_SCALE = 2`-vel skálázódnak.
 - Sín: sima középvonal-hálózat (`railNet.ts`). Rácsos A* tervező (`railRoute.ts`):
-  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2). A tervező csak RÁCSPONTBÓL indul
+  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2), + szűk 90°-os ívek (TIGHT_K: sugár 1 / 2,
+  átlósan √2 / 2√2; drágák a tervezőben, a vonat lassít bennük).
+- ÉPÍTÉS HÚZÁSSAL (út + sín, alapértelmezett): `usePointerBuild` click módban a mozduló
+  nyomás `dragStart` → `PathPlan.drawBegin/drawTo` (állapot 'drawing'), elengedés
+  `finishDrawing` (GameCanvas). Út: cellánként követi a kurzort (`trackStepOk`), visszahúzva
+  levágja. Sín: `railDrawBegin/railDrawTo/railDrawPlan` — mohó darabválasztás a kurzor felé
+  (egyenes / ív, a kurzor felé néző vég előnyben), visszahúzva a lánc a kurzor alatti
+  csomópontnál elvág; meglévő sín közelében (`snapToNet`) „mágnes”: a tervező (`latticeAStar`)
+  rakja le a csatlakozó véget (`tail`, `join`: váltó vagy sínvég-folytatás). A sima kattintás
+  maradt A→B tervező. A tervező csak RÁCSPONTBÓL indul
   (cellaközép + 8 irány, 1e-3 pontossággal): ezért a `cutAtCell` (bontás) a megmaradó véget
   visszavágja a legközelebbi rácspontig (`latticeFrom`), különben a bontott végről nem lehetne
   új sínt húzni. Előnézet: váltónál sárga nyíl (`SwitchArrows`, PathPreview) mutatja, merre
@@ -102,7 +111,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   csomópont + váltótorok elé, ha a foglaló vonat (`canGetOn`) így is tovább tud menni. `limit` =
   meddig mehet. Elengedés a szerelvény vége után (`freeBehind`). Átépítéskor `refindTrain`.
   Sorompó: `crossingClosed` (vonat eleje ≤ 8 cella), kamion `crossingAhead`, vonat
-  `crossingCapTrain`. Látvány: `LevelCrossings.tsx` (félsorompó útcellánként két
+  `crossingCapTrain`. Látvány: `LevelCrossings.tsx` (félsorompó KERESZTEZÉSENKÉNT — az út menti
+  összefüggő sín-útcellák sora; a sorompó a sor elé kerül, a síntől elhúzva (`trackNear`) — két
   irányból, jobb oldalt: oszlop, András-kereszt, 2 villogó lámpa, csíkos kar ellensúllyal;
   előbb villog, DELAY 0,8 s múlva ereszkedik, MOVE 1,4 s). Modellnéző: `?model=Crossing`. „foglalt pálya”: `snap.stalled`. Render: `Trains.tsx` (forgóvázak a pályán).
   Jelzők (`signals.ts`): `map.signals` (x, z, tx, tz, mode fwd|back — EGYIRÁNYÚ, a kétirányú
@@ -176,7 +186,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
 - Mergelve: #79 (sima mozgás, jelzők, sorompó, nagyobb vonat + vonathossz).
-- Folyamatban: bontott sínvég javítása, hosszabb peron, váltónyíl, jelzők a hálózati nézetben.
+- Mergelve: #80 (bontott sínvég, hosszabb peron, váltónyíl, jelzők a hálózati nézetben).
+- Folyamatban: húzásos építés (út + sín), szűk 90°-os sínívek, íves út (kerek sarok és
+  zsákutcavég: `roundedOutline` a Roads.tsx-ben), sorompó ferde keresztezésnél.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

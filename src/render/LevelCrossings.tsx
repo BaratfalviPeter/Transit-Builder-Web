@@ -16,7 +16,7 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CellType, railIndex, roadCrossingAxis, useTransport, type TerrainMap } from '../sim';
+import { CellType, EMPTY_NET, railIndex, roadCrossingAxis, useTransport, type TerrainMap } from '../sim';
 import { box, buildParts, cyl, FIXED_MAT, type Part } from './lowPoly';
 import { groundAtGrid } from './railGeometry';
 
@@ -84,28 +84,69 @@ const LAMP_OFF = new THREE.Color('#3b1512');
 const LAMP_ON = new THREE.Color('#ff3020');
 
 interface Barrier {
-  /** Road cell index (TransportSim.crossingClosed). */
+  /** The crossing (its first road cell's index), and all its road cells (TransportSim.crossingClosed). */
   cell: number;
+  cells: number[];
   x: number;
   y: number;
   z: number;
   yaw: number;
 }
 
-/** Two barriers per crossed road cell, one for each way along the road. */
+/**
+ * Two barriers per crossing — one for each way along the road. A crossing is
+ * a run of road cells the track(s) cover along the road (a slanting track
+ * covers two or three; a double track more): the barriers stand before the
+ * run's first cell for that way, pushed back until they are clear of the
+ * track (a slanting track also crosses the cells just before).
+ */
 function barriersOf(map: TerrainMap): Barrier[] {
   const out: Barrier[] = [];
   const n = map.size;
-  for (const k of railIndex(map).keys()) {
+  const net = map.railNet ?? EMPTY_NET;
+  const idx = railIndex(map);
+  const isX = (x: number, z: number) =>
+    x >= 0 && z >= 0 && x < n && z < n && map.cells[x][z] === CellType.Road && idx.has(x * n + z);
+  // Is a track centre-line within reach of (x, z) (the barrier would stand on it)?
+  const trackNear = (x: number, z: number) => {
+    for (const e of net.edges) {
+      const p = e.pts;
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const ex = p[i + 2] - p[i], ez = p[i + 3] - p[i + 1];
+        const L2 = ex * ex + ez * ez || 1;
+        const t = Math.min(1, Math.max(0, ((x - p[i]) * ex + (z - p[i + 1]) * ez) / L2));
+        if (Math.hypot(p[i] + ex * t - x, p[i + 1] + ez * t - z) < 0.36) return true;
+      }
+    }
+    return false;
+  };
+  for (const k of idx.keys()) {
     const cx = Math.floor(k / n), cz = k - cx * n;
     if (map.cells[cx][cz] !== CellType.Road) continue;
     const axis = roadCrossingAxis(map, cx, cz) ?? 'x';
+    const ax = axis === 'x' ? 1 : 0, az = axis === 'z' ? 1 : 0;
+    // Only from the run's first cell (along +axis).
+    if (isX(cx - ax, cz - az)) continue;
+    const run: number[] = [];
+    for (let x = cx, z = cz; isX(x, z); x += ax, z += az) run.push(x * n + z);
+    const last = run[run.length - 1];
+    const lx = Math.floor(last / n), lz = last - lx * n;
     for (const sg of [1, -1]) {
-      // Traffic heading (dx, dz); its right is (−dz, dx).
-      const dx = axis === 'x' ? sg : 0, dz = axis === 'z' ? sg : 0;
-      const x = cx - dx * BEFORE - dz * ASIDE, z = cz - dz * BEFORE + dx * ASIDE;
+      // Traffic heading (dx, dz); its right is (−dz, dx); it meets the run at `first`.
+      const dx = ax * sg, dz = az * sg;
+      const [fx, fz] = sg > 0 ? [cx, cz] : [lx, lz];
+      const place = (b: number) => {
+        const x = fx - dx * b - dz * ASIDE, z = fz - dz * b + dx * ASIDE;
+        return [x, z, x + dz * BOOM_LEN, z - dx * BOOM_LEN] as const;
+      };
+      let b = BEFORE;
+      for (; b < BEFORE + 1.6; b += 0.1) {
+        const [x, z, tx, tz] = place(b);
+        if (!trackNear(x, z) && !trackNear((x + tx) / 2, (z + tz) / 2) && !trackNear(tx, tz)) break;
+      }
+      const [x, z] = place(b);
       // Local +X (the boom) towards the road centre: −right = (dz, −dx).
-      out.push({ cell: k, x, z, y: groundAtGrid(map, x, z) + ROAD_TOP, yaw: Math.atan2(dx, dz) });
+      out.push({ cell: k, cells: run, x, z, y: groundAtGrid(map, x, z) + ROAD_TOP, yaw: Math.atan2(dx, dz) });
     }
   }
   return out;
@@ -130,7 +171,7 @@ export function LevelCrossings({ map, cellSize }: { map: TerrainMap; cellSize: n
       seen.add(b.cell);
       let st = state.current.get(b.cell);
       if (!st) state.current.set(b.cell, (st = { closed: 0, down: 0 }));
-      const closed = sim.crossingClosed(b.cell);
+      const closed = b.cells.some((c) => sim.crossingClosed(c));
       st.closed = closed ? st.closed + dt : 0;
       const target = closed && st.closed > DELAY ? 1 : 0;
       st.down += Math.sign(target - st.down) * Math.min(Math.abs(target - st.down), dt / MOVE);

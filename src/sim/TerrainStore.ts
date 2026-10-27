@@ -192,9 +192,10 @@ export class TerrainStore {
    * the rail network, a truck stop lays its road row. One commit. Returns
    * false if the rules forbid it.
    */
-  buildStation(anchor: readonly [number, number], side: Side, kind: StopKind = 'rail'): boolean {
-    if (stationProblem(this.map, anchor, side)) return false;
-    const g = stationGeom(anchor, side);
+  buildStation(anchor: readonly [number, number], side: Side, kind: StopKind = 'rail', ext = 0): boolean {
+    if (kind !== 'rail') ext = 0;
+    if (stationProblem(this.map, anchor, side, ext)) return false;
+    const g = stationGeom(anchor, side, ext);
     const cells = this.map.cells.slice();
     const set = (x: number, z: number, t: CellType) => {
       if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
@@ -204,7 +205,7 @@ export class TerrainStore {
     if (kind === 'truck') for (const [x, z] of g.track) set(x, z, CellType.Road);
     const stations = this.map.stations ?? [];
     const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
-    this.commit({ cells, stations: stations.concat({ id, anchor: [anchor[0], anchor[1]], side, kind }) }, true);
+    this.commit({ cells, stations: stations.concat({ id, anchor: [anchor[0], anchor[1]], side, kind, ...(ext ? { ext } : {}) }) }, true);
     if (kind === 'truck') {
       this.roadCount += g.track.length;
       this.emit();
@@ -316,7 +317,7 @@ export class TerrainStore {
       this.setRailNet(net, null);
       return;
     }
-    const g = stationGeom(st.anchor, st.side);
+    const g = stationGeom(st.anchor, st.side, st.ext);
     const cells = this.map.cells.slice();
     const truck = stopKind(st) === 'truck';
     const rows = truck ? [...g.platform, ...g.track] : g.platform;

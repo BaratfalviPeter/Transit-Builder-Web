@@ -16,6 +16,7 @@ import {
   stopCenter,
   stopKind,
   laneAt,
+  signalsOf,
   TRAILER_AXLE,
   TRUCK_HITCH,
   useTransport,
@@ -280,6 +281,39 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       })}
       <NetTrucks map={map} cellSize={cellSize} />
       <NetTrains map={map} cellSize={cellSize} />
+      <NetSignals map={map} cellSize={cellSize} />
+    </group>
+  );
+}
+
+const SIG_RED = new THREE.Color('#ff4a3d');
+const SIG_GREEN = new THREE.Color('#3ddc6a');
+
+/** Rail signals as small red / green dots beside the track (on the side they stand). */
+function NetSignals({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
+  const sim = useTransport();
+  const half = (map.size - 1) / 2;
+  const sigs = signalsOf(map);
+  const all = map.signals ?? [];
+  const mats = useRef<Array<THREE.MeshBasicMaterial | null>>([]);
+  useFrame(() => {
+    if (!sigs.length) return;
+    const green = sim.signalGreens(map);
+    sigs.forEach((sg, k) => mats.current[k]?.color.copy(green.has(`${all.indexOf(sg)}:${sg.mode === 'fwd' ? 1 : -1}`) ? SIG_GREEN : SIG_RED));
+  });
+  return (
+    <group>
+      {sigs.map((sg, k) => {
+        // On the right of the trains it governs, like the mast.
+        const dx = sg.mode === 'fwd' ? sg.tx : -sg.tx, dz = sg.mode === 'fwd' ? sg.tz : -sg.tz;
+        const x = sg.x - dz * 0.55, z = sg.z + dx * 0.55;
+        return (
+          <mesh key={k} position={[(x - half) * cellSize, (groundAtGrid(map, x, z) + NET_LIFT + 0.08) * cellSize, (z - half) * cellSize]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={14}>
+            <circleGeometry args={[0.24 * cellSize, 14]} />
+            <meshBasicMaterial ref={(m) => (mats.current[k] = m)} color={SIG_RED} depthTest={false} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }

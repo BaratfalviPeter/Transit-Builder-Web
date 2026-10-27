@@ -76,7 +76,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
               {stopKind(s) === 'truck' ? (
                 <TruckStopModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
               ) : (
-                <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} />
+                <StationModel position={pos} rotationY={rot} scale={cellSize * INDUSTRY_MODEL_SCALE} fill={total / STATION_CAPACITY} ext={s.ext ?? 0} />
               )}
             </StaticBatch>
             {total > 0 && (
@@ -126,6 +126,8 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
 export interface StationHover {
   anchor: [number, number];
   side: Side;
+  /** Platform extension (cells at each end; rail stations). */
+  ext: number;
   /** Why it can't be built here, or null. */
   problem: string | null;
 }
@@ -147,7 +149,7 @@ export function StationPreview({
   canAfford: boolean;
 }) {
   const half = (map.size - 1) / 2;
-  const g = stationGeom(hover.anchor, hover.side);
+  const g = stationGeom(hover.anchor, hover.side, hover.ext);
   const reason = hover.problem ?? (canAfford ? null : 'Nincs elég pénz');
   const ok = reason === null;
   const y = (FLAT_TOP + cornerHeightAt(map, hover.anchor[0], hover.anchor[1])) * cellSize;
@@ -164,7 +166,7 @@ export function StationPreview({
         );
       })}
       <Html position={[pos[0], pos[1] + cellSize * 1.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
-        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${kind === 'truck' ? '🚚 Kamionrakodó' : '🚉 Vasútállomás'} · $${cost}` : reason}</div>
+        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? (kind === 'truck' ? `🚚 Kamionrakodó · $${cost}` : `🚉 Vasútállomás · ${6 + 2 * hover.ext} cellás peron · $${cost} · Q: hossz`) : reason}</div>
       </Html>
     </group>
   );

@@ -329,6 +329,38 @@ export function addEdge(net: RailNet, pts: number[]): RailNet {
   return { edges: net.edges.concat({ id: net.nextId, pts }), nextId: net.nextId + 1 };
 }
 
+/** Is the point at arc length s of `w` on the lattice (a cell centre, octilinear heading)? */
+function onLattice(w: LineWalker, s: number): boolean {
+  const o = w.at(s);
+  if (Math.abs(o[0] - Math.round(o[0])) > 0.02 || Math.abs(o[1] - Math.round(o[1])) > 0.02) return false;
+  const k = Math.atan2(o[3], o[2]) / (Math.PI / 4);
+  return Math.abs(k - Math.round(k)) < 0.05;
+}
+
+/** The first lattice point from arc length `s` towards `limit` (step sign `dir`), or `limit`. */
+function latticeFrom(w: LineWalker, s: number, limit: number, dir: 1 | -1): number {
+  for (let t = s; dir > 0 ? t <= limit : t >= limit; t += dir * 0.01) {
+    if (!onLattice(w, t)) continue;
+    // Exactly onto the cell centre (the planner wants it to within 1e-3):
+    // a vertex of the line there, else along a straight. An arc merely
+    // passing close to a centre doesn't count.
+    let exact = -1;
+    for (let i = 0; i < w.cum.length && exact < 0; i++) {
+      if (Math.abs(w.cum[i] - t) > 0.08) continue;
+      const vx = w.pts[i * 2], vz = w.pts[i * 2 + 1];
+      if (Math.abs(vx - Math.round(vx)) < 1e-6 && Math.abs(vz - Math.round(vz)) < 1e-6) exact = w.cum[i];
+    }
+    if (exact < 0) {
+      const o = w.at(t);
+      exact = t + (Math.round(o[0]) - o[0]) * o[2] + (Math.round(o[1]) - o[1]) * o[3];
+    }
+    const q = w.at(exact);
+    const k = Math.atan2(q[3], q[2]) / (Math.PI / 4);
+    if (Math.abs(q[0] - Math.round(q[0])) < 1e-4 && Math.abs(q[1] - Math.round(q[1])) < 1e-4 && Math.abs(k - Math.round(k)) < 1e-3) return exact;
+  }
+  return limit;
+}
+
 /**
  * Remove the track inside cell (x, z) (plus the margin its footprint needs),
  * splitting edges that pass through. Returns the same net if nothing changed.
@@ -364,7 +396,11 @@ export function cutAtCell(net: RailNet, x: number, z: number): RailNet {
     }
     changed = true;
     let first = true;
-    for (const [a, b] of keep) {
+    for (let [a, b] of keep) {
+      // A cut end is pulled back to the nearest lattice point (a cell centre,
+      // heading along one of the 8 directions), so new track can start there.
+      if (a > 1e-6) a = latticeFrom(w, a, b, 1);
+      if (b < w.total - 1e-6) b = latticeFrom(w, b, a, -1);
       if (b - a < 0.3) continue;
       out.push({ id: first ? e.id : nextId++, pts: w.sub(a, b) });
       first = false;

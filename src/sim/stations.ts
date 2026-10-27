@@ -37,7 +37,14 @@ export interface Station {
   readonly kind?: StopKind;
   /** A depot's quarter turns (its anchor is the lot's min corner; `side` unused). */
   readonly rot?: DepotRot;
+  /** A rail station's platform runs this many cells past the lot at each end (0…3). */
+  readonly ext?: number;
 }
+
+/** Longest platform extension (cells at each end): platforms of 6, 8, 10 or 12 cells. */
+export const MAX_PLATFORM_EXT = 3;
+/** Price of the platform's extra cells (each). */
+export const PLATFORM_CELL_PRICE = 100;
 
 export const stopKind = (s: Station): StopKind => s.kind ?? 'rail';
 
@@ -62,12 +69,12 @@ function lotBounds(anchor: readonly [number, number]) {
   return { x0: anchor[0] + t.lo, x1: anchor[0] + t.hi, z0: anchor[1] + t.lo, z1: anchor[1] + t.hi };
 }
 
-export function stationGeom(anchor: readonly [number, number], side: Side): StationGeom {
+export function stationGeom(anchor: readonly [number, number], side: Side, ext = 0): StationGeom {
   const { x0, x1, z0, z1 } = lotBounds(anchor);
   const platform: Array<[number, number]> = [];
   const track: Array<[number, number]> = [];
   const alongX = side === 'N' || side === 'S';
-  const [a0, a1] = alongX ? [x0, x1] : [z0, z1];
+  const [a0, a1] = alongX ? [x0 - ext, x1 + ext] : [z0 - ext, z1 + ext];
   // Rows outside the side: platform first, then the track.
   const rowP = side === 'N' ? z0 - 1 : side === 'S' ? z1 + 1 : side === 'W' ? x0 - 1 : x1 + 1;
   const rowT = side === 'N' ? z0 - 2 : side === 'S' ? z1 + 2 : side === 'W' ? x0 - 2 : x1 + 2;
@@ -91,7 +98,7 @@ export function stationAt(map: TerrainMap, x: number, z: number): Station | null
   if (d) return d;
   for (const s of map.stations ?? []) {
     if (s.kind === 'depot') continue;
-    const g = stationGeom(s.anchor, s.side);
+    const g = stationGeom(s.anchor, s.side, s.ext);
     if (g.platform.some(([a, b]) => a === x && b === z) || g.track.some(([a, b]) => a === x && b === z)) return s;
   }
   return null;
@@ -131,13 +138,13 @@ export function sideAt(map: TerrainMap, x: number, z: number): { anchor: [number
 }
 
 /** Why a station can't go on (anchor, side) — Hungarian, for the UI — or null. */
-export function stationProblem(map: TerrainMap, anchor: readonly [number, number], side: Side): string | null {
+export function stationProblem(map: TerrainMap, anchor: readonly [number, number], side: Side, ext = 0): string | null {
   const type = map.cells[anchor[0]][anchor[1]];
   if (!LARGE_INDUSTRY.has(type)) return 'Itt nincs ipar';
   if (type === CellType.OilRig) return 'A fúrótoronyhoz nem építhető megálló';
   if (stationOn(map, anchor, side)) return 'Ezen az oldalon már van megálló';
   const level = cornerHeightAt(map, anchor[0], anchor[1]);
-  const g = stationGeom(anchor, side);
+  const g = stationGeom(anchor, side, ext);
   for (const [x, z] of [...g.platform, ...g.track]) {
     if (x < 0 || z < 0 || x >= map.size || z >= map.size) return 'Kilógna a térképről';
     if (map.cells[x][z] !== CellType.Empty) return 'Nincs elég szabad hely az oldal mentén';

@@ -46,6 +46,9 @@ export interface PathPreviewProps {
   railPts?: number[];
   /** Point A (always marked, even before the route has any piece). */
   start?: GridCell | null;
+  /** Rail: the route branches off / merges into existing track at its start / end (a switch). */
+  switchAtStart?: boolean;
+  switchAtEnd?: boolean;
 }
 
 export function PathPreview(props: PathPreviewProps) {
@@ -97,7 +100,66 @@ function Beacons({ cells, map, cellSize, mat }: { cells: Array<{ x: number; z: n
  * Rail hologram: a translucent track bed + bright centre line swept along the
  * planned centre-line (same sampling/grade smoothing as the real track).
  */
-function RailHologram({ railPts, red, map, cellSize }: PathPreviewProps) {
+/** A flat arrow (chevron + shaft), pointing +X, 1 cell long. */
+const ARROW_GEO = (() => {
+  const sh = new THREE.Shape();
+  sh.moveTo(0.5, 0);
+  sh.lineTo(0.05, 0.3);
+  sh.lineTo(0.05, 0.12);
+  sh.lineTo(-0.5, 0.12);
+  sh.lineTo(-0.5, -0.12);
+  sh.lineTo(0.05, -0.12);
+  sh.lineTo(0.05, -0.3);
+  sh.closePath();
+  return new THREE.ShapeGeometry(sh).rotateX(-Math.PI / 2);
+})();
+const ARROW_MAT = new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, toneMapped: false });
+
+/**
+ * Where trains can go at a switch the route makes: an arrow on the existing
+ * track, pointing the way a train takes into the new branch (at the start)
+ * or the way it carries on after merging (at the end). Building a loop, the
+ * arrows show whether the branch faces the right way.
+ */
+function SwitchArrows({ railPts, map, cellSize, switchAtStart, switchAtEnd }: PathPreviewProps) {
+  if (!railPts || railPts.length < 4) return null;
+  const half = (map.size - 1) / 2;
+  const n = railPts.length;
+  const arrows: Array<{ x: number; z: number; yaw: number }> = [];
+  const unit = (dx: number, dz: number) => {
+    const l = Math.hypot(dx, dz) || 1;
+    return [dx / l, dz / l];
+  };
+  if (switchAtStart) {
+    const [tx, tz] = unit(railPts[2] - railPts[0], railPts[3] - railPts[1]);
+    // On the old track just before the switch, pointing into it.
+    arrows.push({ x: railPts[0] - tx * 0.9, z: railPts[1] - tz * 0.9, yaw: Math.atan2(-tz, tx) });
+  }
+  if (switchAtEnd) {
+    const [tx, tz] = unit(railPts[n - 2] - railPts[n - 4], railPts[n - 1] - railPts[n - 3]);
+    // On the old track just past the merge, pointing on.
+    arrows.push({ x: railPts[n - 2] + tx * 0.9, z: railPts[n - 1] + tz * 0.9, yaw: Math.atan2(-tz, tx) });
+  }
+  return (
+    <>
+      {arrows.map((a, i) => (
+        <mesh
+          key={i}
+          geometry={ARROW_GEO}
+          material={ARROW_MAT}
+          position={[(a.x - half) * cellSize, (groundAtGrid(map, a.x, a.z) + 0.26) * cellSize, (a.z - half) * cellSize]}
+          rotation-y={a.yaw}
+          scale={cellSize * 1.1}
+          raycast={() => null}
+          renderOrder={12}
+        />
+      ))}
+    </>
+  );
+}
+
+function RailHologram(props: PathPreviewProps) {
+  const { railPts, red, map, cellSize } = props;
   const mats = useHolo(red);
   const half = (map.size - 1) / 2;
   const geo = useMemo(() => {
@@ -136,6 +198,7 @@ function RailHologram({ railPts, red, map, cellSize }: PathPreviewProps) {
       {geo.bed && <mesh geometry={geo.bed} material={mats.slab} raycast={() => null} renderOrder={10} />}
       {geo.line && <mesh geometry={geo.line} material={mats.glow} raycast={() => null} renderOrder={11} />}
       <Beacons cells={ends} map={map} cellSize={cellSize} mat={mats.glow} />
+      <SwitchArrows {...props} />
     </group>
   );
 }

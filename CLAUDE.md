@@ -36,9 +36,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Rács: 121×121 cella (GRID_SCALE 2), cellSize 1. A nagy iparágak 6×6-os telken
   állnak, a modellek 3×3-ra készültek, és `INDUSTRY_MODEL_SCALE = 2`-vel skálázódnak.
 - Sín: sima középvonal-hálózat (`railNet.ts`). Rácsos A* tervező (`railRoute.ts`):
-  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2).
+  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2). A tervező csak RÁCSPONTBÓL indul
+  (cellaközép + 8 irány, 1e-3 pontossággal): ezért a `cutAtCell` (bontás) a megmaradó véget
+  visszavágja a legközelebbi rácspontig (`latticeFrom`), különben a bontott végről nem lehetne
+  új sínt húzni. Előnézet: váltónál sárga nyíl (`SwitchArrows`, PathPreview) mutatja, merre
+  tudnak a vonatok be- / kifordulni.
 - Állomás/megálló: az iparág oldalán (`stations.ts`, Side N/S/W/E, StopKind rail|truck).
-  Ára: vasútállomás $500, kamionmegálló $300.
+  Ára: vasútállomás $500, kamionmegálló $300. Vasútállomás peronhossza: `Station.ext` (0–3
+  cella mindkét végén → 6/8/10/12), `stationGeom(anchor, side, ext)`; az eszköznél Q váltja,
+  +$100 / többletcella; `StationModel ext` nyújtja a peront.
 - **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya érc 0,5/s, fatelep
   deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s, erőmű éget max. 2/s.
   Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
@@ -169,14 +175,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
-- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők; sorompó modell + animáció;
-  nagyobb vonat + vonathossz választás).
+- Mergelve: #79 (sima mozgás, jelzők, sorompó, nagyobb vonat + vonathossz).
+- Folyamatban: bontott sínvég javítása, hosszabb peron, váltónyíl, jelzők a hálózati nézetben.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Jelzők a hálózati nézetben; hosszabb peronok (most 6 cella, a 3+ kocsis vonat kilóg)
-- Huroképítés segítése (a sínépítő mutassa, merre néz a váltó)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

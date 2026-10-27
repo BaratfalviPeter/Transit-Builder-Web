@@ -11,6 +11,7 @@
 
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
+import { nextSignalMode, signalIndexNear, signalSpot } from './signals';
 import {
   CellType,
   MAX_GEN_LEVEL,
@@ -235,6 +236,40 @@ export class TerrainStore {
   }
 
   /**
+   * Put a rail signal on the track near grid point (x, z) (see signals.ts):
+   * the track's edge is split there; it faces the trains that have the
+   * cursor's side on their right. Clicking an existing signal turns it round. Returns 'new' / 'mode' or null if not allowed.
+   */
+  placeSignal(x: number, z: number): 'new' | 'mode' | null {
+    const spot = signalSpot(this.map, x, z);
+    if (!spot) return null;
+    const all = this.map.signals ?? [];
+    if (spot.existing >= 0) {
+      const sig = all[spot.existing];
+      const next = all.slice();
+      next[spot.existing] = { ...sig, mode: nextSignalMode(sig.mode) };
+      this.map = { ...this.map, signals: next };
+      this.emit();
+      return 'mode';
+    }
+    if (spot.problem) return null;
+    const net = splitAtPoint(this.map.railNet ?? EMPTY_NET, spot.x, spot.z);
+    if (net !== this.map.railNet) this.setRailNet(net, null);
+    this.map = { ...this.map, signals: all.concat({ x: spot.x, z: spot.z, tx: spot.tx, tz: spot.tz, mode: spot.mode }) };
+    this.emit();
+    return 'new';
+  }
+
+  /** Remove the signal near (x, z) (the track stays). */
+  removeSignal(x: number, z: number): boolean {
+    const i = signalIndexNear(this.map, x, z, 0.75);
+    if (i < 0) return false;
+    this.map = { ...this.map, signals: (this.map.signals ?? []).filter((_, k) => k !== i) };
+    this.emit();
+    return true;
+  }
+
+  /**
    * Build a freight depot (see depot.ts) with its lot's min corner at
    * (x0, z0), turned `rot`: tracks → rail-network edges, the hall and bays →
    * Station cells, the drive → Road. Returns false if the rules forbid it.
@@ -313,6 +348,8 @@ export class TerrainStore {
 
     // A traffic control goes first (the road under it stays).
     if (this.map.controls?.has(cellIndex(this.map, x, z))) return this.setControl(x, z, null);
+    // So does a rail signal (the track stays).
+    if (this.removeSignal(x, z)) return true;
 
     // A station's platform or track: the whole station goes.
     const st = stationAt(this.map, x, z);

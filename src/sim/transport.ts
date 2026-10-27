@@ -36,10 +36,12 @@
  * delivery pays for the whole distance from that origin.
  *
  * Rail lines run TRAINS (rail.ts routes them): forward only, so the line
- * needs loops to turn round. Before leaving a stop a train reserves its whole
- * way to the next one (the track edges and the cells it shares with other
- * tracks); it leaves only when nobody else holds any of it, and frees the
- * track behind its last wagon. Level crossings close for trucks while a
+ * needs loops to turn round. Before leaving a stop a train reserves its way
+ * (the track edges and the cells it shares with other tracks) up to the next
+ * signal facing it (signals.ts) — or to the next stop if there is none; it
+ * goes only when nobody else holds any of it, asks for the next block as it
+ * nears a signal (halting at it while that is taken, or taking a free
+ * parallel track), and frees the track behind its last wagon. Level crossings close for trucks while a
  * train is near; a train brakes for a truck still on one.
  *
  * Lines are immutable snapshot data (for the UI); the vehicles are mutable
@@ -84,6 +86,7 @@ import {
   makePath,
   netOf,
   pathAt,
+  pathSignals,
   pathCells,
   pathValid,
   railRoute,
@@ -91,6 +94,7 @@ import {
   type RailPath,
 } from './rail';
 import { hasRailAt as railAt } from './railNet';
+import { SIGNAL_STOP } from './signals';
 
 export interface Line {
   readonly id: number;
@@ -1531,29 +1535,33 @@ export class TransportSim {
         }
         continue;
       }
-      // Held short of a taken platform: go on once the rest is free.
-      if (t.limit < path.length && t.s >= t.limit - 0.02) {
-        const need = this.trainNeeds(map, path, t.s);
-        if (this.canReserve(t, need)) {
-          this.reserve(t, need);
-          t.limit = Infinity;
+      // Nearing a signal (or a spot it waits at): ask for the next block in
+      // time to run on; at a red one, try a free way round, else wait.
+      if (t.limit < path.length && t.limit - t.s < (t.v * t.v) / (2 * TRAIN_DECEL) + 1.5) {
+        const nb = this.nextBlock(map, path, t.limit + SIGNAL_STOP);
+        if (this.canReserve(t, nb.need)) {
+          this.reserve(t, nb.need);
+          t.limit = nb.limit;
           t.blocked = 0;
-        } else {
-          t.v = 0;
-          t.blocked += dt;
-          if (t.blocked > STALL_WARN) stalled.add(line.id);
-          continue;
+        } else if (t.s >= t.limit - 0.02) {
+          if (!this.rerouteAtSignal(t, line, byId, map, nb.need)) {
+            t.v = 0;
+            t.blocked += dt;
+            if (t.blocked > STALL_WARN) stalled.add(line.id);
+            continue;
+          }
         }
       }
-      // Driving: brake for the bends, a truck stuck on a crossing, the stop.
-      const end = Math.min(path.length, t.limit);
-      let cap = brakeCapOn(path, t.s, TRAIN_SPEED, TRAIN_DECEL, TRAIN_A_LAT, end);
+      const path2 = t.path!;
+      // Driving: brake for the bends, a truck stuck on a crossing, a red signal, the stop.
+      const end = Math.min(path2.length, t.limit);
+      let cap = brakeCapOn(path2, t.s, TRAIN_SPEED, TRAIN_DECEL, TRAIN_A_LAT, end);
       if (end - t.s > 0.02) cap = Math.max(cap, 0.2);
       cap = Math.min(cap, this.crossingCapTrain(t, map, poses));
       t.v = Math.min(t.v + TRAIN_ACCEL * dt, cap);
       t.s = Math.min(t.s + t.v * dt, end);
       this.freeBehind(t);
-      if (t.s >= path.length - 1e-6) {
+      if (t.s >= path2.length - 1e-6) {
         t.v = 0;
         t.state = 'stop';
         t.timer = TRAIN_STOP_TIME;
@@ -1673,11 +1681,23 @@ export class TransportSim {
       t.target = nextI;
       return 'go' as const;
     };
-    for (const { r } of [...routesTo(held), ...any]) {
-      const np = makePath(net, [...keep, ...r.segs]);
-      const need = this.trainNeeds(map, np, s0);
-      if (this.canReserve(t, need)) return go(np, need, Infinity);
+    // With signals: also round the taken edges of the nearest route's first block.
+    const first = this.nextBlock(map, makePath(net, [...keep, ...any[0].r.segs]), s0);
+    const conflict = new Set<number>();
+    for (const k of first.need.keys()) {
+      const h = this.railHeld.get(k);
+      if (k[0] === 'e' && h !== undefined && h !== t.id) conflict.add(Number(k.slice(1)));
     }
+    const round = conflict.size ? [conflict, ...[...conflict].map((e) => new Set([e]))].flatMap((set) => routesTo((e) => set.has(e))) : [];
+    let signalled = false;
+    for (const { r } of [...routesTo(held), ...any, ...round]) {
+      const np = makePath(net, [...keep, ...r.segs]);
+      const block = this.nextBlock(map, np, s0);
+      if (block.limit < Infinity) signalled = true;
+      if (this.canReserve(t, block.need)) return go(np, block.need, block.limit);
+    }
+    // Signals on the way: wait for the first block here.
+    if (signalled) return 'wait';
     // The way is taken: drive on as far as is safe to wait (short of the
     // taken track, where it blocks nobody's way on) — or wait here.
     const np = makePath(net, [...keep, ...any[0].r.segs]);
@@ -1769,6 +1789,80 @@ export class TransportSim {
       if (r && clear(makePath(net, r.segs), 0)) return true;
     }
     return false;
+  }
+
+  /**
+   * The next block of path `p` after distance `from`: the track up to the
+   * next signal facing the train (and where to halt before it), or — with
+   * no signal left — all the rest of the way.
+   */
+  private nextBlock(map: TerrainMap, p: RailPath, from: number): { need: Map<string, number>; limit: number } {
+    const sig = pathSignals(map, p).find((x) => x.s > from + 0.05);
+    if (!sig) return { need: this.trainNeeds(map, p, from), limit: Infinity };
+    const need = new Map<string, number>();
+    for (const sg of p.segs) {
+      const end = sg.s0 + Math.abs(sg.b - sg.a);
+      if (sg.s0 >= sig.s - 1e-6 || end < from - TRAIN_LEN - 0.2) continue;
+      const k = 'e' + sg.edge;
+      need.set(k, Math.max(need.get(k) ?? -Infinity, end));
+    }
+    for (const [c, [a, b]] of pathCells(map, p, from - TRAIN_LEN, sig.s).shared) if (a < sig.s) need.set('c' + c, b + 0.3);
+    return { need, limit: sig.s - SIGNAL_STOP };
+  }
+
+  /**
+   * A train halted at a red signal: is there another way on to its stop
+   * round the taken track (a passing loop's other track)? Takes it if its
+   * first block is free.
+   */
+  private rerouteAtSignal(t: Train, line: Line, byId: Map<number, Station>, map: TerrainMap, blocked: Map<string, number>): boolean {
+    const net = netOf(map);
+    const path = t.path!;
+    const to = byId.get(line.stops[t.target]);
+    if (!to) return false;
+    // Round the taken edges of the block ahead (the rest of the way may be taken too: later blocks).
+    const avoid = new Set<number>();
+    for (const k of blocked.keys()) {
+      const h = this.railHeld.get(k);
+      if (k[0] === 'e' && h !== undefined && h !== t.id) avoid.add(Number(k.slice(1)));
+    }
+    if (!avoid.size) return false;
+    const from = pathAt(path, t.s);
+    const cut = Math.max(0, t.s - TRAIN_LEN - 1);
+    const keep = clipPath(path, cut, t.s);
+    const s0 = t.s - cut;
+    // Round all of them, or round each one (the others may be further on).
+    const sets = [avoid, ...[...avoid].map((e) => new Set([e]))];
+    for (const set of avoid.size > 1 ? sets : [avoid])
+    for (const tg of stopTargets(net, to)) {
+      const r = railRoute(net, from, [tg], (e) => set.has(e));
+      if (!r) continue;
+      const np = makePath(net, [...keep, ...r.segs]);
+      const block = this.nextBlock(map, np, s0);
+      if (!this.canReserve(t, block.need)) continue;
+      for (const [k, u] of t.holds) t.holds.set(k, u - cut);
+      t.path = np;
+      t.s = s0;
+      t.limit = block.limit;
+      this.reserve(t, block.need);
+      t.crossings = pathCells(map, np, 0, np.length).roads;
+      t.blocked = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Which signals show green now: those a train has reserved its way past
+   * and not yet reached (keys `${index}:${sign}`, see rail.ts PathSignal).
+   */
+  signalGreens(map: TerrainMap): Set<string> {
+    const out = new Set<string>();
+    for (const t of this.trains) {
+      if (!t.path) continue;
+      for (const sg of pathSignals(map, t.path)) if (sg.s > t.s - 0.3 && sg.s < t.limit) out.add(`${sg.index}:${sg.sign}`);
+    }
+    return out;
   }
 
   /** The track a train on `p` needs from its front at `from` on: edges and shared cells. */

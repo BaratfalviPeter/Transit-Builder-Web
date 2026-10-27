@@ -168,6 +168,15 @@ A jobb oldali **panel** három füle:
     útjába. Szabad párhuzamos vágányt (kitérőt) magától választ.
     Egyvágányú pályán kitérő nélkül csak egy vonat járhat; ha a vonatok
     egymásra várnak, a járatnál „foglalt pálya” jelzés jelenik meg.
+  - **Vasúti jelzők** (G, $400, `src/sim/signals.ts`, `src/render/Signals.tsx`):
+    a sínre kattintva a kurzor felőli oldalra kerül, és az ott (jobb kéz
+    felől) haladó vonatoknak szól; újra kattintva megfordul, Bontással
+    leszedhető. Váltótól / keresztezéstől 1–2 cellára kell lennie.
+    A jelzők blokkokra osztják a pályát: a vonat csak a következő
+    felé néző jelzőig foglal, és ott vár, ha a következő blokk foglalt
+    (piros); ha felszabadul, vagy talál szabad párhuzamos vágányt, továbbmegy
+    (zöld). Így egy vonalon több vonat is járhat (pl. kitérővel,
+    a kitérő két végén egy-egy jelzővel).
   - **Szintbeli kereszteződés:** a kamionok megállnak, ha vonat közeledik
     (8 cellán belül) vagy a sínen van; a vonat fékez, ha kamion van rajta.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az

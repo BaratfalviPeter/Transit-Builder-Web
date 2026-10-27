@@ -71,7 +71,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
-- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–8 eszközök, Szóköz, T,
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, Szóköz, T,
   J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
@@ -91,7 +91,14 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   meddig mehet. Elengedés a szerelvény vége után (`freeBehind`). Átépítéskor `refindTrain`.
   Sorompó: `crossingClosed` (vonat eleje ≤ 8 cella), kamion `crossingAhead`, vonat
   `crossingCapTrain`. „foglalt pálya”: `snap.stalled`. Render: `Trains.tsx` (forgóvázak a pályán).
-  Tesztek: scratchpad `trains.ts` (szintetikus súlyzó-pálya hurkokkal; `pass` = kitérővel, 2 vonat),
+  Jelzők (`signals.ts`): `map.signals` (x, z, tx, tz, mode fwd|back — EGYIRÁNYÚ, a kétirányú
+  holtpontot okozott), lerakáskor `splitAtPoint` (a jelző csomópont), `signalSpot` szabályai (nem
+  peronon, váltótoroktól/keresztezéstől ±1,4 cellán belül nincs közös cella, egymástól 1,6).
+  Logika: `pathSignals` (rail.ts), `nextBlock` (foglalás a következő felé néző jelzőig, megállás
+  előtte SIGNAL_STOP 0,4), menet közben fékút + 1,5 cellával előbb kéri a következő blokkot;
+  pirosnál `rerouteAtSignal` (a blokk foglalt éleit kerülve, egyenként is). Zöld: `signalGreens`.
+  Tesztek: scratchpad `trains.ts` (szintetikus súlyzó-pálya hurkokkal; `pass` = kitérővel, 2 vonat;
+  6. argumentum: jelzők "x,z,irány;…" — kitérővel + 4 jelzővel 3 vonat megy),
   `realrail.ts` (a játék sínépítőjével épített hurok).
   A sín nyomtávja ehhez igazítva: `Rails.tsx` GAUGE 0,075 (fél nyomtáv), a peron a sínig ér.
 - Raktár: modell `DepotModel.tsx` (6×6, ipari egység ×2; `DepotDynamic` = lámpák +
@@ -154,12 +161,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
-- Folyamatban: szaggatás javítása (interpoláció a szimulációs lépések között).
+- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Vasúti jelzők (szakaszolás, több vonat egy vonalon), sorompó animáció, vonathossz választás
+- Sorompó animáció, vonathossz választás, jelzők a hálózati nézetben
 - Huroképítés segítése (a sínépítő mutassa, merre néz a váltó)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként

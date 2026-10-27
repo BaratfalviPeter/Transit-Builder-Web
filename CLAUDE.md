@@ -78,13 +78,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
   és a raktár.
 - Vonat modell (`TrainModel.tsx`): `Locomotive` (LOCO_LEN 1,45) + `Wagon` (hopper / tank / box /
-  flat; CAR_LEN 1,15; a hosszak a `sim/rail.ts`-ben), origó a kocsi közepén sínkorona-magasságban.
+  flat; CAR_LEN 1,15) TERVEZÉSI egységben; a játék `TRAIN_SCALE` = 1,25-szörösen rajzolja (a
+  felhasználó kérte, hogy a kamionhoz képest arányosan nagyobb legyen). A szimuláció hosszai
+  (`sim/rail.ts` LOCO_LEN / CAR_LEN / CAR_GAP) már skálázottak. Sín: GAUGE, talpfa, ágyazat ×TRAIN_SCALE.
+  Origó a kocsi közepén sínkorona-magasságban.
+- Vonathossz: `Line.wagons` (1–6, alap 3), `setWagons`; ár `trainPrice(w)` = mozdony $5000 +
+  kocsi $1000. A vonat a következő megállójában veszi fel (`departTrain`; hosszabbnál a mögötte
+  lévő pálya szabad kell legyen). `Train.wagons/len`, kapacitás = kocsi × 30. Új vonat lerakása:
+  `trackBehind` (a pályát követi visszafelé, a peronnál hosszabb vonat kilóghat).
 - Vonatok működése: útkeresés `rail.ts` (gráf: élek végpontjai = csomópontok; csomóponton csak
   ~egyenesen (cos > 0,9) mehet tovább, NEM fordul vissza → végállomáson hurok kell; `railRoute`
   Dijkstra irányított éleken; megálló = peronszakasz (`platforms`, `stopTargets`: eleje a túlsó
   végnél); `RailPath` = Lane + szegmensek (`pathAt` → él + hossz, a renderer magasságához)).
-  Szimuláció a `transport.ts`-ben (`Train`, `tickTrains`): `TRAIN_PRICE` 8000, 3 kocsi × 30,
-  seb. 4, gyorsulás 0,8, fék 1,6. Foglalás (`railHeld`): 'e'+él és 'c'+közös cella (váltó,
+  Szimuláció a `transport.ts`-ben (`Train`, `tickTrains`): seb. 4, gyorsulás 0,8, fék 1,6. Foglalás (`railHeld`): 'e'+él és 'c'+közös cella (váltó,
   keresztezés); indulás (`departTrain`) csak ha a teljes út a következő megállóig szabad
   (előbb a foglalt éleket kerülő útvonal = kitérő); különben `partialReserve`: előrébb megy egy
   csomópont + váltótorok elé, ha a foglaló vonat (`canGetOn`) így is tovább tud menni. `limit` =
@@ -163,12 +169,13 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #76 (vonat- és raktármodellek, keskenyebb sín, a raktár mint játékelem).
 - Mergelve: #77 (párhuzamos raktári beállás, fokozatos fékezés, kamera-érzékenység).
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
-- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők; sorompó modell + animáció).
+- Nyitva: #79 (szaggatás javítása: interpoláció; vasúti jelzők; sorompó modell + animáció;
+  nagyobb vonat + vonathossz választás).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Vonathossz választás, jelzők a hálózati nézetben
+- Jelzők a hálózati nézetben; hosszabb peronok (most 6 cella, a 3+ kocsis vonat kilóg)
 - Huroképítés segítése (a sínépítő mutassa, merre néz a váltó)
 - A város mint fogyasztó (keresletet támaszt az árukra)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként

@@ -19,7 +19,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CellType, LineWalker, type TerrainMap } from '../sim';
+import { CellType, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 import { groundAtGrid, sampleTrack } from './railGeometry';
@@ -34,13 +34,13 @@ const SLEEPER_COLOR = '#5a3f27';
 const RAIL_COLOR = '#a3a9b0';
 const SURFACE_LIFT = 0.02;
 /** Rail half-gauge (cells) — sized to the trains / trucks (see TrainModel). */
-const GAUGE = 0.075;
+const GAUGE = 0.075 * TRAIN_SCALE;
 
 // --- unit models (1 cell long along +X; scaled to the unit length) ---------
 const BALLAST_GEO = (() => {
   // Deep, tapered gravel bed: where the even grade runs a little above the
   // ground it reads as a low embankment instead of a floating track.
-  const g = new THREE.BoxGeometry(1, 0.165, 0.5);
+  const g = new THREE.BoxGeometry(1, 0.165, 0.5 * TRAIN_SCALE);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setZ(i, p.getZ(i) * (0.36 / 0.5)); // taper
   g.translate(0, -0.0375, 0); // spans y −0.12 … 0.045
@@ -52,7 +52,7 @@ const RAILS_GEO = (() => {
   const b = new THREE.BoxGeometry(1, 0.035, 0.024).translate(0, 0.0825, -GAUGE);
   return mergeGeometries([a, b])!;
 })();
-const SLEEPER_GEO = new THREE.BoxGeometry(0.07, 0.03, 0.3).translate(0, 0.05, 0);
+const SLEEPER_GEO = new THREE.BoxGeometry(0.07 * TRAIN_SCALE, 0.03, 0.3 * TRAIN_SCALE).translate(0, 0.05, 0);
 
 interface Built {
   ballast: THREE.Matrix4[];

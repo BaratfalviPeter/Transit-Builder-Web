@@ -27,10 +27,15 @@ import { depotTracks, isDepot } from './depot';
 import { laneAt, type Lane } from './lane';
 import { signalFaces, signalsOf } from './signals';
 
-/** Car lengths and the gap between couplers (cells; the models match). */
-export const LOCO_LEN = 1.45;
-export const CAR_LEN = 1.15;
-export const CAR_GAP = 0.05;
+/**
+ * Trains are drawn this much larger than their models' design units (so
+ * they look right next to the chunky trucks); the track gauge matches.
+ */
+export const TRAIN_SCALE = 1.25;
+/** Car lengths and the gap between couplers (cells, as drawn). */
+export const LOCO_LEN = 1.45 * TRAIN_SCALE;
+export const CAR_LEN = 1.15 * TRAIN_SCALE;
+export const CAR_GAP = 0.05 * TRAIN_SCALE;
 
 /** A piece of a path: edge `edge` from distance `a` to `b` along it (a > b: backwards). */
 export interface RailSeg {
@@ -218,6 +223,34 @@ export function railRoute(
     return [n.edge, a, b];
   });
   return { segs, target: best.t };
+}
+
+/**
+ * The track `dist` back from `pos` (against its heading), as pieces in the
+ * heading's order ending at `pos` — the straightest way back at each node.
+ * Shorter if the track ends.
+ */
+export function trackBehind(net: RailNet, pos: RailPos, dist: number): Array<[number, number, number]> {
+  const g = graph(net);
+  const out: Array<[number, number, number]> = [];
+  let edge = pos.edge, along = pos.along, fwd = pos.fwd, left = dist;
+  for (let guard = 0; guard < 64 && left > 1e-6; guard++) {
+    const total = g.walkers.get(edge)?.total ?? 0;
+    // Back along this edge from `along`.
+    const room = fwd ? along : total - along;
+    const take = Math.min(room, left);
+    out.unshift([edge, fwd ? along - take : along + take, along]);
+    left -= take;
+    if (left <= 1e-6) break;
+    // Onwards (backwards) through the node behind: run the reverse heading's next states.
+    const next = nextStates(g, edge, !fwd);
+    if (!next.length) break;
+    const [e, f] = next[0];
+    edge = e;
+    fwd = !f; // we walk it backwards
+    along = f ? 0 : g.walkers.get(e)!.total;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- paths

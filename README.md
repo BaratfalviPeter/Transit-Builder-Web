@@ -154,8 +154,12 @@ A jobb oldali **panel** három füle:
     (szűk kanyarban jobban), az elöl haladó és a kereszteződés előtt
     időben fékeznek, várakozáskor a vonalig gurulnak.
 - **Vonatok** (`src/sim/rail.ts`, `transport.ts`, `src/render/Trains.tsx`):
-  vonatjárat vasútállomások és raktárak között (Járatok → „Új vonatjárat”,
-  $8000; mozdony + 3 kocsi × 30 egység, 4 cella/s).
+  vonatjárat vasútállomások és raktárak között (Járatok → „Új vonatjárat”;
+  mozdony $5000 + kocsinként $1000, kocsinként 30 egység, 4 cella/s).
+  - **Vonathossz** járatonként 1–6 kocsi (alap 3; a „🚃 − +” sorral). Hosszabbításkor
+    vonatonként fizetsz egy kocsit; a vonatok a következő megállójukban veszik fel
+    / adják le. A peronnál hosszabb vonat hátul kilóg.
+  - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
   - A vonat **csak előre** megy, a váltókon a sín irányában (nem fordul
     vissza): a végállomásoknál **fordítóhurok** kell (vagy az egész pálya kör).
     Ha nincs, a járatnál „nincs út!” jelenik meg.

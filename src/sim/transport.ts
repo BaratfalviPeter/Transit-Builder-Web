@@ -80,7 +80,6 @@ import {
   CAR_GAP,
   CAR_LEN,
   clipPath,
-  edgeLength,
   locate,
   LOCO_LEN,
   makePath,
@@ -91,6 +90,7 @@ import {
   pathValid,
   railRoute,
   stopTargets,
+  trackBehind,
   type RailPath,
 } from './rail';
 import { hasRailAt as railAt } from './railNet';
@@ -103,8 +103,10 @@ export interface Line {
   readonly kind: LineKind;
   /** Stop (station) ids, visited in order and then back to the first. */
   readonly stops: readonly number[];
-  /** Trucks assigned. */
+  /** Trucks / trains assigned. */
   readonly vehicles: number;
+  /** Rail lines: wagons per train. */
+  readonly wagons?: number;
 }
 
 /** Truck lines run on the roads, rail lines (trains) on the tracks. */
@@ -238,13 +240,18 @@ interface YardClaim {
   bay: number;
 }
 
-/** Price of a train (loco + wagons); half is refunded when one is sold. */
-export const TRAIN_PRICE = 8000;
-/** Wagons per train and what each carries (units). */
-export const TRAIN_WAGONS = 3;
+/** Prices: a locomotive and each wagon; half is refunded when sold. */
+export const LOCO_PRICE = 5000;
+export const WAGON_PRICE = 1000;
+/** Wagons per train (a rail line's choice) and what each carries (units). */
+export const DEFAULT_WAGONS = 3;
+export const MIN_WAGONS = 1;
+export const MAX_WAGONS = 6;
 export const WAGON_CAPACITY = 30;
+/** Price of a train of `wagons` wagons. */
+export const trainPrice = (wagons: number): number => LOCO_PRICE + wagons * WAGON_PRICE;
 /** A train from the loco's front to the last wagon's end (cells). */
-export const TRAIN_LEN = LOCO_LEN + TRAIN_WAGONS * (CAR_LEN + CAR_GAP);
+export const trainLength = (wagons: number): number => LOCO_LEN + wagons * (CAR_LEN + CAR_GAP);
 /** Train top speed, acceleration, braking (cells, s) and grip in bends. */
 const TRAIN_SPEED = 4;
 const TRAIN_ACCEL = 0.8;
@@ -277,6 +284,9 @@ export interface Train {
   blocked: number;
   cargo: Partial<Record<Item, number>>;
   origin: Partial<Record<Item, [number, number]>>;
+  /** Its wagons (the line's choice, taken on at a stop) and its length (cells). */
+  wagons: number;
+  len: number;
   /** Reserved track ('e' + edge id, 'c' + shared cell) → path distance the front leaves it at. */
   holds: Map<string, number>;
   /** Level crossings on its path: road cell → [enter, leave] path distances of the front. */
@@ -599,6 +609,7 @@ export class TransportSim {
       kind: this.snap.draftKind,
       stops: d.slice(),
       vehicles: 1,
+      ...(this.snap.draftKind === 'rail' ? { wagons: DEFAULT_WAGONS } : {}),
     };
     this.set({ lines: this.snap.lines.concat(line), draft: null });
     return line;
@@ -614,6 +625,12 @@ export class TransportSim {
     for (const t of this.trains) if (t.lineId === id) this.releaseTrack(t);
     this.trains = this.trains.filter((t) => t.lineId !== id);
     this.set({ lines: this.snap.lines.filter((l) => l.id !== id), fleet: this.snap.fleet + 1 });
+  }
+
+  /** A rail line's train length (trains take it on at their next stop). */
+  setWagons(id: number, n: number): void {
+    const w = Math.max(MIN_WAGONS, Math.min(MAX_WAGONS, n));
+    this.set({ lines: this.snap.lines.map((l) => (l.id === id ? { ...l, wagons: w } : l)) });
   }
 
   setVehicles(id: number, n: number): void {
@@ -1538,7 +1555,7 @@ export class TransportSim {
       // Nearing a signal (or a spot it waits at): ask for the next block in
       // time to run on; at a red one, try a free way round, else wait.
       if (t.limit < path.length && t.limit - t.s < (t.v * t.v) / (2 * TRAIN_DECEL) + 1.5) {
-        const nb = this.nextBlock(map, path, t.limit + SIGNAL_STOP);
+        const nb = this.nextBlock(map, path, t.limit + SIGNAL_STOP, t.len);
         if (this.canReserve(t, nb.need)) {
           this.reserve(t, nb.need);
           t.limit = nb.limit;
@@ -1576,7 +1593,7 @@ export class TransportSim {
   private refindTrain(t: Train, line: Line, byId: Map<number, Station>, map: TerrainMap): boolean {
     const net = netOf(map);
     const old = t.path!;
-    const back = Math.min(TRAIN_LEN + 1, t.s);
+    const back = Math.min(t.len + 1, t.s);
     const [tx, tz] = laneAt(old, t.s - back);
     const [hx, hz] = laneAt(old, t.s - back + 0.2);
     const tail = locate(net, tx, tz, hx - tx, hz - tz);
@@ -1597,7 +1614,7 @@ export class TransportSim {
     t.path = np;
     t.s = Math.min(back, np.length);
     t.limit = Infinity;
-    this.reserve(t, this.trainNeeds(map, np, t.s)); // it is there already: no waiting
+    this.reserve(t, this.trainNeeds(map, np, t.s, t.len)); // it is there already: no waiting
     t.crossings = pathCells(map, np, 0, np.length).roads;
     return true;
   }
@@ -1615,9 +1632,10 @@ export class TransportSim {
     const order = [...targets.filter(onward), ...targets.filter((tg) => !onward(tg))];
     for (const tg of order) {
       // The platform from its tail end to the stopping point.
-      const w = makePath(net, [[tg.edge, tg.fwd ? Math.max(0, tg.along - TRAIN_LEN) : Math.min(edgeLength(net, tg.edge), tg.along + TRAIN_LEN), tg.along]]);
+      // Its whole length on the track behind the stopping point.
+      const w = makePath(net, trackBehind(net, tg, t.len));
       if (w.length < 1) continue;
-      const need = this.trainNeeds(map, w, 0);
+      const need = this.trainNeeds(map, w, 0, t.len);
       if (!this.canReserve(t, need)) continue;
       t.path = w;
       t.s = w.length;
@@ -1650,6 +1668,19 @@ export class TransportSim {
     const nextI = (t.target + 1) % line.stops.length;
     const to = byId.get(line.stops[nextI]);
     if (!here || !to) return 'noroute';
+    // Take on the line's train length here — a longer train only if the
+    // track behind is there and free for its extra wagons.
+    const want = line.wagons ?? DEFAULT_WAGONS;
+    if (want !== t.wagons) {
+      const len = trainLength(want);
+      const body = this.trainNeeds(map, path, t.s, len);
+      if (want < t.wagons || (t.s >= len + 0.2 && this.canReserve(t, body))) {
+        if (want > t.wagons) this.reserve(t, body);
+        t.wagons = want;
+        t.len = len;
+        this.set({ fleet: this.snap.fleet + 1 });
+      }
+    }
     const from = pathAt(path, t.s);
     const targets = stopTargets(net, to);
     // Routes to each platform (and way of facing) of the next stop, nearest
@@ -1667,11 +1698,11 @@ export class TransportSim {
     const any = routesTo();
     if (!any.length) return 'noroute';
     // Keep the bit of the old path the train stands on.
-    const cut = Math.max(0, t.s - TRAIN_LEN - 1);
+    const cut = Math.max(0, t.s - t.len - 1);
     const keep = clipPath(path, cut, t.s);
     const s0 = t.s - cut;
     const go = (np: RailPath, need: Map<string, number>, limit: number) => {
-      this.serveStop(t, TRAIN_WAGONS * WAGON_CAPACITY, line, here, byId, map, prod, earn);
+      this.serveStop(t, t.wagons * WAGON_CAPACITY, line, here, byId, map, prod, earn);
       for (const [k, u] of t.holds) t.holds.set(k, u - cut);
       t.path = np;
       t.s = s0;
@@ -1682,7 +1713,7 @@ export class TransportSim {
       return 'go' as const;
     };
     // With signals: also round the taken edges of the nearest route's first block.
-    const first = this.nextBlock(map, makePath(net, [...keep, ...any[0].r.segs]), s0);
+    const first = this.nextBlock(map, makePath(net, [...keep, ...any[0].r.segs]), s0, t.len);
     const conflict = new Set<number>();
     for (const k of first.need.keys()) {
       const h = this.railHeld.get(k);
@@ -1692,7 +1723,7 @@ export class TransportSim {
     let signalled = false;
     for (const { r } of [...routesTo(held), ...any, ...round]) {
       const np = makePath(net, [...keep, ...r.segs]);
-      const block = this.nextBlock(map, np, s0);
+      const block = this.nextBlock(map, np, s0, t.len);
       if (block.limit < Infinity) signalled = true;
       if (this.canReserve(t, block.need)) return go(np, block.need, block.limit);
     }
@@ -1719,7 +1750,7 @@ export class TransportSim {
       if (!enter.has(k)) enter.set(k, sg.s0);
       leave.set(k, Math.max(leave.get(k) ?? -Infinity, sg.s0 + Math.abs(sg.b - sg.a)));
     }
-    for (const [c, [a, b]] of pathCells(map, p, from - TRAIN_LEN, p.length).shared) {
+    for (const [c, [a, b]] of pathCells(map, p, from - t.len, p.length).shared) {
       enter.set('c' + c, a - 0.3);
       leave.set('c' + c, b + 0.3);
     }
@@ -1728,7 +1759,7 @@ export class TransportSim {
       return h !== undefined && h !== t.id && this.trains.some((q) => q.id === h && q.path) ? h : null;
     };
     let conflict = Infinity;
-    for (const [k, e] of enter) if (leave.get(k)! > from - TRAIN_LEN && takenBy(k) !== null) conflict = Math.min(conflict, e);
+    for (const [k, e] of enter) if (leave.get(k)! > from - t.len && takenBy(k) !== null) conflict = Math.min(conflict, e);
     if (conflict === Infinity || conflict <= from) return null;
     // Candidate waiting points: a cell short of each node before the conflict.
     const nodes = p.segs.map((sg) => sg.s0).filter((x) => x > from + 0.5 && x <= conflict + 1e-6);
@@ -1748,12 +1779,12 @@ export class TransportSim {
       const limit = zone - 0.4;
       if (limit <= from + 0.5) continue;
       const need = new Map<string, number>();
-      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > from - TRAIN_LEN - 0.2) need.set(k, leave.get(k)!);
+      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > from - t.len - 0.2) need.set(k, leave.get(k)!);
       if (!this.canReserve(t, need)) continue;
       // Everyone holding the track ahead must get past without the track
       // this train will stand on while it waits there.
       const mine = new Set<string>();
-      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > limit - TRAIN_LEN - 0.15) mine.add(k);
+      for (const [k, e] of enter) if (e < limit + 0.05 && leave.get(k)! > limit - t.len - 0.15) mine.add(k);
       const holders = new Set<number>();
       for (const [k, e] of enter) {
         const h = e >= limit && takenBy(k);
@@ -1796,17 +1827,17 @@ export class TransportSim {
    * next signal facing the train (and where to halt before it), or — with
    * no signal left — all the rest of the way.
    */
-  private nextBlock(map: TerrainMap, p: RailPath, from: number): { need: Map<string, number>; limit: number } {
+  private nextBlock(map: TerrainMap, p: RailPath, from: number, len: number): { need: Map<string, number>; limit: number } {
     const sig = pathSignals(map, p).find((x) => x.s > from + 0.05);
-    if (!sig) return { need: this.trainNeeds(map, p, from), limit: Infinity };
+    if (!sig) return { need: this.trainNeeds(map, p, from, len), limit: Infinity };
     const need = new Map<string, number>();
     for (const sg of p.segs) {
       const end = sg.s0 + Math.abs(sg.b - sg.a);
-      if (sg.s0 >= sig.s - 1e-6 || end < from - TRAIN_LEN - 0.2) continue;
+      if (sg.s0 >= sig.s - 1e-6 || end < from - len - 0.2) continue;
       const k = 'e' + sg.edge;
       need.set(k, Math.max(need.get(k) ?? -Infinity, end));
     }
-    for (const [c, [a, b]] of pathCells(map, p, from - TRAIN_LEN, sig.s).shared) if (a < sig.s) need.set('c' + c, b + 0.3);
+    for (const [c, [a, b]] of pathCells(map, p, from - len, sig.s).shared) if (a < sig.s) need.set('c' + c, b + 0.3);
     return { need, limit: sig.s - SIGNAL_STOP };
   }
 
@@ -1828,7 +1859,7 @@ export class TransportSim {
     }
     if (!avoid.size) return false;
     const from = pathAt(path, t.s);
-    const cut = Math.max(0, t.s - TRAIN_LEN - 1);
+    const cut = Math.max(0, t.s - t.len - 1);
     const keep = clipPath(path, cut, t.s);
     const s0 = t.s - cut;
     // Round all of them, or round each one (the others may be further on).
@@ -1838,7 +1869,7 @@ export class TransportSim {
       const r = railRoute(net, from, [tg], (e) => set.has(e));
       if (!r) continue;
       const np = makePath(net, [...keep, ...r.segs]);
-      const block = this.nextBlock(map, np, s0);
+      const block = this.nextBlock(map, np, s0, t.len);
       if (!this.canReserve(t, block.need)) continue;
       for (const [k, u] of t.holds) t.holds.set(k, u - cut);
       t.path = np;
@@ -1866,15 +1897,15 @@ export class TransportSim {
   }
 
   /** The track a train on `p` needs from its front at `from` on: edges and shared cells. */
-  private trainNeeds(map: TerrainMap, p: RailPath, from: number): Map<string, number> {
+  private trainNeeds(map: TerrainMap, p: RailPath, from: number, len: number): Map<string, number> {
     const need = new Map<string, number>();
     for (const sg of p.segs) {
       const end = sg.s0 + Math.abs(sg.b - sg.a);
-      if (end < from - TRAIN_LEN - 0.2) continue;
+      if (end < from - len - 0.2) continue;
       const k = 'e' + sg.edge;
       need.set(k, Math.max(need.get(k) ?? -Infinity, end));
     }
-    for (const [c, [, s]] of pathCells(map, p, from - TRAIN_LEN, p.length).shared) need.set('c' + c, s + 0.3);
+    for (const [c, [, s]] of pathCells(map, p, from - len, p.length).shared) need.set('c' + c, s + 0.3);
     return need;
   }
 
@@ -1895,7 +1926,7 @@ export class TransportSim {
 
   /** Free the track the last wagon has left. */
   private freeBehind(t: Train): void {
-    const tail = t.s - TRAIN_LEN - 0.15;
+    const tail = t.s - t.len - 0.15;
     for (const [k, u] of t.holds)
       if (u < tail) {
         t.holds.delete(k);
@@ -1913,7 +1944,7 @@ export class TransportSim {
   crossingClosed(c: number): boolean {
     for (const t of this.trains) {
       const r = t.path && t.crossings.get(c);
-      if (r && t.s >= r[0] - CROSSING_CLOSE && t.s - TRAIN_LEN <= r[1] + 0.4) return true;
+      if (r && t.s >= r[0] - CROSSING_CLOSE && t.s - t.len <= r[1] + 0.4) return true;
     }
     return false;
   }
@@ -1985,6 +2016,8 @@ export class TransportSim {
             blocked: 0,
             cargo: {},
             origin: {},
+            wagons: line.wagons ?? DEFAULT_WAGONS,
+            len: trainLength(line.wagons ?? DEFAULT_WAGONS),
             holds: new Map(),
             crossings: new Map(),
           });

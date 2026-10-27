@@ -11,7 +11,7 @@
  *   - wagons by cargo: hopper (ore), tank (oil), boxcar (goods), stake flat
  *     car (logs / planks). Loaded or empty: the load is its own mesh.
  *
- * Units: cells, sized to the trucks. Origin: the car's centre at RAIL-TOP
+ * Units: design units (the game scales them by TRAIN_SCALE). Origin: the car's centre at RAIL-TOP
  * height, +X forward. Every car is CAR_LEN long (the loco LOCO_LEN), its
  * bogies CAR_BOGIE / LOCO_BOGIE from the centre — a renderer places each car
  * by putting its two bogies on the track.
@@ -22,9 +22,11 @@ import * as THREE from 'three';
 import { ball, box, buildParts, cyl, FIXED_MAT, paintMat, profile, type Part } from './lowPoly';
 import type { Item } from '../sim';
 
-// Car lengths live in the simulation (it spaces the cars); re-exported here.
-export { CAR_GAP, CAR_LEN, LOCO_LEN } from '../sim/rail';
-import { CAR_GAP, CAR_LEN, LOCO_LEN } from '../sim/rail';
+// Design units (the game draws trains ×TRAIN_SCALE, see sim/rail.ts).
+export const LOCO_LEN = 1.45;
+export const CAR_LEN = 1.15;
+/** Gap between two cars' couplers. */
+export const CAR_GAP = 0.05;
 /** Bogie centres from a car's centre (loco / wagon). */
 export const LOCO_BOGIE = 0.47;
 export const CAR_BOGIE = 0.4;

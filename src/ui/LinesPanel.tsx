@@ -7,8 +7,10 @@
 import {
   stopKind,
   stopLabel,
-  TRAIN_PRICE,
-  TRAIN_WAGONS,
+  DEFAULT_WAGONS,
+  MAX_WAGONS,
+  MIN_WAGONS,
+  trainPrice,
   TRUCK_PRICE,
   useGame,
   useGameSnapshot,
@@ -18,10 +20,13 @@ import {
   type Line,
   type LineKind,
   WAGON_CAPACITY,
+  WAGON_PRICE,
 } from '../sim';
 import './linesPanel.css';
 
-const PRICE: Record<LineKind, number> = { truck: TRUCK_PRICE, rail: TRAIN_PRICE };
+/** Price of one vehicle of a line (a train: loco + its wagons); of a new line's first one. */
+const priceOf = (l: Line): number => (l.kind === 'rail' ? trainPrice(l.wagons ?? DEFAULT_WAGONS) : TRUCK_PRICE);
+const PRICE: Record<LineKind, number> = { truck: TRUCK_PRICE, rail: trainPrice(DEFAULT_WAGONS) };
 const ICON: Record<LineKind, string> = { truck: '🚚', rail: '🚆' };
 const VEHICLE: Record<LineKind, string> = { truck: 'kamion', rail: 'vonat' };
 
@@ -47,16 +52,28 @@ export function LinesPanel() {
     if (sim.finishDraft()) game.spend(PRICE[kind]);
   };
   const addVehicle = (l: Line) => {
-    if (game.spend(PRICE[l.kind])) sim.setVehicles(l.id, l.vehicles + 1);
+    if (game.spend(priceOf(l))) sim.setVehicles(l.id, l.vehicles + 1);
   };
   const removeVehicle = (l: Line) => {
     if (l.vehicles <= 0) return;
     sim.setVehicles(l.id, l.vehicles - 1);
-    game.refund(Math.floor(PRICE[l.kind] / 2));
+    game.refund(Math.floor(priceOf(l) / 2));
   };
   const removeLine = (l: Line) => {
-    game.refund(Math.floor((PRICE[l.kind] * l.vehicles) / 2));
+    game.refund(Math.floor((priceOf(l) * l.vehicles) / 2));
     sim.removeLine(l.id);
+  };
+  // Train length: every train of the line gets (or sells) a wagon.
+  const addWagon = (l: Line) => {
+    const w = l.wagons ?? DEFAULT_WAGONS;
+    if (w >= MAX_WAGONS || !game.spend(WAGON_PRICE * l.vehicles)) return;
+    sim.setWagons(l.id, w + 1);
+  };
+  const removeWagon = (l: Line) => {
+    const w = l.wagons ?? DEFAULT_WAGONS;
+    if (w <= MIN_WAGONS) return;
+    sim.setWagons(l.id, w - 1);
+    game.refund(Math.floor((WAGON_PRICE * l.vehicles) / 2));
   };
 
   const newButton = (k: LineKind, enough: boolean, why: string) => (
@@ -139,18 +156,37 @@ export function LinesPanel() {
             <button type="button" onClick={() => removeVehicle(l)} disabled={l.vehicles <= 0} title={`Egy ${VEHICLE[l.kind]} eladása (½ ár vissza)`}>
               −
             </button>
-            <button type="button" onClick={() => addVehicle(l)} disabled={money < PRICE[l.kind]} title={`Új ${VEHICLE[l.kind]} ($${PRICE[l.kind]})`}>
+            <button type="button" onClick={() => addVehicle(l)} disabled={money < priceOf(l)} title={`Új ${VEHICLE[l.kind]} ($${priceOf(l)})`}>
               +
             </button>
             <button type="button" className="lines__del" onClick={() => removeLine(l)} title={`Járat törlése (a járművek ½ árát visszakapod)`}>
               🗑
             </button>
           </div>
+          {l.kind === 'rail' && (
+            <div className="lines__row" title="Vonathossz: kocsik száma vonatonként (a vonatok a következő megállójukban veszik fel / adják le)">
+              <span>
+                🚃 {l.wagons ?? DEFAULT_WAGONS} kocsi · {(l.wagons ?? DEFAULT_WAGONS) * WAGON_CAPACITY} egység
+              </span>
+              <button type="button" onClick={() => removeWagon(l)} disabled={(l.wagons ?? DEFAULT_WAGONS) <= MIN_WAGONS} title="Egy kocsival rövidebb (½ ár vissza)">
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => addWagon(l)}
+                disabled={(l.wagons ?? DEFAULT_WAGONS) >= MAX_WAGONS || money < WAGON_PRICE * l.vehicles}
+                title={`Egy kocsival hosszabb ($${WAGON_PRICE} vonatonként)`}
+              >
+                +
+              </button>
+            </div>
+          )}
         </div>
       ))}
       <div className="panel__hint">
         A járművek felrakják, amit egy későbbi megálló átvesz, és ott leadják. Fizetés leszállításkor: minél messzebbre és minél
-        értékesebb árut viszel, annál több. A vonat drága, de sokat visz ({TRAIN_WAGONS} kocsi × {WAGON_CAPACITY} egység) és gyors.
+        értékesebb árut viszel, annál több. A vonat drága (mozdony + kocsik), de sokat visz (kocsinként {WAGON_CAPACITY} egység) és gyors; a hossza
+        járatonként állítható ({MIN_WAGONS}–{MAX_WAGONS} kocsi). A peronnál hosszabb vonat hátul kilóg.
       </div>
     </div>
   );

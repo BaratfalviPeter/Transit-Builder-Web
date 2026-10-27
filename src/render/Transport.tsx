@@ -17,7 +17,6 @@ import {
   stopKind,
   laneAt,
   TRAILER_AXLE,
-  TRAIN_LEN,
   TRUCK_HITCH,
   useTransport,
   useTransportSnapshot,
@@ -297,7 +296,7 @@ function NetTrains({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
       if (!m) continue;
       m.visible = !!t.path;
       if (!t.path) continue;
-      const [x, z] = laneAt(t.path, sim.trainDrawS(t) - TRAIN_LEN / 2);
+      const [x, z] = laneAt(t.path, sim.trainDrawS(t) - t.len / 2);
       m.position.set((x - half) * cellSize, (groundAtGrid(map, x, z) + NET_LIFT + 0.07) * cellSize, (z - half) * cellSize);
     }
   });

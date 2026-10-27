@@ -24,12 +24,18 @@ import { EMPTY_NET, LineWalker, railIndex, TRACK_HALF, type RailNet } from './ra
 import { CellType, type TerrainMap } from './terrain';
 import { stationGeom, stopKind, type Station } from './stations';
 import { depotTracks, isDepot } from './depot';
-import type { Lane } from './lane';
+import { laneAt, type Lane } from './lane';
+import { signalFaces, signalsOf } from './signals';
 
-/** Car lengths and the gap between couplers (cells; the models match). */
-export const LOCO_LEN = 1.45;
-export const CAR_LEN = 1.15;
-export const CAR_GAP = 0.05;
+/**
+ * Trains are drawn this much larger than their models' design units (so
+ * they look right next to the chunky trucks); the track gauge matches.
+ */
+export const TRAIN_SCALE = 1.25;
+/** Car lengths and the gap between couplers (cells, as drawn). */
+export const LOCO_LEN = 1.45 * TRAIN_SCALE;
+export const CAR_LEN = 1.15 * TRAIN_SCALE;
+export const CAR_GAP = 0.05 * TRAIN_SCALE;
 
 /** A piece of a path: edge `edge` from distance `a` to `b` along it (a > b: backwards). */
 export interface RailSeg {
@@ -219,6 +225,34 @@ export function railRoute(
   return { segs, target: best.t };
 }
 
+/**
+ * The track `dist` back from `pos` (against its heading), as pieces in the
+ * heading's order ending at `pos` — the straightest way back at each node.
+ * Shorter if the track ends.
+ */
+export function trackBehind(net: RailNet, pos: RailPos, dist: number): Array<[number, number, number]> {
+  const g = graph(net);
+  const out: Array<[number, number, number]> = [];
+  let edge = pos.edge, along = pos.along, fwd = pos.fwd, left = dist;
+  for (let guard = 0; guard < 64 && left > 1e-6; guard++) {
+    const total = g.walkers.get(edge)?.total ?? 0;
+    // Back along this edge from `along`.
+    const room = fwd ? along : total - along;
+    const take = Math.min(room, left);
+    out.unshift([edge, fwd ? along - take : along + take, along]);
+    left -= take;
+    if (left <= 1e-6) break;
+    // Onwards (backwards) through the node behind: run the reverse heading's next states.
+    const next = nextStates(g, edge, !fwd);
+    if (!next.length) break;
+    const [e, f] = next[0];
+    edge = e;
+    fwd = !f; // we walk it backwards
+    along = f ? 0 : g.walkers.get(e)!.total;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- paths
 
 /** Build a path (pieces + polyline) from [edge, a, b] pieces. */
@@ -333,6 +367,39 @@ function upper(cum: number[], s: number): number {
 }
 
 export const netOf = (map: TerrainMap): RailNet => map.railNet ?? EMPTY_NET;
+
+/** A signal on a path that faces the train: where (path distance), which (index in map.signals), which way. */
+export interface PathSignal {
+  s: number;
+  index: number;
+  /** +1: the train goes along the signal's (tx, tz); −1: against it. */
+  sign: 1 | -1;
+}
+
+const signalCache = new WeakMap<RailPath, { signals: unknown; out: PathSignal[] }>();
+
+/** The signals along path `p` that stop a train running it, in order (cached per path and signal set). */
+export function pathSignals(map: TerrainMap, p: RailPath): PathSignal[] {
+  const valid = signalsOf(map);
+  const hit = signalCache.get(p);
+  if (hit && hit.signals === valid) return hit.out;
+  const out: PathSignal[] = [];
+  if (valid.length) {
+    const all = map.signals ?? [];
+    for (let k = 1; k < p.segs.length; k++) {
+      const s0 = p.segs[k].s0;
+      const [x, z] = laneAt(p, s0);
+      const a = laneAt(p, s0 - 0.05), b = laneAt(p, s0 + 0.05);
+      const dx = b[0] - a[0], dz = b[1] - a[1];
+      for (const sig of valid) {
+        if (Math.hypot(sig.x - x, sig.z - z) > 0.06 || !signalFaces(sig, dx, dz)) continue;
+        out.push({ s: s0, index: all.indexOf(sig), sign: sig.tx * dx + sig.tz * dz > 0 ? 1 : -1 });
+      }
+    }
+  }
+  signalCache.set(p, { signals: valid, out });
+  return out;
+}
 
 /** Length of edge `id` (0 if gone). */
 export const edgeLength = (net: RailNet, id: number): number => graph(net).walkers.get(id)?.total ?? 0;

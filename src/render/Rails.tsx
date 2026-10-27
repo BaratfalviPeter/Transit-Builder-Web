@@ -8,9 +8,9 @@
  * straights, wide arcs and slopes all come out perfectly smooth — no per-cell
  * pieces, no seams. Wooden sleepers are a second instanced unit every 0.2.
  *
- * Extras: a yellow lever at every switch (3+ track ends meeting), and at level
- * crossings (track over a road cell) the ballast/sleepers are left out and
- * red/white barrier posts stand beside the road.
+ * Extras: a yellow lever at every switch (3+ track ends meeting); at level
+ * crossings (track over a road cell) the ballast/sleepers are left out (the
+ * barriers: LevelCrossings.tsx).
  *
  * A few instanced draw calls for the whole network; rebuilt only when the cell
  * types / rail network change (memoized on cellsVersion).
@@ -19,7 +19,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CellType, LineWalker, railIndex, type TerrainMap } from '../sim';
+import { CellType, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 import { groundAtGrid, sampleTrack } from './railGeometry';
@@ -34,13 +34,13 @@ const SLEEPER_COLOR = '#5a3f27';
 const RAIL_COLOR = '#a3a9b0';
 const SURFACE_LIFT = 0.02;
 /** Rail half-gauge (cells) — sized to the trains / trucks (see TrainModel). */
-const GAUGE = 0.075;
+const GAUGE = 0.075 * TRAIN_SCALE;
 
 // --- unit models (1 cell long along +X; scaled to the unit length) ---------
 const BALLAST_GEO = (() => {
   // Deep, tapered gravel bed: where the even grade runs a little above the
   // ground it reads as a low embankment instead of a floating track.
-  const g = new THREE.BoxGeometry(1, 0.165, 0.5);
+  const g = new THREE.BoxGeometry(1, 0.165, 0.5 * TRAIN_SCALE);
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) if (p.getY(i) > 0) p.setZ(i, p.getZ(i) * (0.36 / 0.5)); // taper
   g.translate(0, -0.0375, 0); // spans y −0.12 … 0.045
@@ -52,18 +52,17 @@ const RAILS_GEO = (() => {
   const b = new THREE.BoxGeometry(1, 0.035, 0.024).translate(0, 0.0825, -GAUGE);
   return mergeGeometries([a, b])!;
 })();
-const SLEEPER_GEO = new THREE.BoxGeometry(0.07, 0.03, 0.3).translate(0, 0.05, 0);
+const SLEEPER_GEO = new THREE.BoxGeometry(0.07 * TRAIN_SCALE, 0.03, 0.3 * TRAIN_SCALE).translate(0, 0.05, 0);
 
 interface Built {
   ballast: THREE.Matrix4[];
   rails: THREE.Matrix4[];
   sleepers: THREE.Matrix4[];
   levers: Array<[number, number, number]>;
-  barriers: Array<[number, number, number, number]>;
 }
 
 function build(map: TerrainMap, cellSize: number): Built {
-  const out: Built = { ballast: [], rails: [], sleepers: [], levers: [], barriers: [] };
+  const out: Built = { ballast: [], rails: [], sleepers: [], levers: [] };
   const net = map.railNet;
   if (!net) return out;
   const half = (map.size - 1) / 2;
@@ -123,20 +122,6 @@ function build(map: TerrainMap, cellSize: number): Built {
     out.levers.push([(lx - half) * cs, (groundAtGrid(map, lx, lz) + SURFACE_LIFT) * cs, (lz - half) * cs]);
   }
 
-  // Level-crossing barriers: two posts per crossed road cell.
-  const n = map.size;
-  for (const [k, tracks] of railIndex(map)) {
-    const x = Math.floor(k / n), z = k - x * n;
-    if (map.cells[x][z] !== CellType.Road) continue;
-    const t = tracks[0];
-    const alongZ = Math.abs(t.tz) >= Math.abs(t.tx); // track ~N–S → road along x
-    const y = (groundAtGrid(map, x, z) + CELL_STYLE[CellType.Road].scaleY + SURFACE_LIFT) * cs;
-    for (const sgn of [-1, 1]) {
-      const u = alongZ ? 0.36 * sgn : 0.44 * sgn;
-      const v = alongZ ? -0.44 * sgn : 0.36 * sgn;
-      out.barriers.push([(x - half + u) * cs, y, (z - half + v) * cs, alongZ ? 0 : Math.PI / 2]);
-    }
-  }
   return out;
 }
 
@@ -182,7 +167,6 @@ export function Rails({ map, cellSize }: RailsProps) {
       <Instances geo={SLEEPER_GEO} mats={b.sleepers} color={SLEEPER_COLOR} />
       <Instances geo={RAILS_GEO} mats={b.rails} color={RAIL_COLOR} metal />
       {b.levers.length > 0 && <SwitchLevers positions={b.levers} cellSize={cellSize} />}
-      {b.barriers.length > 0 && <Barriers posts={b.barriers} cellSize={cellSize} />}
     </group>
   );
 }
@@ -223,60 +207,6 @@ function SwitchLevers({ positions, cellSize }: { positions: Array<[number, numbe
       <instancedMesh key={`l${positions.length}`} ref={leverRef} args={[undefined, undefined, positions.length]} castShadow>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial ref={patchRef} color="#e8b82e" roughness={0.5} />
-      </instancedMesh>
-    </group>
-  );
-}
-
-/** Level-crossing barriers: a white post with a raised red boom, instanced. */
-function Barriers({ posts, cellSize }: { posts: Array<[number, number, number, number]>; cellSize: number }) {
-  const postRef = useRef<THREE.InstancedMesh>(null);
-  const boomRef = useRef<THREE.InstancedMesh>(null);
-  const tipRef = useRef<THREE.InstancedMesh>(null);
-  useLayoutEffect(() => {
-    const d = new THREE.Object3D();
-    const c = cellSize;
-    const each = (mesh: THREE.InstancedMesh | null, f: (p: [number, number, number, number]) => void) => {
-      if (!mesh) return;
-      posts.forEach((p, i) => {
-        f(p);
-        d.updateMatrix();
-        mesh.setMatrixAt(i, d.matrix);
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.computeBoundingSphere();
-    };
-    each(postRef.current, ([x, y, z]) => {
-      d.position.set(x, y + 0.14 * c, z);
-      d.rotation.set(0, 0, 0);
-      d.scale.set(0.06 * c, 0.28 * c, 0.06 * c);
-    });
-    each(boomRef.current, ([x, y, z, yaw]) => {
-      d.position.set(x, y + 0.52 * c, z);
-      d.rotation.set(0, yaw, 0);
-      d.rotateZ(-0.18);
-      d.scale.set(0.03 * c, 0.5 * c, 0.03 * c);
-    });
-    each(tipRef.current, ([x, y, z]) => {
-      d.position.set(x, y + 0.3 * c, z);
-      d.rotation.set(0, 0, 0);
-      d.scale.set(0.09 * c, 0.05 * c, 0.09 * c);
-    });
-  }, [posts, cellSize]);
-  const n = posts.length;
-  return (
-    <group>
-      <instancedMesh key={`p${n}`} ref={postRef} args={[undefined, undefined, n]} castShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial ref={patchRef} color="#f2f0ea" roughness={0.6} />
-      </instancedMesh>
-      <instancedMesh key={`b${n}`} ref={boomRef} args={[undefined, undefined, n]} castShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial ref={patchRef} color="#d8342c" roughness={0.5} />
-      </instancedMesh>
-      <instancedMesh key={`t${n}`} ref={tipRef} args={[undefined, undefined, n]} castShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial ref={patchRef} color="#d8342c" roughness={0.5} emissive="#5a0b08" />
       </instancedMesh>
     </group>
   );

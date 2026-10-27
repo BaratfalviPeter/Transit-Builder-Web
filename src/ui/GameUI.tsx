@@ -42,6 +42,7 @@ const ICON: Record<ToolId, string> = {
   station: '🚉',
   truckstop: '🚚',
   depot: '🏬',
+  signal: '🚥',
   yield: '🔻',
   stop: '🛑',
   light: '🚦',
@@ -63,10 +64,12 @@ const KEYS: Array<{ code: string; label: string; tool: ToolId }> = [
   { code: 'Digit7', label: '7', tool: 'light' },
   { code: 'Digit8', label: '8', tool: 'roundabout' },
   { code: 'Digit9', label: '9', tool: 'depot' },
+  { code: 'KeyG', label: 'G', tool: 'signal' },
 ];
 /** Short names for the dock buttons (the full name is in the tooltip). */
 const SHORT: Partial<Record<ToolId, string>> = {
   station: 'Állomás',
+  signal: 'Jelző',
   truckstop: 'Rakodó',
   yield: 'Elsőbbség',
   stop: 'STOP',
@@ -84,7 +87,7 @@ const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: stri
 const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
   { title: '', tools: ['select'] },
   { title: 'Terep', tools: ['raise', 'lower', 'bulldoze'] },
-  { title: 'Építés', tools: ['road', 'rail', 'station', 'truckstop', 'depot'] },
+  { title: 'Építés', tools: ['road', 'rail', 'signal', 'station', 'truckstop', 'depot'] },
   { title: 'Forgalom', tools: ['yield', 'stop', 'light', 'roundabout'] },
 ];
 
@@ -96,6 +99,7 @@ const HINT: Record<ToolId, string> = {
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
   road: 'Út — kattints a kezdőpontra, majd a célpontra · jobb klikk / Esc: mégse',
   rail: 'Sín — kattints a kezdőpontra, majd a célpontra · meglévő sínre kattintva váltó lesz · a vonat nem tolat: a végállomásnál fordítóhurok kell',
+  signal: 'Vasúti jelző — kattints a sínre: arra az oldalra kerül, ahol a kurzor van, és az ott (jobb kéz felől) haladó vonatoknak szól · újra kattintva megfordul · Bontás (B): leszedi · váltótól legyen 1–2 cella távolságra',
   station: 'Vasútállomás — egy ipar telkének oldalára kattints · a vágány mindkét végét bekötheted (pl. hurokba)',
   truckstop: 'Kamionrakodó — egy ipar telkének oldalára kattints (úthoz csatlakozik)',
   depot: 'Raktár — 6×6 sík terület · Q: forgatás · a behajtóhoz ÉS a kihajtóhoz is kell út · amit egy járat lerak, egy másik továbbviszi',

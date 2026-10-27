@@ -31,6 +31,7 @@ import { TruckStopModel } from '../render/TruckStopModel';
 import { TruckPreview } from '../render/TruckModel';
 import { LocoPreview, TrainPreview, WagonsPreview } from '../render/TrainModel';
 import { DepotPreview } from '../render/DepotModel';
+import { CrossingPreview } from '../render/LevelCrossings';
 import { EditorGizmo, EditorPick } from './ModelEditor';
 import { DevTab } from '../ui/DevTab';
 import { VisualTuner } from '../ui/VisualTuner';
@@ -67,6 +68,7 @@ export const VIEWER_MODELS: Array<{
   { id: 'Loco', label: 'Mozdony közelről', Comp: LocoPreview, zoom: 1.9, lookY: 0.6 },
   { id: 'Wagons', label: 'Kocsik közelről', Comp: WagonsPreview, zoom: 1.8, lookY: 0.5 },
   { id: 'Depot', label: 'Raktár', Comp: DepotPreview },
+  { id: 'Crossing', label: 'Sorompó', Comp: CrossingPreview, zoom: 1.6, lookY: 0.6 },
 ];
 
 /** Camera position per view (the camera always looks at TARGET). */

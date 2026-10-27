@@ -154,8 +154,12 @@ A jobb oldali **panel** három füle:
     (szűk kanyarban jobban), az elöl haladó és a kereszteződés előtt
     időben fékeznek, várakozáskor a vonalig gurulnak.
 - **Vonatok** (`src/sim/rail.ts`, `transport.ts`, `src/render/Trains.tsx`):
-  vonatjárat vasútállomások és raktárak között (Járatok → „Új vonatjárat”,
-  $8000; mozdony + 3 kocsi × 30 egység, 4 cella/s).
+  vonatjárat vasútállomások és raktárak között (Járatok → „Új vonatjárat”;
+  mozdony $5000 + kocsinként $1000, kocsinként 30 egység, 4 cella/s).
+  - **Vonathossz** járatonként 1–6 kocsi (alap 3; a „🚃 − +” sorral). Hosszabbításkor
+    vonatonként fizetsz egy kocsit; a vonatok a következő megállójukban veszik fel
+    / adják le. A peronnál hosszabb vonat hátul kilóg.
+  - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
   - A vonat **csak előre** megy, a váltókon a sín irányában (nem fordul
     vissza): a végállomásoknál **fordítóhurok** kell (vagy az egész pálya kör).
     Ha nincs, a járatnál „nincs út!” jelenik meg.
@@ -168,8 +172,20 @@ A jobb oldali **panel** három füle:
     útjába. Szabad párhuzamos vágányt (kitérőt) magától választ.
     Egyvágányú pályán kitérő nélkül csak egy vonat járhat; ha a vonatok
     egymásra várnak, a járatnál „foglalt pálya” jelzés jelenik meg.
+  - **Vasúti jelzők** (G, $400, `src/sim/signals.ts`, `src/render/Signals.tsx`):
+    a sínre kattintva a kurzor felőli oldalra kerül, és az ott (jobb kéz
+    felől) haladó vonatoknak szól; újra kattintva megfordul, Bontással
+    leszedhető. Váltótól / keresztezéstől 1–2 cellára kell lennie.
+    A jelzők blokkokra osztják a pályát: a vonat csak a következő
+    felé néző jelzőig foglal, és ott vár, ha a következő blokk foglalt
+    (piros); ha felszabadul, vagy talál szabad párhuzamos vágányt, továbbmegy
+    (zöld). Így egy vonalon több vonat is járhat (pl. kitérővel,
+    a kitérő két végén egy-egy jelzővel).
   - **Szintbeli kereszteződés:** a kamionok megállnak, ha vonat közeledik
     (8 cellán belül) vagy a sínen van; a vonat fékez, ha kamion van rajta.
+    Félsorompó mindkét irányból (`src/render/LevelCrossings.tsx`):
+    András-kereszt, két felváltva villogó piros lámpa, piros-fehér kar;
+    közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):

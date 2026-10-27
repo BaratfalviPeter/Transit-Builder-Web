@@ -17,7 +17,6 @@ import {
   stopKind,
   laneAt,
   TRAILER_AXLE,
-  TRAIN_LEN,
   TRUCK_HITCH,
   useTransport,
   useTransportSnapshot,
@@ -55,7 +54,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     const g = root.current, tr = tractor.current, tl = trailer.current;
     const t = sim.allTrucks().find((q) => q.id === id);
     if (!g || !tr || !tl || !t) return;
-    const p = sim.pose(t);
+    const p = sim.drawPose(t);
     g.visible = !!p; // in the depot: not on the map yet
     if (!p) return;
     const ground = (x: number, z: number) => groundAtGrid(map, x, z) + ROAD_TOP;
@@ -297,7 +296,7 @@ function NetTrains({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
       if (!m) continue;
       m.visible = !!t.path;
       if (!t.path) continue;
-      const [x, z] = laneAt(t.path, t.s - TRAIN_LEN / 2);
+      const [x, z] = laneAt(t.path, sim.trainDrawS(t) - t.len / 2);
       m.position.set((x - half) * cellSize, (groundAtGrid(map, x, z) + NET_LIFT + 0.07) * cellSize, (z - half) * cellSize);
     }
   });
@@ -331,7 +330,7 @@ function NetTrucks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   useFrame(() => {
     for (const t of sim.allTrucks()) {
       const m = refs.current.get(t.id);
-      const p = sim.pose(t);
+      const p = sim.drawPose(t);
       if (m) m.visible = !!p;
       if (!m || !p) continue;
       m.position.set((p.x - half) * cellSize, (groundAtGrid(map, p.x, p.z) + NET_LIFT + 0.06) * cellSize, (p.z - half) * cellSize);

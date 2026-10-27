@@ -34,6 +34,8 @@ import { FrameLimiter, useQuality } from './quality';
 import { StationPreview, Stations, type StationHover } from './Stations';
 import { NetworkView, Trucks } from './Transport';
 import { Trains } from './Trains';
+import { RailSignals, SignalPreview } from './Signals';
+import { LevelCrossings } from './LevelCrossings';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { DepotPlacement } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
@@ -51,6 +53,8 @@ import {
   industryAnchorOf,
   INTERIORS_ENABLED,
   sideAt,
+  signalSpot,
+  type SignalSpot,
   stationProblem,
   TOOLS,
   usePathPlan,
@@ -427,6 +431,12 @@ function Scene() {
     if (controlOfTool(activeTool) === null) setTrafficHover(null);
   }, [activeTool]);
 
+  // ---- Signal tool: hover a track, click to place / turn round -----------
+  const [signalHover, setSignalHover] = useState<SignalSpot | null>(null);
+  useEffect(() => {
+    if (activeTool !== 'signal') setSignalHover(null);
+  }, [activeTool]);
+
   // ---- Two-click (Point A → Point B) road/rail planner -------------------
   //   idle          --click valid cell-->  selecting_end (A = startNode)
   //   selecting_end --hover-->             A* preview (green / red hologram)
@@ -438,9 +448,17 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || t === 'depot' || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || t === 'depot' || t === 'signal' || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
+        if (game.getActiveTool() === 'signal') {
+          const g = gridOf(wx, wz);
+          const h = signalSpot(terrain.getMap(), g.x, g.z);
+          setSignalHover((cur) =>
+            cur && h && cur.x === h.x && cur.z === h.z && cur.mode === h.mode && cur.problem === h.problem && cur.existing === h.existing ? cur : h,
+          );
+          return;
+        }
         if (game.getActiveTool() === 'depot') {
           lastHoverW.current = [wx, wz];
           const h = depotTarget(wx, wz);
@@ -474,6 +492,15 @@ function Scene() {
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
           if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
+        if (tool.id === 'signal') {
+          const g = gridOf(wx, wz);
+          const h = signalSpot(terrain.getMap(), g.x, g.z);
+          if (!h || h.problem) return;
+          if (h.existing >= 0) terrain.placeSignal(g.x, g.z); // turn it round (free)
+          else if (game.canAfford(tool.cost) && terrain.placeSignal(g.x, g.z) === 'new') game.spend(tool.cost);
+          setSignalHover(signalSpot(terrain.getMap(), g.x, g.z));
           return;
         }
         if (tool.id === 'depot') {
@@ -677,6 +704,11 @@ function Scene() {
       {/* Trucks on their lines (+ the "+$" of deliveries). */}
       <Trucks map={map} cellSize={cellSize} />
       <Trains map={map} cellSize={cellSize} />
+      <RailSignals map={map} cellSize={cellSize} />
+      <LevelCrossings map={map} cellSize={cellSize} />
+      {signalHover && activeTool === 'signal' && (
+        <SignalPreview map={map} cellSize={cellSize} spot={signalHover} canAfford={money >= TOOLS.signal.cost} />
+      )}
       {/* Network view: grey veil, stops, metro-style lines (Járatok tab). */}
       {networkView && <NetworkView map={map} cellSize={cellSize} />}
       {stationHover && (

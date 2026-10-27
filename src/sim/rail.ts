@@ -148,7 +148,7 @@ export function locate(net: RailNet, x: number, z: number, dx: number, dz: numbe
 export function platforms(st: Station): number[][] {
   if (isDepot(st)) return depotTracks(st);
   if (stopKind(st) !== 'rail') return [];
-  return [stationGeom(st.anchor, st.side).trackPts];
+  return [stationGeom(st.anchor, st.side, st.ext).trackPts];
 }
 
 /** Where a train stops at `st`: per platform and travel sense, its front's place. */

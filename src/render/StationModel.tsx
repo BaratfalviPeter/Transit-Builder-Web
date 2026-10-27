@@ -26,6 +26,8 @@ export interface StationModelProps {
   phase?: number;
   /** How full its storage is (0…1): stacks of goods grow on the platform. */
   fill?: number;
+  /** The platform runs this many cells (0.5 units each) further at both ends. */
+  ext?: number;
 }
 
 const std = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -61,10 +63,10 @@ const PLAT = 0.06;
 /** Loading hangar: x span, posts height. */
 const HANG = { x0: -0.6, x1: 0.9, h: 0.42 };
 
-export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0, fill = 0 }: StationModelProps) {
+export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0, fill = 0, ext = 0 }: StationModelProps) {
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
-      <Platform />
+      <Platform ext={ext} />
       <Hangar />
       <Office />
       <Lamps />
@@ -75,21 +77,24 @@ export function StationModel({ position = [0, 0, 0], scale = 1, rotationY = 0, f
   );
 }
 
-function Platform() {
+function Platform({ ext = 0 }: { ext?: number }) {
+  // Half length: the 6-cell side (1.5 units) plus the extension (0.5 per cell).
+  const h = 1.5 + ext * 0.5;
+  const posts = Math.round((2 * h - 0.12) / 0.24) + 1;
   return (
     <group>
-      {/* Reaches out to just short of the trains (narrow track at z = 0.25) */}
-      <Box p={[0, PLAT / 2, -0.17]} s={[2.96, PLAT, 0.62]} m={M.concrete} cast />
+      {/* Reaches out to just short of the trains (track centre at z = 0.25) */}
+      <Box p={[0, PLAT / 2, -0.17]} s={[2 * h - 0.04, PLAT, 0.62]} m={M.concrete} cast />
       {/* Darker edge face toward the track + yellow safety line */}
-      <Box p={[0, PLAT / 2, 0.142]} s={[2.96, PLAT, 0.006]} m={M.concreteEdge} />
-      <Box p={[0, PLAT + 0.001, 0.115]} s={[2.9, 0.002, 0.014]} m={M.safety} />
+      <Box p={[0, PLAT / 2, 0.142]} s={[2 * h - 0.04, PLAT, 0.006]} m={M.concreteEdge} />
+      <Box p={[0, PLAT + 0.001, 0.115]} s={[2 * h - 0.1, 0.002, 0.014]} m={M.safety} />
       {/* Ramps at both ends */}
-      <Box p={[-1.5, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
-      <Box p={[1.5, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
-      {/* Low fence on the industry side */}
-      <Box p={[0, PLAT + 0.03, -0.47]} s={[2.9, 0.006, 0.006]} m={M.steel} />
-      {Array.from({ length: 13 }).map((_, i) => (
-        <Box key={i} p={[-1.44 + i * 0.24, PLAT + 0.018, -0.47]} s={[0.008, 0.036, 0.008]} m={M.steel} />
+      <Box p={[-h, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
+      <Box p={[h, PLAT / 2 - 0.012, -0.17]} s={[0.06, PLAT - 0.02, 0.56]} m={M.concreteEdge} />
+      {/* Low fence on the industry side (and along the extension) */}
+      <Box p={[0, PLAT + 0.03, -0.47]} s={[2 * h - 0.1, 0.006, 0.006]} m={M.steel} />
+      {Array.from({ length: posts }).map((_, i) => (
+        <Box key={i} p={[-h + 0.06 + i * 0.24, PLAT + 0.018, -0.47]} s={[0.008, 0.036, 0.008]} m={M.steel} />
       ))}
     </group>
   );

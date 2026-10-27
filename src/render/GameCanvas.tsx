@@ -52,6 +52,8 @@ import {
   type DepotRot,
   industryAnchorOf,
   INTERIORS_ENABLED,
+  MAX_PLATFORM_EXT,
+  PLATFORM_CELL_PRICE,
   sideAt,
   signalSpot,
   type SignalSpot,
@@ -372,19 +374,31 @@ function Scene() {
 
   // ---- Station tool: hover an industry side, click to dock a station ------
   const [stationHover, setStationHover] = useState<StationHover | null>(null);
+  // Rail station platform length (Q cycles 6 / 8 / 10 / 12 cells).
+  const platformExt = useRef(0);
+  const lastStationW = useRef<[number, number] | null>(null);
   const stationTarget = useCallback(
     (wx: number, wz: number): StationHover | null => {
       const { x, z } = cellOf(wx, wz);
       if (!terrain.inBounds(x, z)) return null;
       const m = terrain.getMap();
       const t = sideAt(m, x, z);
-      return t ? { ...t, problem: stationProblem(m, t.anchor, t.side) } : null;
+      const ext = game.getActiveTool() === 'station' ? platformExt.current : 0;
+      return t ? { ...t, ext, problem: stationProblem(m, t.anchor, t.side, ext) } : null;
     },
-    [terrain, cellOf],
+    [terrain, cellOf, game],
   );
   useEffect(() => {
     if (stopToolKind(activeTool) === null) setStationHover(null);
-  }, [activeTool]);
+    if (activeTool !== 'station') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyQ' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return;
+      platformExt.current = (platformExt.current + 1) % (MAX_PLATFORM_EXT + 1);
+      if (lastStationW.current) setStationHover(stationTarget(...lastStationW.current));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeTool, stationTarget]);
 
   // ---- Depot tool: hover a spot (the lot is centred on it), Q turns it ---------
   const [depotRot, setDepotRot] = useState<DepotRot>(0);
@@ -471,9 +485,10 @@ function Scene() {
           return;
         }
         if (stopToolKind(game.getActiveTool()) !== null) {
+          lastStationW.current = [wx, wz];
           const h = stationTarget(wx, wz);
           setStationHover((cur) =>
-            cur && h && cur.anchor[0] === h.anchor[0] && cur.anchor[1] === h.anchor[1] && cur.side === h.side && cur.problem === h.problem
+            cur && h && cur.anchor[0] === h.anchor[0] && cur.anchor[1] === h.anchor[1] && cur.side === h.side && cur.problem === h.problem && cur.ext === h.ext
               ? cur
               : h,
           );
@@ -521,8 +536,10 @@ function Scene() {
         const stop = stopToolKind(tool.id);
         if (stop) {
           const h = stationTarget(wx, wz);
-          if (!h || h.problem || !game.canAfford(tool.cost)) return;
-          if (terrain.buildStation(h.anchor, h.side, stop)) game.spend(tool.cost);
+          if (!h) return;
+          const cost = tool.cost + 2 * h.ext * PLATFORM_CELL_PRICE;
+          if (h.problem || !game.canAfford(cost)) return;
+          if (terrain.buildStation(h.anchor, h.side, stop, h.ext)) game.spend(cost);
           setStationHover(stationTarget(wx, wz));
           return;
         }
@@ -717,8 +734,8 @@ function Scene() {
           cellSize={cellSize}
           hover={stationHover}
           kind={stopToolKind(activeTool) ?? 'rail'}
-          cost={TOOLS[activeTool].cost}
-          canAfford={money >= TOOLS[activeTool].cost}
+          cost={TOOLS[activeTool].cost + 2 * stationHover.ext * PLATFORM_CELL_PRICE}
+          canAfford={money >= TOOLS[activeTool].cost + 2 * stationHover.ext * PLATFORM_CELL_PRICE}
         />
       )}
       {/* Dev model editor: selection outline + move / rotate / scale gizmo. */}
@@ -750,6 +767,8 @@ function Scene() {
           cellSize={cellSize}
           rail={pathSnap.type === CellType.Rail}
           railPts={pathSnap.rail?.pts}
+          switchAtStart={pathSnap.rail?.start?.kind === 'mid'}
+          switchAtEnd={pathSnap.rail?.end?.kind === 'mid'}
           start={pathSnap.startNode}
         />
       )}

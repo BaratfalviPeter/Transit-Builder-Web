@@ -160,6 +160,12 @@ A jobb oldali **panel** három füle:
     vonatonként fizetsz egy kocsit; a vonatok a következő megállójukban veszik fel
     / adják le. A peronnál hosszabb vonat hátul kilóg.
   - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
+  - **Peronhossz:** a Vasútállomás eszköznél **Q**-val 6 / 8 / 10 / 12 cella
+    (a többletcella $100); a hosszabb peronra a hosszabb vonat is ráfér.
+  - **Váltó iránya:** a sínépítő előnézetében sárga nyíl mutatja, merre tudnak
+    a vonatok a régi sínről az új ágra fordulni (vagy onnan tovább menni) —
+    így a fordítóhurok elsőre jól köthető be.
+  - A hálózati nézetben a jelzők piros / zöld pöttyként látszanak.
   - A vonat **csak előre** megy, a váltókon a sín irányában (nem fordul
     vissza): a végállomásoknál **fordítóhurok** kell (vagy az egész pálya kör).
     Ha nincs, a járatnál „nincs út!” jelenik meg.

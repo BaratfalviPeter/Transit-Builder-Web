@@ -456,16 +456,8 @@ function Scene() {
   //   selecting_end --hover-->             A* preview (green / red hologram)
   //   selecting_end --click-->             build previewPath, pay, -> idle
   //   selecting_end --right-click / Esc--> cancel, -> idle
-  // Drawing rail: Q turns round the switch it makes.
-  useEffect(() => {
-    if (activeTool !== 'rail') return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'KeyQ' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return;
-      pathPlan.drawFlip(terrain.getMap());
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [activeTool, pathPlan, terrain]);
+  // Rail: the 2nd click lays the piece and the next one starts at its end
+  // (dragging past RAIL_REACH does the same), until Esc / right click.
 
   /** Release of a drawing drag: build what was drawn (if it can be and is paid for). */
   const finishDrawing = useCallback(() => {
@@ -534,7 +526,19 @@ function Scene() {
         return pathPlan.drawBegin(terrain.getMap(), g, type);
       },
       dragMove: (wx: number, wz: number) => {
-        pathPlan.drawTo(terrain.getMap(), gridOf(wx, wz));
+        const g = gridOf(wx, wz);
+        pathPlan.drawTo(terrain.getMap(), g);
+        // Rail dragged past its reach: lay that piece, carry on from its end.
+        for (let guard = 0; guard < 20 && pathPlan.railPieceReady(g); guard++) {
+          const rail = pathPlan.getSnapshot().rail!;
+          if (!game.canAfford(Math.ceil(rail.length) * TOOLS.rail.cost)) break;
+          const placed = terrain.buildRail(rail);
+          if (placed === 0) break;
+          game.spend(placed * TOOLS.rail.cost);
+          const n = rail.pts.length;
+          pathPlan.continueRail(terrain.getMap(), { x: rail.pts[n - 2], z: rail.pts[n - 1] });
+          pathPlan.drawTo(terrain.getMap(), g);
+        }
       },
       dragEnd: () => finishDrawing(),
       onClick: (wx: number, wz: number) => {
@@ -608,7 +612,11 @@ function Scene() {
         }
         if (placed === 0) return;
         game.spend(placed * tool.cost);
-        pathPlan.clear();
+        if (type === CellType.Rail && p.rail) {
+          // Chain: the next piece starts where this one ended.
+          const n = p.rail.pts.length;
+          pathPlan.continueRail(m, { x: p.rail.pts[n - 2], z: p.rail.pts[n - 1] });
+        } else pathPlan.clear();
       },
     }),
     [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport, finishDrawing],

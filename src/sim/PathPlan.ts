@@ -10,9 +10,14 @@
  * Both are drawn as the green (or red, if `blocked`) hologram.
  *
  * DRAWING ('drawing'): instead of two clicks the player drags — the road
- * follows the cursor cell by cell, the rail piece by piece (railRoute.ts
- * railDraw*); dragging back over it takes it off again; on release it is
- * built. The same `previewPath` / `rail` show it.
+ * follows the cursor cell by cell (dragging back over it takes it off), and
+ * is built on release.
+ *
+ * RAIL works like a short-reach rail planner (Factorio-like, tighter): from
+ * its start the shortest track towards the cursor, but at most RAIL_REACH
+ * cells away — swinging the cursor sideways bends it. Dragging on past the
+ * reach lays that piece and carries on from its end; clicking lays it and
+ * the next piece starts there (Esc / right click stops).
  *
  * Points are grid coordinates (cell centre = integer). The building itself is
  * done by the canvas (TerrainStore + GameState).
@@ -21,10 +26,20 @@
 import { cellsToBuild, findTrackPath, isTrackPassable, trackStepOk, type GridCell, type TrackType } from './pathfind';
 import { canRailCell, EMPTY_NET, snapToNet } from './railNet';
 import { planRail, type RailPlan } from './railRoute';
-import { railDrawBegin, railDrawFlip, railDrawPlan, railDrawTo, type RailDraw } from './railDraw';
 import { CellType, type TerrainMap } from './terrain';
 
 export type PlanStep = GridCell;
+
+/** How far (cells) one piece of rail reaches from where it starts. */
+export const RAIL_REACH = 5;
+
+/** The rail planner's goal: the cursor, pulled in to at most RAIL_REACH from the start. */
+function railGoal(start: GridPoint, goal: GridPoint): GridPoint {
+  const dx = goal.x - start.x, dz = goal.z - start.z;
+  const d = Math.hypot(dx, dz);
+  if (d <= RAIL_REACH) return goal;
+  return { x: start.x + (dx / d) * RAIL_REACH, z: start.z + (dz / d) * RAIL_REACH };
+}
 export interface GridPoint {
   x: number;
   z: number;
@@ -74,8 +89,6 @@ export class PathPlan {
   /** Last hovered goal key, to skip recomputing while the cursor stays put. */
   private lastGoal: string | null = null;
   private goalPt: GridPoint | null = null;
-  /** Rail being drawn (state 'drawing', rail). */
-  private railDraw: RailDraw | null = null;
 
   getSnapshot(): PathPlanSnapshot {
     return this.snap;
@@ -109,7 +122,7 @@ export class PathPlan {
     this.lastGoal = key;
     this.goalPt = { ...goal };
     if (s.type === CellType.Rail) {
-      const rail = planRail(map, s.startPt, goal);
+      const rail = planRail(map, s.startPt, railGoal(s.startPt, goal));
       this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
     } else {
       const gc = { x: Math.round(goal.x), z: Math.round(goal.z) };
@@ -124,14 +137,11 @@ export class PathPlan {
     this.lastGoal = null;
     this.goalPt = null;
     if (type === CellType.Rail) {
-      const d = railDrawBegin(map, p);
-      if (typeof d === 'string') return false;
-      this.railDraw = d;
-      this.snap = { ...IDLE, pathbuildingState: 'drawing', type, startPt: { ...p }, rail: railDrawPlan(map, d) };
+      if (!canStartRoute(map, p, type)) return false;
+      this.snap = { ...IDLE, pathbuildingState: 'drawing', type, startPt: { ...p } };
     } else {
       const c = { x: Math.round(p.x), z: Math.round(p.z) };
       if (!isTrackPassable(map, c.x, c.z, type)) return false;
-      this.railDraw = null;
       this.snap = { ...IDLE, pathbuildingState: 'drawing', type, startNode: c, startPt: { ...p }, previewPath: [c], newCells: cellsToBuild(map, [c], type).length };
     }
     this.emit();
@@ -143,12 +153,13 @@ export class PathPlan {
     const s = this.snap;
     if (s.pathbuildingState !== 'drawing') return;
     if (s.type === CellType.Rail) {
-      if (!this.railDraw) return;
-      const key = `${Math.round(p.x * 4)},${Math.round(p.z * 4)}`;
+      if (!s.startPt) return;
+      this.goalPt = { ...p };
+      const g = railGoal(s.startPt, p);
+      const key = `${Math.round(g.x * 2)},${Math.round(g.z * 2)}`;
       if (key === this.lastGoal) return;
       this.lastGoal = key;
-      this.railDraw = railDrawTo(map, this.railDraw, p);
-      const rail = railDrawPlan(map, this.railDraw);
+      const rail = planRail(map, s.startPt, g);
       this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
     } else {
       const t = { x: Math.round(p.x), z: Math.round(p.z) };
@@ -178,13 +189,27 @@ export class PathPlan {
     this.emit();
   }
 
-  /** Drawing rail: turn round the switch it makes (Q). */
-  drawFlip(map: TerrainMap): void {
+  /**
+   * Drawing rail: has the cursor `p` gone past the reach with a buildable
+   * piece planned (so the canvas lays it and carries on from its end)?
+   */
+  railPieceReady(p: GridPoint): boolean {
     const s = this.snap;
-    if (s.pathbuildingState !== 'drawing' || !this.railDraw) return;
-    this.railDraw = railDrawFlip(this.railDraw);
-    const rail = railDrawPlan(map, this.railDraw);
-    this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
+    if (s.type !== CellType.Rail || s.pathbuildingState !== 'drawing' || !s.startPt || !s.rail) return false;
+    return Math.hypot(p.x - s.startPt.x, p.z - s.startPt.z) > RAIL_REACH + 0.5 && !s.blocked && s.rail.pts.length >= 4;
+  }
+
+  /** Rail: the next piece starts at `p` (the end of the one just laid), in the same mode. */
+  continueRail(map: TerrainMap, p: GridPoint): void {
+    const s = this.snap;
+    if (s.type !== CellType.Rail || s.pathbuildingState === 'idle') return;
+    if (s.pathbuildingState === 'selecting_end') {
+      this.begin(map, p, CellType.Rail);
+      if (this.goalPt) this.preview(map, this.goalPt, true);
+      return;
+    }
+    this.lastGoal = null;
+    this.snap = { ...IDLE, pathbuildingState: 'drawing', type: CellType.Rail, startPt: { ...p } };
     this.emit();
   }
 
@@ -192,9 +217,9 @@ export class PathPlan {
   refresh(map: TerrainMap): void {
     const s = this.snap;
     if (s.pathbuildingState === 'drawing') {
-      if (s.type === CellType.Rail && this.railDraw) {
-        const rail = railDrawPlan(map, this.railDraw);
-        this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4 };
+      if (s.type === CellType.Rail && s.startPt && this.goalPt) {
+        const rail = planRail(map, s.startPt, railGoal(s.startPt, this.goalPt));
+        this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
         this.emit();
       }
       return;
@@ -213,7 +238,6 @@ export class PathPlan {
     if (this.snap.pathbuildingState === 'idle') return;
     this.lastGoal = null;
     this.goalPt = null;
-    this.railDraw = null;
     this.snap = { ...IDLE, type: this.snap.type };
     this.emit();
   }

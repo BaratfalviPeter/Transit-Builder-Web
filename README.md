@@ -162,11 +162,11 @@ A jobb oldali **panel** három füle:
   - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
   - **Építés húzással:** az Út és a Sín eszközzel nyomd le az egeret és húzd:
     a zöld előnézet követi a kurzort, visszahúzva törlődik, elengedve megépül.
-    A sín mezőről mezőre halad (fel, le, jobbra, balra), irányváltásnál íves
-    kanyarral; sínvégről folytatja, egyenes sínből oldalra húzva váltóval ágazik
-    le, merőlegesen egy sínre érve váltóval becsatlakozik, áthúzva keresztezi
-    (**Q**: a váltó iránya). Akadálynál megáll és kiírja az okát. Sima kattintás:
-    a régi A → B tervezés (átlós sínhez is).
+    A **sín** Factorio-szerűen épül: a kezdőponttól a legrövidebb sín a kurzor
+    felé, de legfeljebb **5 mezőre**; az egeret oldalra húzva a kanyart állítod.
+    Kattintásra lerakja, és a végéről folytatod (Esc / jobb klikk: vége); húzva a
+    hatótávon túl magától lerakja és folytatja. Sínből indítva váltóval ágazik,
+    sínre érve becsatlakozik, áthúzva keresztezi.
   - **Szűk ívek:** a sín 90°-ban is fordulhat 1–2 cella sugárral (a vonat ott lassú).
   - Az út kanyarjai és zsákutcavégei lekerekítettek.
   - **Peronhossz:** a Vasútállomás eszköznél **Q**-val 6 / 8 / 10 / 12 cella

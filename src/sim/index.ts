@@ -22,5 +22,6 @@ export * from './transport';
 export * from './traffic';
 export * from './depot';
 export * from './rail';
+export * from './railDraw';
 export * from './signals';
 export * from './useTransport';

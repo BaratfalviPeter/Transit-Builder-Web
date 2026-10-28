@@ -23,8 +23,10 @@ export function PathPlanInfo() {
     : poor
       ? 'Nincs elég pénz'
       : drawing
-        ? snap.rail?.reason ?? 'Engedd el az építéshez · visszahúzva törlődik'
-        : 'Kattints a célpontra az építéshez';
+        ? snap.rail?.reason ?? (snap.type === CellType.Rail ? 'Húzd tovább: folytatja · engedd el az építéshez' : 'Engedd el az építéshez · visszahúzva törlődik')
+        : snap.type === CellType.Rail
+          ? 'Kattints: lerakja, és innen folytatod · Esc: vége'
+          : 'Kattints a célpontra az építéshez';
 
   return (
     <div className={`ppi ${snap.blocked || poor ? 'ppi--red' : ''}`}>

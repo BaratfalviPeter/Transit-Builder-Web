@@ -36,8 +36,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Rács: 121×121 cella (GRID_SCALE 2), cellSize 1. A nagy iparágak 6×6-os telken
   állnak, a modellek 3×3-ra készültek, és `INDUSTRY_MODEL_SCALE = 2`-vel skálázódnak.
 - Sín: sima középvonal-hálózat (`railNet.ts`). Rácsos A* tervező (`railRoute.ts`):
-  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2), + szűk 90°-os ívek (TIGHT_K: sugár 1 / 2,
-  átlósan √2 / 2√2; drágák a tervezőben, a vonat lassít bennük).
+  8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2), k = 2, 3 (a k = 1 túl szűk volt), 90°-os ívek
+  (TIGHT_K: sugár 2 / 3, átlósan 2√2 / 3√2), + 180°-os visszafordító (`hairpin`: a két vágány
+  között 2 üres mező, R 1,5; átlósan (−2, 2)) — a felhasználó kérte, hogy ne legyen ilyen szűk.
+  Magasság (`railGeometry.sampleTrack`): simított lejtés, a végeken (END_BLEND 1,5) a csomópont
+  talajára simul, így az élek illesztésénél nincs lépcső. Töltés (`Rails.tsx` `embankment`): a
+  zúzottkő tetejétől 1:1,3-as földrézsű a talajig (domboldalon, mélyedés fölött).
 - ÉPÍTÉS HÚZÁSSAL (út + sín, alapértelmezett): `usePointerBuild` click módban a mozduló
   nyomás `dragStart` → `PathPlan.drawBegin/drawTo` (állapot 'drawing'), elengedés
   `finishDrawing` (GameCanvas). Út: cellánként követi a kurzort (`trackStepOk`), visszahúzva
@@ -190,7 +194,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #80 (bontott sínvég, hosszabb peron, váltónyíl, jelzők a hálózati nézetben).
 - Mergelve: #81 (húzásos építés, szűk 90°-os sínívek, íves út, sorompó ferde keresztezésnél).
 - Mergelve: #82 (Train Valley-stílusú sínrajzolás — utána lecserélve).
-- Folyamatban: Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva.
+- Mergelve: #83 (Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva).
+- Folyamatban: tágabb sínívek + visszafordító, sín-töltés domboldalon.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

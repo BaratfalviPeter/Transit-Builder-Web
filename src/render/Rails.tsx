@@ -22,7 +22,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CellType, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
-import { groundAtGrid, sampleTrack } from './railGeometry';
+import { groundAtGrid, sampleTrack, type TrackSamples } from './railGeometry';
 
 export interface RailsProps {
   map: TerrainMap;
@@ -54,7 +54,16 @@ const RAILS_GEO = (() => {
 })();
 const SLEEPER_GEO = new THREE.BoxGeometry(0.07 * TRAIN_SCALE, 0.03, 0.3 * TRAIN_SCALE).translate(0, 0.05, 0);
 
+/** Embankment: earth slopes from the ballast's foot down to the ground (1 : EMB_SLOPE). */
+const EMB_COLOR = '#74674f';
+const EMB_SLOPE = 1.3;
+/** The bank starts at the ballast's top edge (see BALLAST_GEO) and hides its box sides. */
+const FOOT_HW = 0.18 * TRAIN_SCALE;
+const FOOT_Y = SURFACE_LIFT + 0.04;
+
 interface Built {
+  /** Embankment triangles (world xyz), one non-indexed soup. */
+  embankment: number[];
   ballast: THREE.Matrix4[];
   rails: THREE.Matrix4[];
   sleepers: THREE.Matrix4[];
@@ -62,7 +71,7 @@ interface Built {
 }
 
 function build(map: TerrainMap, cellSize: number): Built {
-  const out: Built = { ballast: [], rails: [], sleepers: [], levers: [] };
+  const out: Built = { embankment: [], ballast: [], rails: [], sleepers: [], levers: [] };
   const net = map.railNet;
   if (!net) return out;
   const half = (map.size - 1) / 2;
@@ -72,6 +81,7 @@ function build(map: TerrainMap, cellSize: number): Built {
 
   for (const e of net.edges) {
     const s = sampleTrack(map, e.pts);
+    embankment(map, s, cs, half, out.embankment);
     for (let i = 0; i < s.n; i++) {
       const a = Math.max(0, i - 1), b = Math.min(s.n - 1, i + 1);
       const grade = b > a ? (s.h[b] - s.h[a]) / ((b - a) * s.step) : 0;
@@ -125,6 +135,49 @@ function build(map: TerrainMap, cellSize: number): Built {
   return out;
 }
 
+/**
+ * Earth embankment under one edge: from each side of the ballast's foot a
+ * slope runs down and out to the ground there, so a track on a hillside or
+ * above a dip stands on a sloped bank instead of a floating box. Where the
+ * ground is higher (cutting side) the bank stays hidden in the terrain.
+ */
+function embankment(map: TerrainMap, s: TrackSamples, cs: number, half: number, out: number[]): void {
+  type Sec = [number, number, number][]; // outer L, foot L, foot R, outer R (cell units)
+  const secs: Array<Sec | null> = [];
+  for (let i = 0; i < s.n; i++) {
+    const x = s.x[i], z = s.z[i];
+    const cx = Math.round(x), cz = Math.round(z);
+    if (map.cells[cx]?.[cz] === CellType.Road) {
+      secs.push(null); // level crossing
+      continue;
+    }
+    const nx = -s.tz[i], nz = s.tx[i];
+    const fy = s.h[i] + FOOT_Y;
+    const side = (sg: number): [number, number, number] => {
+      // Ground under the foot, then once more where the slope lands.
+      let drop = Math.max(0, fy - groundAtGrid(map, x + nx * FOOT_HW * sg, z + nz * FOOT_HW * sg));
+      const o = FOOT_HW + drop * EMB_SLOPE;
+      drop = Math.max(0, fy - groundAtGrid(map, x + nx * o * sg, z + nz * o * sg));
+      const r = FOOT_HW + drop * EMB_SLOPE + 0.04;
+      return [x + nx * r * sg, fy - drop - 0.04, z + nz * r * sg];
+    };
+    secs.push([side(1), [x + nx * FOOT_HW, fy, z + nz * FOOT_HW], [x - nx * FOOT_HW, fy, z - nz * FOOT_HW], side(-1)]);
+  }
+  const W = (p: [number, number, number]) => [(p[0] - half) * cs, p[1] * cs, (p[2] - half) * cs];
+  const tri = (a: number[], b: number[], c: number[]) => out.push(...a, ...b, ...c);
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => {
+    tri(a, b, c);
+    tri(a, c, d);
+  };
+  for (let i = 0; i + 1 < secs.length; i++) {
+    const A = secs[i], B = secs[i + 1];
+    if (!A || !B) continue;
+    const a = A.map(W), b = B.map(W);
+    quad(a[0], b[0], b[1], a[1]); // left slope (outer → foot)
+    quad(a[2], b[2], b[3], a[3]); // right slope
+  }
+}
+
 /** One InstancedMesh filled from a matrix list. */
 function Instances({
   geo,
@@ -160,9 +213,22 @@ function Instances({
 
 export function Rails({ map, cellSize }: RailsProps) {
   const b = useMemo(() => build(map, cellSize), [map, cellSize]);
+  const bank = useMemo(() => {
+    if (!b.embankment.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.embankment, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [b]);
+  useLayoutEffect(() => () => bank?.dispose(), [bank]);
   if (b.rails.length === 0) return null;
   return (
     <group>
+      {bank && (
+        <mesh geometry={bank} castShadow receiveShadow>
+          <meshStandardMaterial ref={patchRef} color={EMB_COLOR} roughness={1} side={THREE.DoubleSide} />
+        </mesh>
+      )}
       <Instances geo={BALLAST_GEO} mats={b.ballast} color={GRAVEL_COLOR} />
       <Instances geo={SLEEPER_GEO} mats={b.sleepers} color={SLEEPER_COLOR} />
       <Instances geo={RAILS_GEO} mats={b.rails} color={RAIL_COLOR} metal />

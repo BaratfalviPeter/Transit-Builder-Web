@@ -38,6 +38,10 @@ export interface TrackSamples {
   h: Float32Array;
 }
 
+/** Length (cells) over which a track end eases onto its node's ground height. */
+const END_BLEND = 1.5;
+const ease = (t: number) => (t >= 1 ? 1 : t * t * (3 - 2 * t));
+
 /** Sample a centre-line at unit CENTRES, ≈ every `pitch` cells. */
 export function sampleTrack(map: TerrainMap, pts: readonly number[], pitch = UNIT): TrackSamples {
   const w = new LineWalker(pts);
@@ -77,7 +81,18 @@ export function sampleTrack(map: TerrainMap, pts: readonly number[], pitch = UNI
   avg(raw, Math.max(1, Math.round(1.5 / step)), tmp);
   for (let i = 0; i < n; i++) tmp[i] = Math.max(tmp[i], raw[i]);
   avg(tmp, Math.max(1, Math.round(1 / step)), s.h);
-  for (let i = 0; i < n; i++) s.h[i] = Math.max(s.h[i], raw[i] - 0.01);
+  // Ends: ease onto the ground at the end node, so every track meeting there
+  // (smoothed on its own) arrives at the same height — no steps at joints.
+  const h0 = groundAtGrid(map, pts[0], pts[1]);
+  const h1 = groundAtGrid(map, pts[pts.length - 2], pts[pts.length - 1]);
+  for (let i = 0; i < n; i++) {
+    const d0 = (i + 0.5) * step, d1 = w.total - d0;
+    const e0 = ease(d0 / END_BLEND), e1 = ease(d1 / END_BLEND);
+    let h = s.h[i];
+    if (e0 < 1) h = h0 + (h - h0) * e0;
+    if (e1 < 1) h = h1 + (h - h1) * e1;
+    s.h[i] = Math.max(h, raw[i] - 0.01);
+  }
   return s;
 }
 

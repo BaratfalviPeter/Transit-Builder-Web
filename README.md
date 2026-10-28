@@ -167,7 +167,9 @@ A jobb oldali **panel** három füle:
     Kattintásra lerakja, és a végéről folytatod (Esc / jobb klikk: vége); húzva a
     hatótávon túl magától lerakja és folytatja. Sínből indítva váltóval ágazik,
     sínre érve becsatlakozik, áthúzva keresztezi.
-  - **Szűk ívek:** a sín 90°-ban is fordulhat 1–2 cella sugárral (a vonat ott lassú).
+  - **Ívek:** tágas 45°-os és 90°-os ívek (2–3 cella sugár), valamint visszafordító
+    (180°, a két vágány között 2 üres mező; a vonat ott lassít).
+  - Domboldalon és mélyedés fölött a sín lejtős töltésen fut, az illesztéseknél nincs lépcső.
   - Az út kanyarjai és zsákutcavégei lekerekítettek.
   - **Peronhossz:** a Vasútállomás eszköznél **Q**-val 6 / 8 / 10 / 12 cella
     (a többletcella $100); a hosszabb peronra a hosszabb vonat is ráfér.

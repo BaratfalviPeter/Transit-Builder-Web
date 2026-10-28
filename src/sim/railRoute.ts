@@ -8,10 +8,12 @@
  *   - 45° CURVE: an arc of radius k·(1+√2) — the radius at which an arc
  *     leaving a cell centre along an axis runs out exactly onto a diagonal
  *     through cell centres (and vice versa). k = 1, 2, 3 → R ≈ 2.4 / 4.8 / 7.2
- *     cells. A 90° turn is two 45° pieces, so S-bends come for free.
- *   - TIGHT 90° CURVE: a quarter circle from cell centre to cell centre —
- *     radius 1 or 2 from an axis heading, √2 or 2√2 from a diagonal one
- *     (trains slow right down in them).
+ *     cells (k = 2, 3 offered: wide curves). Two 45° pieces make a 90° turn,
+ *     so S-bends come for free.
+ *   - 90° CURVE: a quarter circle from cell centre to cell centre — radius
+ *     2 or 3 from an axis heading, 2√2 or 3√2 from a diagonal one.
+ *   - HAIRPIN: a 180° turn-back with 2 empty cells between the tracks
+ *     (radius 1.5; trains slow down in it).
  *
  *   1. SNAP: A / B near an existing track snap onto it — onto a dead end (the
  *      line continues it) or onto a cell centre of a straight stretch (the new
@@ -59,13 +61,15 @@ type P = [number, number];
 const DEG = Math.PI / 180;
 /** Length near a join where running along the old track is expected. */
 const JOIN_ZONE = 7;
-/** Curve sizes offered (radius = k · RAIL_R_MIN). */
-const CURVE_K = [1, 2, 3];
+/** Curve sizes offered (radius = k · RAIL_R_MIN): wide, no k = 1 (too tight). */
+const CURVE_K = [2, 3];
 /** Extra cost of a 45° curve piece, by k (tighter = dearer). */
-const TURN_COST: Record<number, number> = { 1: 4, 2: 3.3, 3: 3 };
-/** Tight 90° curves (radius in lattice steps: 1 or 2) and their extra cost. */
-const TIGHT_K = [1, 2];
-const TIGHT_COST: Record<number, number> = { 1: 7, 2: 5.5 };
+const TURN_COST: Record<number, number> = { 2: 3.3, 3: 3 };
+/** 90° curves (radius in lattice steps: 2 or 3) and their extra cost. */
+const TIGHT_K = [2, 3];
+const TIGHT_COST: Record<number, number> = { 2: 5.5, 3: 4.5 };
+/** 180° turn-back (hairpin): 2 empty cells between the two tracks. */
+const HAIRPIN_COST = 7;
 /** Extra cost per footprint cell already holding track (crossing). */
 const CROSS_COST = 0.5;
 /** Extra cost per footprint cell running along a track inside a join zone. */
@@ -166,17 +170,33 @@ function buildMove(raw: P[], dEnd: number, turn: boolean, extra: number): Move {
  * and scaled by √2 (radius r√2: end (0, 2r) from heading 1).
  */
 function quarter(r: number, diagonal: boolean): P[] {
+  const out = arcLeft(diagonal ? r * Math.SQRT2 : r, Math.PI / 2, diagonal);
+  // Exact lattice end.
+  out[out.length - 1] = diagonal ? [0, 2 * r] : [r, r];
+  return out;
+}
+
+/**
+ * Hairpin: half circle turning left from heading 0 back to heading 4 — the
+ * two tracks 3 cells apart (2 empty cells between them), end (0, 3). From a
+ * diagonal heading: end (−2, 2), 2√2 apart.
+ */
+function hairpin(diagonal: boolean): P[] {
+  const out = arcLeft(diagonal ? Math.SQRT2 : 1.5, Math.PI, diagonal);
+  out[out.length - 1] = diagonal ? [-2, 2] : [0, 3];
+  return out;
+}
+
+/** Arc of radius R turning left by `ang` from heading 0 (or heading 1 if diagonal). */
+function arcLeft(R: number, ang: number, diagonal: boolean): P[] {
   const out: P[] = [];
-  const R = diagonal ? r * Math.SQRT2 : r;
-  const steps = Math.max(6, Math.ceil((R * Math.PI) / 2 / 0.12));
+  const steps = Math.max(6, Math.ceil((R * ang) / 0.12));
   for (let i = 0; i <= steps; i++) {
-    const f = ((Math.PI / 2) * i) / steps;
+    const f = (ang * i) / steps;
     let x = R * Math.sin(f), z = R * (1 - Math.cos(f));
     if (diagonal) [x, z] = [(x - z) * Math.SQRT1_2, (x + z) * Math.SQRT1_2];
     out.push([x, z]);
   }
-  // Exact lattice end.
-  out[out.length - 1] = diagonal ? [0, 2 * r] : [r, r];
   return out;
 }
 
@@ -212,20 +232,26 @@ const MOVES: Move[][] = (() => {
     diag.push([d, 2, 10 + r]);
     diag.push([d.map(([x, z]) => [z, x] as P), -2, 10 + r]);
   }
+  // Hairpins (cost key 20).
+  const ha = hairpin(false), hd = hairpin(true);
+  axis.push([ha, 4, 20]);
+  axis.push([ha.map(([x, z]) => [x, -z] as P), -4, 20]);
+  diag.push([hd, 4, 20]);
+  diag.push([hd.map(([x, z]) => [z, x] as P), -4, 20]);
   const moves: Move[][] = [];
   for (let d = 0; d < 8; d++) {
     const q = d >> 1;
     const list: Move[] = [buildMove([[0, 0], DIR[d]], d, false, 0)];
     for (const [tpl, dh, k] of d & 1 ? diag : axis) {
-      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
+      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k === 20 ? HAIRPIN_COST : k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
     }
     moves.push(list);
   }
   return moves;
 })();
 
-/** Pieces per heading: one straight + a left and a right curve per size (45° and tight 90°). */
-const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length;
+/** Pieces per heading: one straight + a left and a right curve per size (45°, 90°) + 2 hairpins. */
+const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length + 2;
 
 // ------------------------------------------------------- per-map caches
 

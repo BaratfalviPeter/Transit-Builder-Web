@@ -81,7 +81,7 @@ const DIR: ReadonlyArray<P> = [
 ];
 
 /** Heading index of a unit direction, or -1 if it isn't octilinear. */
-function headingOf(tx: number, tz: number): number {
+export function headingOf(tx: number, tz: number): number {
   const a = Math.atan2(tz, tx) / (45 * DEG);
   const d = Math.round(a);
   if (Math.abs(a - d) > 0.01) return -1;
@@ -545,7 +545,7 @@ function traceLine(n: number, states: number[]): number[] {
 // ------------------------------------------------------- final check
 
 /** Final check of a centre-line; returns a Hungarian reason or null if OK. */
-function validate(map: TerrainMap, pts: number[], start: NetSnap | null, end: NetSnap | null): string | null {
+export function validate(map: TerrainMap, pts: number[], start: NetSnap | null, end: NetSnap | null): string | null {
   const n = map.size;
   const pass = passOf(map);
   const total = new LineWalker(pts).total;
@@ -646,138 +646,4 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
     start: S,
     end: res.reached ? E : null,
   };
-}
-
-// ------------------------------------------------------- hand drawing
-
-/**
- * A rail being drawn by dragging: from its start (a free point, or a snap
- * onto the network — a dead end continues it, mid-track makes a switch), a
- * chain of lattice pieces that follows the cursor. Moving the cursor back
- * over the drawn track takes pieces off again.
- */
-export interface RailDraw {
-  start: NetSnap | null;
-  /** Start node and the headings it may leave in. */
-  sp: [number, number];
-  startDirs: number[];
-  /** (node · 8 + heading) states, the start state first; empty = nothing drawn yet. */
-  chain: number[];
-  /**
-   * Near an existing track: the planned last bit joining it (states from the
-   * chain's end on) and the join, or empty / null.
-   */
-  tail: number[];
-  join: NetSnap | null;
-}
-
-/** Start drawing at grid point `a`; a Hungarian reason if no track can start there. */
-export function railDrawBegin(map: TerrainMap, a: { x: number; z: number }): RailDraw | string {
-  const net = map.railNet ?? EMPTY_NET;
-  const n = map.size;
-  const S0 = snapToNet(net, a.x, a.z);
-  const S = S0 && latticeSnap(net, S0, a.x, a.z);
-  if (S0 && !S) return 'Itt nem ágazhat le a sín';
-  const sp: [number, number] = S ? [S.x, S.z] : [Math.round(a.x), Math.round(a.z)];
-  if (sp[0] < 0 || sp[1] < 0 || sp[0] >= n || sp[1] >= n) return 'Ide nem építhető sín';
-  if (!S && !passOf(map)[sp[0] * n + sp[1]]) return 'Ide nem építhető sín';
-  const hs = S ? headingOf(S.tx, S.tz) : -1;
-  const startDirs = S ? (S.kind === 'end' ? [hs] : [hs, (hs + 4) % 8]) : [0, 1, 2, 3, 4, 5, 6, 7];
-  return { start: S, sp, startDirs, chain: [], tail: [], join: null };
-}
-
-/** Follow the cursor at grid point `c`: take pieces off / lay pieces on. */
-export function railDrawTo(map: TerrainMap, draw: RailDraw, c: { x: number; z: number }): RailDraw {
-  const n = map.size;
-  const pos = (st: number): P => {
-    const node = st >> 3;
-    const x = (node / n) | 0;
-    return [x, node - x * n];
-  };
-  let chain = draw.chain.slice();
-  // Back over the drawn track: cut it at the latest node under the cursor.
-  if (chain.length && Math.hypot(draw.sp[0] - c.x, draw.sp[1] - c.z) < 0.6) chain = [];
-  for (let i = chain.length - 2; i >= 1; i--) {
-    const [x, z] = pos(chain[i]);
-    if (Math.hypot(x - c.x, z - c.z) < 0.6) {
-      chain = chain.slice(0, i + 1);
-      break;
-    }
-  }
-  // Close to an existing track (away from where we started): join it
-  // properly — the lattice planner lays the last bit, through a switch.
-  const net = map.railNet ?? EMPTY_NET;
-  const near = snapToNet(net, c.x, c.z);
-  const E = near && latticeSnap(net, near, c.x, c.z);
-  const from: P = chain.length ? pos(chain[chain.length - 1]) : draw.sp;
-  if (E && Math.hypot(E.x - draw.sp[0], E.z - draw.sp[1]) > 2 && Math.hypot(E.x - from[0], E.z - from[1]) >= 1 && Math.hypot(E.x - from[0], E.z - from[1]) < 16) {
-    const he = headingOf(E.tx, E.tz);
-    const goalDirs = E.kind === 'end' ? [(he + 4) % 8] : [he, (he + 4) % 8];
-    const dirs = chain.length ? [chain[chain.length - 1] & 7] : draw.startDirs;
-    const res = latticeAStar(map, from, [E.x, E.z], dirs, goalDirs, chain.length ? null : draw.start, E);
-    if (res.reached && res.states.length >= 2) return { ...draw, chain, tail: res.states, join: E };
-  }
-  const used = new Set(chain.map((st) => st >> 3));
-  for (let guard = 0; guard < 80; guard++) {
-    const [x, z] = chain.length ? pos(chain[chain.length - 1]) : draw.sp;
-    const here = Math.hypot(x - c.x, z - c.z);
-    if (here < 0.75) break;
-    const dirs = chain.length ? [chain[chain.length - 1] & 7] : draw.startDirs;
-    let best: { d: number; m: Move; score: number } | null = null;
-    for (const d of dirs)
-      for (const m of MOVES[d]) {
-        // A switch leaves a track through a curve, never straight on.
-        if (!chain.length && draw.start?.kind === 'mid' && !m.turn) continue;
-        const ex = x + m.dx, ez = z + m.dz;
-        if (ex < 0 || ez < 0 || ex >= n || ez >= n || used.has(ex * n + ez)) continue;
-        const dist = Math.hypot(ex - c.x, ez - c.z);
-        if (dist > here - 0.25) continue;
-        if (pieceTerrain(map, m, x, z) === 3) continue;
-        // Prefer straight track, then wide curves: tight ones only when they
-        // help a lot; and a piece that ends facing the cursor.
-        const [hx, hz] = DIR[m.dEnd];
-        const facing = dist > 1e-6 ? ((c.x - ex) * hx + (c.z - ez) * hz) / (Math.hypot(hx, hz) * dist) : 1;
-        const score = dist + (m.turn ? (m.cost - m.len > 5 ? 0.7 : 0.2) : 0) + (1 - facing) * 0.6;
-        if (!best || score < best.score) best = { d, m, score };
-      }
-    if (!best) break;
-    if (!chain.length) chain.push((draw.sp[0] * n + draw.sp[1]) * 8 + best.d);
-    const nx = x + best.m.dx, nz = z + best.m.dz;
-    chain.push((nx * n + nz) * 8 + best.m.dEnd);
-    used.add(nx * n + nz);
-  }
-  return { ...draw, chain, tail: [], join: null };
-}
-
-/**
- * The drawn rail as a plan: its centre-line, whether it joins the network at
- * its end (a dead end continued, or a switch onto a track it meets heading
- * along it), and whether it can be built (with the reason if not).
- */
-export function railDrawPlan(map: TerrainMap, draw: RailDraw): RailPlan {
-  const n = map.size;
-  if (draw.tail.length >= 2) {
-    // Joining a track: the drawn chain, then the planned last bit.
-    const states = draw.chain.length ? draw.chain.concat(draw.tail.slice(1)) : draw.tail;
-    const line = traceLine(n, states);
-    const reason = validate(map, line, draw.start, draw.join);
-    return { pts: line, blocked: reason !== null, reason, length: new LineWalker(line).total, start: draw.start, end: draw.join };
-  }
-  if (draw.chain.length < 2) return { pts: [], blocked: false, reason: null, length: 0, start: draw.start, end: null };
-  const line = traceLine(n, draw.chain);
-  const last = draw.chain[draw.chain.length - 1];
-  const node = last >> 3, d = last & 7;
-  const x = (node / n) | 0, z = node - x * n;
-  const net = map.railNet ?? EMPTY_NET;
-  let end: NetSnap | null = null;
-  const E0 = snapToNet(net, x, z, 0.3);
-  const E = E0 && latticeSnap(net, E0, x, z);
-  if (E && Math.hypot(E.x - x, E.z - z) < 1e-6) {
-    const he = headingOf(E.tx, E.tz);
-    const prev = draw.chain[draw.chain.length - 2];
-    const turned = (prev & 7) !== d;
-    if (E.kind === 'end' ? d === (he + 4) % 8 : (d === he || d === (he + 4) % 8) && turned) end = E;
-  }
-  const reason = validate(map, line, draw.start, end);
-  return { pts: line, blocked: reason !== null, reason, length: new LineWalker(line).total, start: draw.start, end };
 }

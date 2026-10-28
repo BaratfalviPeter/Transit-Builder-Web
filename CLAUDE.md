@@ -41,11 +41,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - ÉPÍTÉS HÚZÁSSAL (út + sín, alapértelmezett): `usePointerBuild` click módban a mozduló
   nyomás `dragStart` → `PathPlan.drawBegin/drawTo` (állapot 'drawing'), elengedés
   `finishDrawing` (GameCanvas). Út: cellánként követi a kurzort (`trackStepOk`), visszahúzva
-  levágja. Sín: `railDrawBegin/railDrawTo/railDrawPlan` — mohó darabválasztás a kurzor felé
-  (egyenes / ív, a kurzor felé néző vég előnyben), visszahúzva a lánc a kurzor alatti
-  csomópontnál elvág; meglévő sín közelében (`snapToNet`) „mágnes”: a tervező (`latticeAStar`)
-  rakja le a csatlakozó véget (`tail`, `join`: váltó vagy sínvég-folytatás). A sima kattintás
-  maradt A→B tervező. A tervező csak RÁCSPONTBÓL indul
+  levágja. Sín: `railDraw.ts` (Train Valley-stílus, a felhasználó kérte): mezőről mezőre, csak
+  4 irány, gyors húzásnál L alakban tölt ki (egyenesen, amíg segít), visszahúzva levág,
+  akadálynál megáll és kiírja az okot (`note`). A kész út SIMA KÖZÉPVONAL (a vonat, jelző,
+  állomás változatlan): egyenes a cellaközepeken át, irányváltásnál 1 sugarú negyedkör az előző
+  cella közepétől a következőéig (két kanyar között kell egy egyenes mező). Indulás: sínvégről
+  egyenesen tovább (`kind 'end'`), egyenes sínből oldalra = váltó (`'mid'`, a leágazás egy mezővel
+  hátrébb indul: `startSide`), merőlegesen sínre érve váltóval becsatlakozik (`endSide`), sínvégbe
+  szemből csatlakozik, áthúzva keresztez. Q: a váltó iránya (`railDrawFlip`). A sima kattintás
+  maradt A→B tervező (átlós sínhez). A tervező csak RÁCSPONTBÓL indul
   (cellaközép + 8 irány, 1e-3 pontossággal): ezért a `cutAtCell` (bontás) a megmaradó véget
   visszavágja a legközelebbi rácspontig (`latticeFrom`), különben a bontott végről nem lehetne
   új sínt húzni. Előnézet: váltónál sárga nyíl (`SwitchArrows`, PathPreview) mutatja, merre
@@ -187,8 +191,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #78 (vonatjáratok hurokkal, pályafoglalás, kitérő, sorompó; zoom az egér felé).
 - Mergelve: #79 (sima mozgás, jelzők, sorompó, nagyobb vonat + vonathossz).
 - Mergelve: #80 (bontott sínvég, hosszabb peron, váltónyíl, jelzők a hálózati nézetben).
-- Folyamatban: húzásos építés (út + sín), szűk 90°-os sínívek, íves út (kerek sarok és
-  zsákutcavég: `roundedOutline` a Roads.tsx-ben), sorompó ferde keresztezésnél.
+- Mergelve: #81 (húzásos építés, szűk 90°-os sínívek, íves út, sorompó ferde keresztezésnél).
+- Folyamatban: Train Valley-stílusú, mezőről mezőre sínrajzolás (`railDraw.ts`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

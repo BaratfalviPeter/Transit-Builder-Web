@@ -20,7 +20,8 @@
 
 import { cellsToBuild, findTrackPath, isTrackPassable, trackStepOk, type GridCell, type TrackType } from './pathfind';
 import { canRailCell, EMPTY_NET, snapToNet } from './railNet';
-import { planRail, railDrawBegin, railDrawPlan, railDrawTo, type RailDraw, type RailPlan } from './railRoute';
+import { planRail, type RailPlan } from './railRoute';
+import { railDrawBegin, railDrawFlip, railDrawPlan, railDrawTo, type RailDraw } from './railDraw';
 import { CellType, type TerrainMap } from './terrain';
 
 export type PlanStep = GridCell;
@@ -174,6 +175,16 @@ export class PathPlan {
       for (let i = 1; i < cells.length && !blocked; i++) if (!trackStepOk(map, cells[i - 1], cells[i], s.type)) blocked = true;
       this.snap = { ...s, previewPath: cells, blocked, newCells: cellsToBuild(map, cells, s.type).length };
     }
+    this.emit();
+  }
+
+  /** Drawing rail: turn round the switch it makes (Q). */
+  drawFlip(map: TerrainMap): void {
+    const s = this.snap;
+    if (s.pathbuildingState !== 'drawing' || !this.railDraw) return;
+    this.railDraw = railDrawFlip(this.railDraw);
+    const rail = railDrawPlan(map, this.railDraw);
+    this.snap = { ...s, rail, blocked: rail.blocked || rail.pts.length < 4, newCells: Math.ceil(rail.length) };
     this.emit();
   }
 

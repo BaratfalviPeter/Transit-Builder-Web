@@ -456,6 +456,17 @@ function Scene() {
   //   selecting_end --hover-->             A* preview (green / red hologram)
   //   selecting_end --click-->             build previewPath, pay, -> idle
   //   selecting_end --right-click / Esc--> cancel, -> idle
+  // Drawing rail: Q turns round the switch it makes.
+  useEffect(() => {
+    if (activeTool !== 'rail') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'KeyQ' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return;
+      pathPlan.drawFlip(terrain.getMap());
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeTool, pathPlan, terrain]);
+
   /** Release of a drawing drag: build what was drawn (if it can be and is paid for). */
   const finishDrawing = useCallback(() => {
     const p = pathPlan.getSnapshot();

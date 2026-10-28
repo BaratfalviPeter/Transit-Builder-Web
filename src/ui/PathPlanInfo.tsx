@@ -23,7 +23,7 @@ export function PathPlanInfo() {
     : poor
       ? 'Nincs elég pénz'
       : drawing
-        ? 'Engedd el az építéshez · visszahúzva törlődik'
+        ? snap.rail?.reason ?? 'Engedd el az építéshez · visszahúzva törlődik'
         : 'Kattints a célpontra az építéshez';
 
   return (

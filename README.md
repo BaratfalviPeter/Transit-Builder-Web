@@ -168,8 +168,11 @@ A jobb oldali **panel** három füle:
     kerülő kellene, piros lesz (vezesd másfelé). Kattintásra lerakja, és a
     végéről folytatod (Esc / jobb klikk: vége); húzva elengedéskor épül meg.
     Sínből indítva váltóval ágazik, sínre érve becsatlakozik, áthúzva keresztezi.
-  - **Ívek:** tágas 45°-os és 90°-os ívek (2–3 cella sugár), valamint visszafordító
-    (180°, a két vágány között 2 üres mező; a vonat ott lassít).
+  - **Ívek:** tágas 45°-os és 90°-os ívek (2–3 cella sugár), visszafordító
+    (180°, a két vágány között 2 üres mező; a vonat ott lassít), és S-ív
+    (vágánykapcsolat két párhuzamos sín között).
+  - **Bekötés meglévő sínbe:** a kurzor iránya dönt (előre ágazik le és előre
+    csatlakozik); ha a kurzor helyén nem férne el, a csatlakozás pár mezőt csúszik.
   - Domboldalon és mélyedés fölött a sín lejtős töltésen fut, az illesztéseknél nincs lépcső.
   - Az út kanyarjai és zsákutcavégei lekerekítettek.
   - **Peronhossz:** a Vasútállomás eszköznél **Q**-val 6 / 8 / 10 / 12 cella

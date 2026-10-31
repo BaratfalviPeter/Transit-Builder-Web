@@ -39,6 +39,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   8 irányú egyenesek, 45°-os ívek, sugaruk k(1+√2), k = 2, 3 (a k = 1 túl szűk volt), 90°-os ívek
   (TIGHT_K: sugár 2 / 3, átlósan 2√2 / 3√2), + 180°-os visszafordító (`hairpin`: a két vágány
   között 2 üres mező, R 1,5; átlósan (−2, 2)) — a felhasználó kérte, hogy ne legyen ilyen szűk.
+  + S-ívek (`S_CURVES`, csak tengelyirányból: 1/2/3 cella oldalra 4/6/8 hosszon, R ≈ 4,3–6,1):
+  vágánykapcsolat / sávváltás, a 3 cellára lévő párhuzamos sínek közti átkötéshez kell.
+  Középre kötés (mid snap): a kurzor iránya dönt (`onward`, ONWARD_MIN 2: előre indul és előre
+  csatlakozik, nem fordul vissza); a becsatlakozás csúszhat a sínen ±JOIN_SLIDE (5) cellát
+  (`latticeSnaps`), de csak ha a pontos hely nem érhető el, vagy a csúszás ≥ SLIDE_GAIN (6)-tal
+  olcsóbb (különben a kurzor nem irányítaná a hurok bezárását). A kerülő-korlát a tiszta
+  hosszra + kanyarköltségre vonatkozik (`gl`, a csatlakozási büntetés nélkül), + DETOUR_PER_TURN
+  (5) / kényszerű 45° fordulás (hurok bezárása). TIGHT_COST {2: 8, 3: 7}, hogy a 90°-os ív csak
+  szűk helyen jöjjön elő.
   Magasság (`railGeometry.sampleTrack`): simított lejtés, a végeken (END_BLEND 1,5) a csomópont
   talajára simul, így az élek illesztésénél nincs lépcső. Töltés (`Rails.tsx` `embankment`): a
   zúzottkő tetejétől 1:1,3-as földrézsű a talajig (domboldalon, mélyedés fölött).
@@ -198,7 +207,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #82 (Train Valley-stílusú sínrajzolás — utána lecserélve).
 - Mergelve: #83 (Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva).
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
-- Folyamatban: Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes.
+- Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
+- Folyamatban: párhuzamos sínek bekötése (S-ív, csúszó becsatlakozás, irány a kurzor szerint).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

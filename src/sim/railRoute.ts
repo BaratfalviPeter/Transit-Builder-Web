@@ -67,9 +67,15 @@ const CURVE_K = [2, 3];
 const TURN_COST: Record<number, number> = { 2: 3.3, 3: 3 };
 /** 90° curves (radius in lattice steps: 2 or 3) and their extra cost. */
 const TIGHT_K = [2, 3];
-const TIGHT_COST: Record<number, number> = { 2: 5.5, 3: 4.5 };
+const TIGHT_COST: Record<number, number> = { 2: 8, 3: 7 };
 /** 180° turn-back (hairpin): 2 empty cells between the two tracks. */
 const HAIRPIN_COST = 7;
+/**
+ * S-curves (crossovers / lane changes) from an axis heading: [sideways
+ * offset, length] — two opposite arcs, radius ≈ 4.3 / 5 / 6.1.
+ */
+const S_CURVES: ReadonlyArray<[number, number]> = [[1, 4], [2, 6], [3, 8]];
+const S_COST = 4.5;
 /** Extra cost per footprint cell already holding track (crossing). */
 const CROSS_COST = 0.5;
 /** Extra cost per footprint cell running along a track inside a join zone. */
@@ -86,6 +92,14 @@ const MAX_EXPAND = 120000;
  */
 const DETOUR = 1.3;
 const DETOUR_ADD = 14;
+/** Detour allowance per 45° the route MUST turn (start heading → B → join heading). */
+const DETOUR_PER_TURN = 5;
+/** How far (cells) a switch joining a track mid-way may slide from the cursor. */
+const JOIN_SLIDE = 5;
+/** …and slides there only when that is this much cheaper than the exact spot. */
+const SLIDE_GAIN = 6;
+/** B this far (cells) along a track from A fixes the switch direction (see planRail). */
+const ONWARD_MIN = 2;
 
 /** Unit step of heading d (0 = +x, counter-clockwise in 45° steps). */
 const DIR: ReadonlyArray<P> = [
@@ -195,6 +209,16 @@ function hairpin(diagonal: boolean): P[] {
   return out;
 }
 
+/** S-curve from heading 0: `o` cells to the left over `L` cells, same heading at the end. */
+function sCurve(o: number, L: number): P[] {
+  const R = ((L / 2) ** 2 + (o / 2) ** 2) / o;
+  const half = arcLeft(R, Math.asin(L / 2 / R), false);
+  const out = half.slice();
+  for (let i = half.length - 2; i >= 0; i--) out.push([L - half[i][0], o - half[i][1]]);
+  out[out.length - 1] = [L, o];
+  return out;
+}
+
 /** Arc of radius R turning left by `ang` from heading 0 (or heading 1 if diagonal). */
 function arcLeft(R: number, ang: number, diagonal: boolean): P[] {
   const out: P[] = [];
@@ -240,6 +264,12 @@ const MOVES: Move[][] = (() => {
     diag.push([d, 2, 10 + r]);
     diag.push([d.map(([x, z]) => [z, x] as P), -2, 10 + r]);
   }
+  // S-curves (cost key 30 + offset), axis headings only.
+  for (const [o, L] of S_CURVES) {
+    const c = sCurve(o, L);
+    axis.push([c, 0, 30 + o]);
+    axis.push([c.map(([x, z]) => [x, -z] as P), 0, 30 + o]);
+  }
   // Hairpins (cost key 20).
   const ha = hairpin(false), hd = hairpin(true);
   axis.push([ha, 4, 20]);
@@ -251,7 +281,7 @@ const MOVES: Move[][] = (() => {
     const q = d >> 1;
     const list: Move[] = [buildMove([[0, 0], DIR[d]], d, false, 0)];
     for (const [tpl, dh, k] of d & 1 ? diag : axis) {
-      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k === 20 ? HAIRPIN_COST : k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
+      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k > 30 ? S_COST : k === 20 ? HAIRPIN_COST : k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
     }
     moves.push(list);
   }
@@ -259,7 +289,7 @@ const MOVES: Move[][] = (() => {
 })();
 
 /** Pieces per heading: one straight + a left and a right curve per size (45°, 90°) + 2 hairpins. */
-const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length + 2;
+const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length + 2 + 2 * S_CURVES.length;
 
 // ------------------------------------------------------- per-map caches
 
@@ -354,17 +384,27 @@ function compOf(map: TerrainMap): Int32Array {
  * cell centre on a straight (octilinear) stretch of that edge.
  */
 function latticeSnap(net: RailNet, s: NetSnap, cx: number, cz: number): NetSnap | null {
-  const onNode = (x: number, z: number) => Math.abs(x - Math.round(x)) < 1e-3 && Math.abs(z - Math.round(z)) < 1e-3;
-  if (s.kind === 'end') {
-    if (!onNode(s.x, s.z) || headingOf(s.tx, s.tz) < 0) return null;
-    return { ...s, x: Math.round(s.x), z: Math.round(s.z) };
-  }
+  if (s.kind === 'end') return endSnap(s);
+  return latticeSnaps(net, s, cx, cz, 1.5)[0] ?? null;
+}
+
+const onNode = (x: number, z: number) => Math.abs(x - Math.round(x)) < 1e-3 && Math.abs(z - Math.round(z)) < 1e-3;
+
+function endSnap(s: NetSnap): NetSnap | null {
+  if (!onNode(s.x, s.z) || headingOf(s.tx, s.tz) < 0) return null;
+  return { ...s, x: Math.round(s.x), z: Math.round(s.z) };
+}
+
+/**
+ * Every cell centre on a straight stretch of the snapped edge within `maxD`
+ * of (cx, cz) where a switch may go (clear of the edge ends), nearest first.
+ */
+function latticeSnaps(net: RailNet, s: NetSnap, cx: number, cz: number, maxD: number): NetSnap[] {
+  const found: Array<[number, NetSnap]> = [];
   const e = net.edges.find((q) => q.id === s.edge);
-  if (!e) return null;
+  if (!e) return [];
   const p = e.pts;
   const total = new LineWalker(p).total;
-  let best: NetSnap | null = null;
-  let bestD = Infinity;
   let acc = 0;
   for (let i = 0; i + 3 < p.length; i += 2) {
     const ax = p[i], az = p[i + 1];
@@ -383,15 +423,14 @@ function latticeSnap(net: RailNet, s: NetSnap, cx: number, cz: number): NetSnap 
         const along = acc + t;
         if (along < SWITCH_CLEAR - 1e-6 || along > total - SWITCH_CLEAR + 1e-6) continue;
         const d = Math.hypot(x - cx, z - cz);
-        if (d < bestD) {
-          bestD = d;
-          best = { edge: e.id, along, x: Math.round(x), z: Math.round(z), tx: DIR[h][0] / step, tz: DIR[h][1] / step, kind: 'mid' };
+        if (d <= maxD) {
+          found.push([d, { edge: e.id, along, x: Math.round(x), z: Math.round(z), tx: DIR[h][0] / step, tz: DIR[h][1] / step, kind: 'mid' }]);
         }
       }
     }
     acc += L;
   }
-  return best && bestD <= 1.5 ? best : null;
+  return found.sort((a, b) => a[0] - b[0]).map((f) => f[1]);
 }
 
 // ------------------------------------------------------- lattice A*
@@ -399,6 +438,8 @@ function latticeSnap(net: RailNet, s: NetSnap, cx: number, cz: number): NetSnap 
 interface Search {
   states: number[];
   reached: boolean;
+  /** Route cost (length + turn costs + penalties). */
+  cost: number;
 }
 
 function latticeAStar(
@@ -410,11 +451,25 @@ function latticeAStar(
   start: NetSnap | null,
   end: NetSnap | null,
   maxCost = Infinity,
+  alts: readonly NetSnap[] = [],
 ): Search {
   const startMid = start?.kind === 'mid', endMid = end?.kind === 'mid';
   const n = map.size;
+  // Goal cells → headings allowed there (null = any). `alts`: other spots
+  // along the joined track the switch may slide to.
+  const goals = new Map<number, number[] | null>([[ep[0] * n + ep[1], goalDirs]]);
+  let slack = 0;
+  for (const a of alts) {
+    const h = headingOf(a.tx, a.tz);
+    // Same travel sense as at B itself.
+    const dirs = [h, (h + 4) % 8].filter((d) => !goalDirs || goalDirs.some((g) => DIR[g][0] * DIR[d][0] + DIR[g][1] * DIR[d][1] > 0));
+    goals.set(a.x * n + a.z, dirs);
+    slack = Math.max(slack, Math.hypot(a.x - ep[0], a.z - ep[1]));
+  }
   const N = n * n * 8;
   const g = new Float64Array(N).fill(Infinity);
+  /** Route cost without the join / crossing penalties: what the detour limit measures. */
+  const gl = new Float64Array(N);
   const from = new Int32Array(N).fill(-1);
   const closed = new Uint8Array(N);
   // Binary min-heap on typed arrays (grows on demand).
@@ -460,12 +515,14 @@ function latticeAStar(
   };
   const oct = (x: number, z: number) => {
     const a = Math.abs(x - ep[0]), b = Math.abs(z - ep[1]);
-    return Math.max(a, b) - Math.min(a, b) + Math.SQRT2 * Math.min(a, b);
+    return Math.max(0, Math.max(a, b) - Math.min(a, b) + Math.SQRT2 * Math.min(a, b) - slack);
   };
-  const isGoal = (x: number, z: number, d: number) =>
-    x === ep[0] && z === ep[1] && (!goalDirs || goalDirs.includes(d));
+  const isGoal = (x: number, z: number, d: number) => {
+    const g = goals.get(x * n + z);
+    return g !== undefined && (!g || g.includes(d));
+  };
   const nearJoin = (x: number, z: number) =>
-    (start && Math.hypot(x - sp[0], z - sp[1]) < JOIN_ZONE) || (end && Math.hypot(x - ep[0], z - ep[1]) < JOIN_ZONE);
+    (start && Math.hypot(x - sp[0], z - sp[1]) < JOIN_ZONE) || (end && Math.hypot(x - ep[0], z - ep[1]) < JOIN_ZONE + slack);
   const startNode = sp[0] * n + sp[1];
 
   let cache = pieceCache.get(map);
@@ -524,15 +581,17 @@ function latticeAStar(
       if (!m.turn && startMid && node === startNode && from[st] < 0) continue;
       const nx = x + m.dx, nz = z + m.dz;
       if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
-      if (!m.turn && endMid && nx === ep[0] && nz === ep[1]) continue;
+      if (!m.turn && endMid && goals.has(nx * n + nz)) continue;
       const ns = (nx * n + nz) * 8 + m.dEnd;
       if (closed[ns]) continue;
       const extra = pieceCost(m, x, z, st * MOVES_PER + mi);
       if (extra < 0) continue;
       const ng = g[st] + m.cost + extra;
-      if (ng + oct(nx, nz) > maxCost) continue; // too big a detour
+      const nl = gl[st] + m.cost;
+      if (nl + oct(nx, nz) > maxCost) continue; // too big a detour
       if (ng < g[ns]) {
         g[ns] = ng;
+        gl[ns] = nl;
         from[ns] = st;
         push(ns, ng + H_WEIGHT * oct(nx, nz));
       }
@@ -541,7 +600,7 @@ function latticeAStar(
   const states: number[] = [];
   for (let c = best; c >= 0; c = from[c]) states.push(c);
   states.reverse();
-  return { states, reached };
+  return { states, reached, cost: g[best] };
 }
 
 /** Turn a chain of (cell, heading) states back into a centre-line. */
@@ -644,12 +703,19 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
   // Headings allowed at the ends (tangential joins).
   const all = [0, 1, 2, 3, 4, 5, 6, 7];
   const hs = S && headingOf(S.tx, S.tz);
-  const startDirs = S ? (S.kind === 'end' ? [hs!] : [hs!, (hs! + 4) % 8]) : all;
+  // Mid-track switches: the way the cursor lies along the track picks the
+  // direction (leave / join heading on towards B — no turning back), unless
+  // B is about beside it.
+  const onward = (h: number): number[] => {
+    const d = (DIR[h][0] * (ep[0] - sp[0]) + DIR[h][1] * (ep[1] - sp[1])) / Math.hypot(DIR[h][0], DIR[h][1]);
+    return d > ONWARD_MIN ? [h] : d < -ONWARD_MIN ? [(h + 4) % 8] : [h, (h + 4) % 8];
+  };
+  const startDirs = S ? (S.kind === 'end' ? [hs!] : onward(hs!)) : all;
   let goalDirs: number[] | null = null;
   if (E) {
     const he = headingOf(E.tx, E.tz);
     // An END snap points out of its edge: arrive travelling into it.
-    goalDirs = E.kind === 'end' ? [(he + 4) % 8] : [he, (he + 4) % 8];
+    goalDirs = E.kind === 'end' ? [(he + 4) % 8] : onward(he);
   }
 
   // B out of reach: head for the reachable cell closest to it (drawn red).
@@ -670,8 +736,38 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
   }
   const direct = target === ep;
   const open = Math.hypot(target[0] - sp[0], target[1] - sp[1]);
-  const res = latticeAStar(map, sp, target, startDirs, direct ? goalDirs : null, S, direct ? E : null, DETOUR * open + DETOUR_ADD);
+  // Turning the route can't avoid (e.g. closing a turn-back loop) is no detour.
+  const ux = (target[0] - sp[0]) / (open || 1), uz = (target[1] - sp[1]) / (open || 1);
+  const turnTo = (dirs: number[] | null) => {
+    if (!dirs) return 0;
+    let best = Math.PI;
+    for (const d of dirs) {
+      const l = Math.hypot(DIR[d][0], DIR[d][1]);
+      best = Math.min(best, Math.acos(Math.max(-1, Math.min(1, (DIR[d][0] * ux + DIR[d][1] * uz) / l))));
+    }
+    return best / (Math.PI / 4);
+  };
+  const forced = turnTo(S ? startDirs : null) + (direct ? turnTo(goalDirs) : 0);
+  // Joining a track mid-way: the switch may slide a few cells along it.
+  const alts =
+    direct && E && E.kind === 'mid' && E0
+      ? latticeSnaps(net, E0, E.x, E.z, JOIN_SLIDE).filter((q) => (q.x !== E!.x || q.z !== E!.z) && Math.hypot(q.x - sp[0], q.z - sp[1]) >= 1)
+      : [];
+  const budget = DETOUR * open + DETOUR_ADD + DETOUR_PER_TURN * forced;
+  const search = (slide: readonly NetSnap[]) =>
+    latticeAStar(map, sp, target, startDirs, direct ? goalDirs : null, S, direct ? E : null, budget, slide);
+  // The exact spot first (the cursor keeps control of where / which way it
+  // joins); sliding only when that can't be reached.
+  let res = search([]);
+  if (alts.length) {
+    const slid = search(alts);
+    if (slid.reached && (!res.reached || slid.cost < res.cost - SLIDE_GAIN)) res = slid;
+  }
   if (!direct) res.reached = false;
+  if (res.reached && alts.length) {
+    const last = res.states[res.states.length - 1] >> 3;
+    E = alts.find((q) => q.x * n + q.z === last) ?? E;
+  }
   const why = direct ? 'Útban van valami — csak nagy kerülővel menne' : 'Nem vezethető el idáig';
   const line = traceLine(n, res.states);
   if (line.length < 4) return { ...empty(res.reached ? null : why), start: S };

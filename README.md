@@ -162,11 +162,12 @@ A jobb oldali **panel** három füle:
   - A vonat a kamionhoz képest arányosan nagy (×1,25), a sín nyomtávja is.
   - **Építés húzással:** az Út és a Sín eszközzel nyomd le az egeret és húzd:
     a zöld előnézet követi a kurzort, visszahúzva törlődik, elengedve megépül.
-    A **sín** Factorio-szerűen épül: a kezdőponttól a legrövidebb sín a kurzor
-    felé, de legfeljebb **5 mezőre**; az egeret oldalra húzva a kanyart állítod.
-    Kattintásra lerakja, és a végéről folytatod (Esc / jobb klikk: vége); húzva a
-    hatótávon túl magától lerakja és folytatja. Sínből indítva váltóval ágazik,
-    sínre érve becsatlakozik, áthúzva keresztezi.
+    A **sín** Voxel Tycoon-szerűen épül: a kezdőponttól a legrövidebb sín a
+    kurzorig, bármilyen hosszan; az egeret oldalra húzva a kanyart állítod,
+    **Shift**: csak egyenesen. Akadályt csak kis kerülővel kerül meg — ha nagy
+    kerülő kellene, piros lesz (vezesd másfelé). Kattintásra lerakja, és a
+    végéről folytatod (Esc / jobb klikk: vége); húzva elengedéskor épül meg.
+    Sínből indítva váltóval ágazik, sínre érve becsatlakozik, áthúzva keresztezi.
   - **Ívek:** tágas 45°-os és 90°-os ívek (2–3 cella sugár), valamint visszafordító
     (180°, a két vágány között 2 üres mező; a vonat ott lassít).
   - Domboldalon és mélyedés fölött a sín lejtős töltésen fut, az illesztéseknél nincs lépcső.

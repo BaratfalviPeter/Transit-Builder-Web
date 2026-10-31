@@ -77,7 +77,15 @@ const ALONG_COST = 1.5;
 /** Heuristic weight (> 1 trades a little optimality for speed). */
 const H_WEIGHT = 1.1;
 /** Search budget (expanded states) before settling for the closest reach. */
-const MAX_EXPAND = 40000;
+const MAX_EXPAND = 120000;
+/**
+ * Detour limit: a route may cost at most DETOUR × the open-ground distance
+ * + DETOUR_ADD (room for a couple of curves / a turn-back). Longer ones are
+ * not searched — a big detour is drawn red instead of built (Voxel
+ * Tycoon-like: the player routes round big obstacles).
+ */
+const DETOUR = 1.3;
+const DETOUR_ADD = 14;
 
 /** Unit step of heading d (0 = +x, counter-clockwise in 45° steps). */
 const DIR: ReadonlyArray<P> = [
@@ -401,6 +409,7 @@ function latticeAStar(
   goalDirs: number[] | null,
   start: NetSnap | null,
   end: NetSnap | null,
+  maxCost = Infinity,
 ): Search {
   const startMid = start?.kind === 'mid', endMid = end?.kind === 'mid';
   const n = map.size;
@@ -521,6 +530,7 @@ function latticeAStar(
       const extra = pieceCost(m, x, z, st * MOVES_PER + mi);
       if (extra < 0) continue;
       const ng = g[st] + m.cost + extra;
+      if (ng + oct(nx, nz) > maxCost) continue; // too big a detour
       if (ng < g[ns]) {
         g[ns] = ng;
         from[ns] = st;
@@ -659,11 +669,13 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
     }
   }
   const direct = target === ep;
-  const res = latticeAStar(map, sp, target, startDirs, direct ? goalDirs : null, S, direct ? E : null);
+  const open = Math.hypot(target[0] - sp[0], target[1] - sp[1]);
+  const res = latticeAStar(map, sp, target, startDirs, direct ? goalDirs : null, S, direct ? E : null, DETOUR * open + DETOUR_ADD);
   if (!direct) res.reached = false;
+  const why = direct ? 'Útban van valami — csak nagy kerülővel menne' : 'Nem vezethető el idáig';
   const line = traceLine(n, res.states);
-  if (line.length < 4) return { ...empty(res.reached ? null : 'Nem vezethető el idáig'), start: S };
-  const reason = res.reached ? validate(map, line, S, E) : 'Nem vezethető el idáig';
+  if (line.length < 4) return { ...empty(res.reached ? null : why), start: S };
+  const reason = res.reached ? validate(map, line, S, E) : why;
   return {
     pts: line,
     blocked: reason !== null,

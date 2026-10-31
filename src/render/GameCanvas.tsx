@@ -456,8 +456,24 @@ function Scene() {
   //   selecting_end --hover-->             A* preview (green / red hologram)
   //   selecting_end --click-->             build previewPath, pay, -> idle
   //   selecting_end --right-click / Esc--> cancel, -> idle
-  // Rail: the 2nd click lays the piece and the next one starts at its end
-  // (dragging past RAIL_REACH does the same), until Esc / right click.
+  // Rail: the 2nd click lays the piece and the next one starts at its end,
+  // until Esc / right click. Shift: straight on only.
+  useEffect(() => {
+    if (activeTool !== 'rail') return;
+    const set = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') pathPlan.setStraight(terrain.getMap(), e.type === 'keydown');
+    };
+    const off = () => pathPlan.setStraight(terrain.getMap(), false);
+    window.addEventListener('keydown', set);
+    window.addEventListener('keyup', set);
+    window.addEventListener('blur', off);
+    return () => {
+      window.removeEventListener('keydown', set);
+      window.removeEventListener('keyup', set);
+      window.removeEventListener('blur', off);
+      off();
+    };
+  }, [activeTool, pathPlan, terrain]);
 
   /** Release of a drawing drag: build what was drawn (if it can be and is paid for). */
   const finishDrawing = useCallback(() => {
@@ -526,19 +542,7 @@ function Scene() {
         return pathPlan.drawBegin(terrain.getMap(), g, type);
       },
       dragMove: (wx: number, wz: number) => {
-        const g = gridOf(wx, wz);
-        pathPlan.drawTo(terrain.getMap(), g);
-        // Rail dragged past its reach: lay that piece, carry on from its end.
-        for (let guard = 0; guard < 20 && pathPlan.railPieceReady(g); guard++) {
-          const rail = pathPlan.getSnapshot().rail!;
-          if (!game.canAfford(Math.ceil(rail.length) * TOOLS.rail.cost)) break;
-          const placed = terrain.buildRail(rail);
-          if (placed === 0) break;
-          game.spend(placed * TOOLS.rail.cost);
-          const n = rail.pts.length;
-          pathPlan.continueRail(terrain.getMap(), { x: rail.pts[n - 2], z: rail.pts[n - 1] });
-          pathPlan.drawTo(terrain.getMap(), g);
-        }
+        pathPlan.drawTo(terrain.getMap(), gridOf(wx, wz));
       },
       dragEnd: () => finishDrawing(),
       onClick: (wx: number, wz: number) => {

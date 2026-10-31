@@ -23,7 +23,7 @@ export function PathPlanInfo() {
     : poor
       ? 'Nincs elég pénz'
       : drawing
-        ? snap.rail?.reason ?? (snap.type === CellType.Rail ? 'Húzd tovább: folytatja · engedd el az építéshez' : 'Engedd el az építéshez · visszahúzva törlődik')
+        ? snap.rail?.reason ?? (snap.type === CellType.Rail ? 'Engedd el az építéshez · Shift: egyenesen' : 'Engedd el az építéshez · visszahúzva törlődik')
         : snap.type === CellType.Rail
           ? 'Kattints: lerakja, és innen folytatod · Esc: vége'
           : 'Kattints a célpontra az építéshez';

@@ -98,7 +98,7 @@ const HINT: Record<ToolId, string> = {
   lower: 'Süllyesztés — húzd végig a cellákon (piros), majd Építés',
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
   road: 'Út — húzd az egeret: követi a kurzort, visszahúzva törlődik, elengedve megépül · vagy kattints a kezdő-, majd a célpontra · Esc: mégse',
-  rail: 'Sín — max. 5 mező a kurzor felé, oldalra húzva kanyarodik · kattintás: lerakja és folytatod · húzva magától folytatja · Esc: vége · végállomáson hurok kell',
+  rail: 'Sín — a legrövidebb sín a kurzorig (bármilyen hosszú), oldalra húzva kanyarodik · Shift: csak egyenesen · kattintás: lerakja és folytatod · Esc: vége · végállomáson hurok kell',
   signal: 'Vasúti jelző — kattints a sínre: arra az oldalra kerül, ahol a kurzor van, és az ott (jobb kéz felől) haladó vonatoknak szól · újra kattintva megfordul · Bontás (B): leszedi · váltótól legyen 1–2 cella távolságra',
   station: 'Vasútállomás — egy ipar telkének oldalára kattints · Q: peronhossz (6 / 8 / 10 / 12 cella; a hosszú vonatnak) · a vágány mindkét végét bekötheted (pl. hurokba)',
   truckstop: 'Kamionrakodó — egy ipar telkének oldalára kattints (úthoz csatlakozik)',

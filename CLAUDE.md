@@ -45,12 +45,14 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - ÉPÍTÉS HÚZÁSSAL (út + sín, alapértelmezett): `usePointerBuild` click módban a mozduló
   nyomás `dragStart` → `PathPlan.drawBegin/drawTo` (állapot 'drawing'), elengedés
   `finishDrawing` (GameCanvas). Út: cellánként követi a kurzort (`trackStepOk`), visszahúzva
-  levágja. Sín: FACTORIO-SZERŰ rövid tervező (a felhasználó kérte, a Train Valley-féle
-  mezőnkénti rajzolás helyett): `planRail` a kezdőponttól a kurzor felé, a célt `RAIL_REACH`
-  (5) cellára húzza be (`railGoal`), oldalra húzva az egeret a kanyar állítható. Kattintásos
-  módban a 2. kattintás lerakja, és `continueRail` a végéről folytatja (Esc / jobb klikk: vége);
-  húzásnál a hatótávon túl (`railPieceReady`) a `dragMove` lerakja és folytatja, elengedve
-  megépül a maradék. A tervező csak RÁCSPONTBÓL indul
+  levágja. Sín: VOXEL TYCOON-SZERŰ tervező (a felhasználó kérte; előtte Train Valley-féle
+  mezőnkénti, majd 5 mezős Factorio-szerű volt): `planRail` a kezdőponttól a kurzorig,
+  hosszkorlát nélkül, oldalra húzva az egeret a kanyar állítható. Kerülő-korlát a
+  `latticeAStar`-ban: költség ≤ DETOUR (1,3) × légvonal + DETOUR_ADD (14), különben piros
+  („csak nagy kerülővel menne”); MAX_EXPAND 120000 (átlag ~3,5 ms, max ~60 ms). Shift: csak
+  egyenesen (`setStraight`, `railGoal` vetíti a kurzort a kezdőirányra; sínvégről annak
+  irányában). Kattintásos módban a 2. kattintás lerakja, és `continueRail` a végéről folytatja
+  (Esc / jobb klikk: vége); húzásnál elengedéskor épül meg. A tervező csak RÁCSPONTBÓL indul
   (cellaközép + 8 irány, 1e-3 pontossággal): ezért a `cutAtCell` (bontás) a megmaradó véget
   visszavágja a legközelebbi rácspontig (`latticeFrom`), különben a bontott végről nem lehetne
   új sínt húzni. Előnézet: váltónál sárga nyíl (`SwitchArrows`, PathPreview) mutatja, merre
@@ -195,7 +197,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #81 (húzásos építés, szűk 90°-os sínívek, íves út, sorompó ferde keresztezésnél).
 - Mergelve: #82 (Train Valley-stílusú sínrajzolás — utána lecserélve).
 - Mergelve: #83 (Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva).
-- Folyamatban: tágabb sínívek + visszafordító, sín-töltés domboldalon.
+- Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
+- Folyamatban: Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes.
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

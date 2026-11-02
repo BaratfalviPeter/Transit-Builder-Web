@@ -8,10 +8,11 @@
  * Buildings: each growth step picks a random cell of the central CityCenter
  * zone — empty: a level-1 building; below MAX_LEVEL: one level up.
  *
- * Economy (the city as a consumer, through its MARKET — terrain.ts):
+ * Economy (the city as a consumer, through the stops on its square's sides —
+ * stations.ts):
  *   - size = the sum of building levels; population = size × POP_PER_LEVEL;
  *   - monthly DEMAND per item (DEMAND: base + per level);
- *   - deliveries to the market count towards this month's demand and are paid
+ *   - deliveries to a city stop count towards this month's demand and are paid
  *     in full up to it — beyond it at OVERSUPPLY_PRICE only;
  *   - SATISFACTION = delivered / demand per month (per item, max 1), averaged
  *     with the month before (deliveries come in loads, not evenly);
@@ -32,7 +33,7 @@ export const DEMAND: Readonly<Partial<Record<Item, { base: number; perLevel: num
   goods: { base: 5, perLevel: 0.25 },
   plank: { base: 3, perLevel: 0.15 },
 };
-/** The items the city takes (its market's ACCEPTS). */
+/** The items the city takes (its stops' ACCEPTS). */
 export const CITY_ITEMS = Object.keys(DEMAND) as Item[];
 /** Price factor for deliveries beyond this month's demand. */
 export const OVERSUPPLY_PRICE = 0.25;
@@ -61,6 +62,16 @@ export interface CitySnapshot {
   satisfaction: Partial<Record<Item, number>> | null;
   /** Growing right now: 'free' (small town), 'supplied', or 'stalled' (needs supply). */
   growth: 'free' | 'supplied' | 'stalled';
+}
+
+/** The saved part of the city. */
+export interface CitySave {
+  seed: number;
+  buildings: Building[];
+  delivered: Partial<Record<Item, number>>;
+  satisfaction: Partial<Record<Item, number>> | null;
+  month: number | null;
+  growthCarry: number;
 }
 
 type Listener = () => void;
@@ -118,6 +129,31 @@ export class CityDevelopment {
     this.emit();
   }
 
+  /** What a save keeps (see save.ts). */
+  exportState(): CitySave {
+    return {
+      seed: this.seed ?? 0,
+      buildings: Array.from(this.byCell.values()).map((b) => ({ ...b })),
+      delivered: { ...this.delivered },
+      satisfaction: this.satisfaction && { ...this.satisfaction },
+      month: this.month,
+      growthCarry: this.growthCarry,
+    };
+  }
+
+  /** Continue a saved city on `map` (its map; the city cells come from it). */
+  importState(s: CitySave, map: TerrainMap): void {
+    this.seed = null;
+    this.reset(map); // city cells + a clean slate, seed = map.seed
+    for (const b of s.buildings) this.byCell.set(key(b.x, b.z), { x: b.x, z: b.z, level: b.level });
+    this.size = s.buildings.reduce((a, b) => a + b.level, 0);
+    this.delivered = { ...s.delivered };
+    this.satisfaction = s.satisfaction && { ...s.satisfaction };
+    this.month = s.month;
+    this.growthCarry = s.growthCarry;
+    this.emit();
+  }
+
   /** This month's demand for `item` (0 if the city doesn't take it). */
   demandOf(item: Item): number {
     const d = DEMAND[item];
@@ -125,7 +161,7 @@ export class CityDevelopment {
   }
 
   /**
-   * `n` units of `item` delivered to the market. Returns the units to pay
+   * `n` units of `item` delivered to a city stop. Returns the units to pay
    * for: in full up to what's still wanted this month, OVERSUPPLY_PRICE beyond.
    */
   deliver(item: Item, n: number): number {

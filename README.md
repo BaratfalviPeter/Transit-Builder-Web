@@ -18,7 +18,7 @@ src/
             #   tools.ts            – építési eszközök + áraik (adat)
             #   GameState.ts        – aktív eszköz + pénz
             #   useGameState.ts     – GameProvider + snapshot hook
-            #   CityDevelopment.ts  – a város: növekedés + kereslet a piacon (játékórával)
+            #   CityDevelopment.ts  – a város: növekedés + kereslet a kapuinál (játékórával)
             #   useCityDevelopment.ts – játékciklus (setInterval) + snapshot
   render/   # R3F komponensek
             #   GameCanvas     – gyökér jelenet, click -> aktív eszköz
@@ -96,7 +96,8 @@ A jobb oldali **panel** három füle:
   | 1–4 | Út / Sín / Vasútállomás / Kamionrakodó |
   | 5–8 | Elsőbbségadás / STOP / Lámpa / Körforgalom |
   | Szóköz / T | Szünet / gyorsítás |
-  | J / P / 0 | Járatok / Pénzügyek / Dev panel |
+  | N / U | Híd / Alagút |
+  | J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
   | WASD, nyilak | Kamera mozgatása |
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
   ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az
@@ -209,6 +210,16 @@ A jobb oldali **panel** három füle:
     közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
+- **Híd és alagút** (N / U; `src/sim/structures.ts`, `src/render/Structures.tsx`):
+  külön eszközzel húzod az egyik végétől a másikig (egyenesen), utána az Út vagy a Sín
+  eszközzel rákattintva kerül rá út vagy sín. A **híd** átível vízen, vagy egy szinttel
+  lejjebb lévő úton / sínen / völgyön (a hídfőket ehhez meg lehet emelni). Az **alagút**
+  hegyen megy át, vagy egy út / sín alatt (aluljáró). A hídon / alagútban futó forgalom
+  nem találkozik az alatta / fölötte futóval (nincs kereszteződés, nincs sorompó).
+- **Mentés** (M — Játék panel; `src/sim/save.ts`): a játék magától ment percenként és a
+  lap bezárásakor a böngészőbe, és induláskor onnan folytatódik. Kézzel is menthető,
+  és innen indítható **új játék** (új térkép). A járművek betöltés után a megállóikból
+  indulnak újra.
 - **Pénzügyek** (P; `src/sim/economy.ts`, `src/ui/FinancePanel.tsx`): havonta
   **fenntartás** (út $1, sín $2 / cella; állomás $50, rakodó $25, raktár $300, jelző,
   lámpa, tábla) és **üzemeltetés** (kamion $100, mozdony $400, kocsi $40 / hó) vonódik le,
@@ -216,14 +227,14 @@ A jobb oldali **panel** három füle:
   lehet építeni és járművet venni. **Hitel** $10 000-es lépésekben, legfeljebb $200 000.
   A panel mutatja az e havi és a múlt havi könyvelést kategóriánként, a várható havi
   fix költséget tételesen, és **járatonként** a múlt havi bevételt, költséget, hasznot.
-- **Város és piac** (`src/sim/CityDevelopment.ts`, `src/render/MarketModel.tsx`,
-  `CityLabel.tsx`): a város mellett egy **Piac** áll (6×6, az oldalaira vasútállomás
-  vagy kamionrakodó építhető). A város havonta **árut** és **deszkát** kér
-  (a méretével arányosan); a keresletig teljes áron fizet, fölötte csak negyed áron.
-  Kisvárosként (40-es méretig) magától nő, utána **csak akkor nő, ha ellátod** —
-  minél jobban, annál gyorsabban. A piac fölötti kártya mutatja a lakosságot, a havi
-  keresletet (szállítva / kért) és az ellátottságot. A város a játékórával nő
-  (szünetben áll, gyorsításnál gyorsabb).
+- **Város** (`src/sim/CityDevelopment.ts`, `CityLabel.tsx`): a városközpont négyzetének
+  bármelyik oldalára építhetsz **vasútállomást** vagy **kamionrakodót** (az oldal mentén
+  oda kerül, ahová mutatsz; egy oldalra több is fér) — ezek a város kapui. A város havonta
+  **árut** és **deszkát** kér (a méretével arányosan); a keresletig teljes áron fizet,
+  fölötte csak negyed áron. Kisvárosként (40-es méretig) magától nő, utána **csak akkor
+  nő, ha ellátod** — minél jobban, annál gyorsabban. A város fölötti kártya mutatja a
+  lakosságot, a havi keresletet (szállítva / kért) és az ellátottságot. A város a
+  játékórával nő (szünetben áll, gyorsításnál gyorsabb).
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):
   6×6-os átrakóhely sík, üres területre (**Q**: forgatás). Két vágány
   (vonatoknak, később), csarnok, 5 rakodóállás és egy **egyirányú behajtó**

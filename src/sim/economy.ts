@@ -2,7 +2,7 @@
  * economy — the monthly running costs (the economic pressure).
  *
  *   - UPKEEP of the infrastructure, per month: road / rail per cell, stops,
- *     depots, signals, traffic controls (UPKEEP);
+ *     depots, signals, traffic controls, bridges / tunnels per spanned cell (UPKEEP);
  *   - RUNNING cost of the vehicles, per month: a truck, a locomotive and each
  *     wagon (RUNNING), booked to their line.
  *
@@ -27,6 +27,8 @@ export const UPKEEP = {
   light: 15,
   roundabout: 15,
   sign: 3,
+  bridgeCell: 6,
+  tunnelCell: 10,
 } as const;
 
 /** Monthly running cost of a vehicle ($). */
@@ -59,6 +61,12 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
     else signs++;
   }
   const signals = map.signals?.length ?? 0;
+  let bridge = 0, tunnel = 0;
+  for (const s of map.structures ?? []) {
+    const len = Math.abs(s.b[0] - s.a[0]) + Math.abs(s.b[1] - s.a[1]) - 1;
+    if (s.kind === 'bridge') bridge += len;
+    else tunnel += len;
+  }
   const items: UpkeepItem[] = [
     { label: 'Út', count: road, unit: 'cella', cost: road * UPKEEP.roadCell },
     { label: 'Sín', count: Math.round(rail), unit: 'cella', cost: rail * UPKEEP.railCell },
@@ -68,6 +76,8 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
     { label: 'Jelző', count: signals, unit: 'db', cost: signals * UPKEEP.signal },
     { label: 'Lámpa / körforgalom', count: lights + rounds, unit: 'db', cost: lights * UPKEEP.light + rounds * UPKEEP.roundabout },
     { label: 'Tábla', count: signs, unit: 'db', cost: signs * UPKEEP.sign },
+    { label: 'Híd', count: bridge, unit: 'cella', cost: bridge * UPKEEP.bridgeCell },
+    { label: 'Alagút', count: tunnel, unit: 'cella', cost: tunnel * UPKEEP.tunnelCell },
   ];
   return items.filter((i) => i.count > 0).map((i) => ({ ...i, cost: Math.round(i.cost) }));
 }

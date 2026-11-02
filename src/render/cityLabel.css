@@ -1,4 +1,4 @@
-/* City card above the market (CityLabel.tsx). Sized like the building badges (distanceFactor 16). */
+/* City card above the city (CityLabel.tsx). Sized like the building badges (distanceFactor 16). */
 .citycard {
   min-width: 340px;
   padding: 12px 16px;

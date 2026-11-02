@@ -42,8 +42,13 @@ export interface TrackSamples {
 const END_BLEND = 1.5;
 const ease = (t: number) => (t >= 1 ? 1 : t * t * (3 - 2 * t));
 
-/** Sample a centre-line at unit CENTRES, ≈ every `pitch` cells. */
-export function sampleTrack(map: TerrainMap, pts: readonly number[], pitch = UNIT): TrackSamples {
+/** Rail height on a structure (a bridge deck / a tunnel floor at `structureLevel`), cell units. */
+export function deckRailHeight(structureLevel: number): number {
+  return FLAT_TOP + structureLevel;
+}
+
+/** Sample a centre-line at unit CENTRES, ≈ every `pitch` cells (`level`: flat at that height). */
+export function sampleTrack(map: TerrainMap, pts: readonly number[], pitch = UNIT, level?: number): TrackSamples {
   const w = new LineWalker(pts);
   const n = Math.max(1, Math.round(w.total / pitch));
   const step = w.total / n;
@@ -65,6 +70,11 @@ export function sampleTrack(map: TerrainMap, pts: readonly number[], pitch = UNI
     s.tx[i] = o[2];
     s.tz[i] = o[3];
     raw[i] = groundAtGrid(map, o[0], o[1]);
+  }
+  // On a bridge / in a tunnel: level, at the structure's height.
+  if (level !== undefined) {
+    s.h.fill(level);
+    return s;
   }
   // Even grade: moving average over ±1.5 cells (no bumps at every terrain
   // ramp), but never BELOW the ground (track would sink in on crests) —

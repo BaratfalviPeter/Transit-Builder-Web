@@ -102,8 +102,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
-- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, Szóköz, T,
-  J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
+  J/P/M/0 panelek (M = Játék: mentés, új játék), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
@@ -161,13 +161,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 5 + 0,25/szint, deszka 3 + 0,15/szint;
   a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
   az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
-  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). PIAC (`CellType.Market`,
-  6×6, a generátor a város mellé rakja: `placeMarket`, 1 cella hely az útnak; az oldal `seed % 4`,
-  NEM az rng — különben az egész térkép (erdők, iparágak) megváltozna, és a tesztek mást mérnének): ACCEPTS áru +
-  deszka; a `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim
-  `tick` 5. paramétere a város). Modell: `MarketModel.tsx` (`?model=MarketModel`), kártya a piac
-  fölött: `CityLabel.tsx`. Teszt: scratchpad `market.ts` (30/30 térképen van piac; ellátatlan
-  város 40-nél megáll; fatelep → gyár → piac kamionjárat).
+  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). A VÁROS KAPUI (a felhasználónak
+  nem tetszett a külön piac-épület, kivettük): megálló a városközpont négyzetének bármely oldalára
+  (`stations.ts`: `cityAnchor` — a négyzeten belüli, az oldalt érintő 6×6-os ablak, a kurzorhoz
+  csúsztatva; `citySideAt` a `sideAt`-ben; `cityWindowOk` a `stationProblem`-ben; az anchor egy
+  CityCenter cella, egy oldalra több megálló is fér). ACCEPTS[CityCenter] = áru + deszka; a
+  `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim `tick` 5.
+  paramétere a város). A generátor a város körüli 4 cellás sávban nem rak erdőt (víz lehet).
+  Kártya a város fölött: `CityLabel.tsx` (`cityBounds`). Teszt: scratchpad `market.ts` (25/30
+  térképen mind a 4 oldal szabad; ellátatlan város 40-nél megáll; fatelep → gyár → város).
 - GAZDASÁG: `GameState` könyvel (`FinCat`: income / build / vehicles / upkeep / running /
   interest; `month` + `lastMonth` (`MonthBooks`, járatonként `lineIncome` / `lineCost`)). `spend(cost,
   cat)` (alap 'build'; járművek: 'vehicles'), `earn(amount, lineId)` — a TransportSim `Earn`
@@ -177,6 +179,36 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   mozdony 400, kocsi 40 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
   mínuszba vihetik az egyenleget; akkor a `spend` nem enged építeni / vásárolni. UI:
   `FinancePanel.tsx` (P). Teszt: scratchpad `market.ts` (MONTH sorok).
+- MENTÉS (`save.ts` + `useSave.ts` `SaveProvider`, UI: `GamePanel.tsx`, M): localStorage
+  (`SAVE_KEY`, `SAVE_VERSION` — formátumváltásnál emeld, a régi mentés akkor figyelmen kívül marad).
+  Mentődik: a térkép mindennel (cleared Set / controls Map tömbként), a járatok, a `GameState`
+  (`exportState`/`importState`), a város (`CityDevelopment.exportState`), a megállók készlete
+  (`ProductionSim.exportState`). NEM mentődik: a járművek helyzete — betöltéskor
+  `TransportSim.reset(lines)`, és a járművek a megállókból indulnak újra. Induláskor betölt
+  (hibás mentésnél új játék), automatikus mentés percenként + `visibilitychange`/`pagehide`.
+  „Új játék”: `newGame` (új térkép, üres hálózat, kezdőtőke = `GameState.startingMoney`).
+  A játékóra képkockánként max. 0,25 s-ot lép (`MAX_FRAME_S`), különben betöltés / háttérből
+  visszatérés után napokat ugrana. Teszt: scratchpad `pw/save.mjs`.
+- HÍD / ALAGÚT (`structures.ts`, render: `Structures.tsx`, eszköz: N / U): MÁSODIK SZINT a cellák
+  fölött / alatt. `map.structures` (`Structure`: kind, a, b = a két hídfő / alagútszáj, egy
+  tengelyen; `level` = a hídfők talaja; `carries` road | rail | nincs). A belső cellák NEM
+  változnak (víz, alatta futó út / sín marad). Szabályok (`structureProblem`): hídfők síkok,
+  egyforma magasak; híd: minden belső cella víz vagy ≥ 1 szinttel (HILL_STEP) lejjebb; alagút: nem
+  mélyebb a szájánál, nem víz, és hegy (≥ 1 szint) VAGY út / sín alatt megy (aluljáró). Max.
+  `MAX_SPAN` 14; ár / cella: híd 250, alagút 400; fenntartás 6 / 10 $/cella/hó. Előbb a szerkezet
+  (húzás vagy két kattintás), utána Út / Sín eszközzel kattintva rá: `layOnStructure` (út: a
+  hídfők Road cellák; sín: egy él `structure: id` jelzéssel a két hídfő között). Út: a `roadRoute`
+  a két hídfőt közvetlenül köti (`roadLinkFrom`), a kamion útvonala UGRIK; `buildLane` egységnyi
+  irányokkal + `lane.deck` dobozok (`deckBoxes`), `TruckPose.deck` — a kereszteződés-, sorompó- és
+  kamion-ütközésvizsgálat a másik szinten lévőt kihagyja (`inBoxes`). A csomópont-fokszámba a
+  link is beszámít. Sín: a `railIndex` a belső cellákat kihagyja (nincs közös cella / sorompó
+  alatta), a `snapToNet` nem ad 'mid'-et rajta, a `splitAtPoint` / `cutAtCell` nem vágja. A földi út /
+  sín a szerkezet alatt csak KERESZTBEN mehet (`groundStepOk`, `validate`). Bontás: a belső cellán
+  (ha ott nincs földi út / sín / fa) a szerkezet a tartalmával együtt megy (`removeStructure`); a
+  szerkezet celláin nincs tereprendezés. Render: híd = beton pálya, pillérek, korlát (+ útburkolat);
+  sín a pálya magasságán (`sampleTrack` `level`, `deckRailHeight`); alagút = kőkapu a két végén, a
+  belső rész (sín, kamion, vonatkocsi) nem látszik. Teszt: scratchpad `bridge.ts`, `under.ts`
+  (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -207,7 +239,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
-- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, MarketModel, OilRig,
+- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
   StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
@@ -231,9 +263,14 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
 - Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
 - Mergelve: #86 (párhuzamos sínek bekötése: S-ív, csúszó becsatlakozás, irány a kurzor szerint).
-- Folyamatban (#87): a város mint fogyasztó (piac, kereslet, ellátottság, növekedés) + gazdasági
-  nyomás (fenntartás, járműköltség, Pénzügyek panel, hitel). Feltételes ötlet: lerakható iparágak
-  fix lelőhelyekkel (`ötletek.md`).
+- Mergelve: #87 (a város mint fogyasztó: piac, kereslet, ellátottság, növekedés + gazdasági nyomás:
+  fenntartás, járműköltség, Pénzügyek panel, hitel).
+- TERV (`ötletek.md`, a felhasználó jóváhagyta): a városnak belső nézete lesz — kint csak a kapuk
+  (megállók a városközpont oldalain), bent organikusan nő; áru automatikusan (Mini Motorways),
+  utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). Kint ezért a megállók a
+  városközpont oldalain vannak (ezek lesznek a belső város kapui).
+- Folyamatban (#88): megállók a város szélén (piac helyett), mentés / betöltés, hidak és alagutak.
+- Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 

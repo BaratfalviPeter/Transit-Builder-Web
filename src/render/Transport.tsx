@@ -11,12 +11,14 @@ import { Html, Line as DreiLine } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 import {
+  CellType,
   isDepot,
   stopLabel,
   stopCenter,
   stopKind,
   laneAt,
   signalsOf,
+  spanUnder,
   TRAILER_AXLE,
   TRUCK_HITCH,
   useTransport,
@@ -25,6 +27,8 @@ import {
   type TerrainMap,
 } from '../sim';
 import { groundAtGrid } from './railGeometry';
+import { DECK_LIFT } from './Structures';
+import { CELL_STYLE } from './terrainStyle';
 import { Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
 import './transport.css';
 
@@ -42,6 +46,8 @@ type Cell = [number, number];
 /** Top of the road coat above the ground (cells): the trucks drive on it. */
 const ROAD_TOP = 0.026;
 
+const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
+
 // ---------------------------------------------------------------- trucks
 
 /** One articulated truck, placed every frame from the simulation. */
@@ -58,7 +64,14 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     const p = sim.drawPose(t);
     g.visible = !!p; // in the depot: not on the map yet
     if (!p) return;
-    const ground = (x: number, z: number) => groundAtGrid(map, x, z) + ROAD_TOP;
+    // Up on a bridge: the deck's height; inside a tunnel: not seen.
+    const span = spanUnder(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw), 'road');
+    if (span?.kind === 'tunnel') {
+      g.visible = false;
+      return;
+    }
+    const deck = span ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : null;
+    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.

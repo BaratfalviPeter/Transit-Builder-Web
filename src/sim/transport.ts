@@ -48,6 +48,7 @@
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
 
+import { deckBoxes, inBoxes, roadLinkFrom } from './structures';
 import {
   CellType,
   getSlopeKind,
@@ -402,6 +403,15 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
       return path.reverse();
     }
     const x = (c / n) | 0, z = c % n;
+    // Over a bridge / through a tunnel: straight on to the far abutment.
+    const link = roadLinkFrom(map, x, z);
+    if (link && isRoad(link.to[0], link.to[1])) {
+      const k = link.to[0] * n + link.to[1];
+      if (prev[k] === -2) {
+        prev[k] = c;
+        q.push(k);
+      }
+    }
     for (let d = 0; d < 4; d++) {
       const nx = x + DX[d], nz = z + DZ[d];
       if (!isRoad(nx, nz)) continue;
@@ -436,7 +446,8 @@ export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => b
     xs.push(x);
     zs.push(z);
   };
-  const dir = (i: number): [number, number] => [path[i + 1][0] - path[i][0], path[i + 1][1] - path[i][1]];
+  // Unit steps (a route jumps over a bridge / tunnel: abutment → abutment).
+  const dir = (i: number): [number, number] => [Math.sign(path[i + 1][0] - path[i][0]), Math.sign(path[i + 1][1] - path[i][1])];
   // Right of heading (dx, dz) is (−dz, dx).
   const right = ([dx, dz]: [number, number]): [number, number] => [-dz * LANE, dx * LANE];
   const quad = (ax: number, az: number, kx: number, kz: number, bx: number, bz: number) => {
@@ -490,7 +501,8 @@ export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => b
   }
   const cum = [0];
   for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
-  return { xs, zs, cum, length: cum[cum.length - 1] };
+  const deck = deckBoxes(path);
+  return deck.length ? { xs, zs, cum, length: cum[cum.length - 1], deck } : { xs, zs, cum, length: cum[cum.length - 1] };
 }
 
 /** The truck speed cap at `s` for the bends ahead and a stop at `stopAt` (see lane.ts). */
@@ -521,6 +533,8 @@ export interface TruckPose {
   /** Front of the tractor / rear of the trailer (for traffic checks). */
   front: [number, number];
   rear: [number, number];
+  /** Up on a bridge / down in a tunnel (another level than the ground roads). */
+  deck?: boolean;
 }
 
 function poseOnLane(l: Lane, s: number): TruckPose {
@@ -605,6 +619,28 @@ export class TransportSim {
     const d = this.snap.draft;
     if (!d || d[d.length - 1] === id) return;
     this.set({ draft: d.concat(id) });
+  }
+
+  /**
+   * Start over with `lines` (a loaded game, or none for a new one): every
+   * vehicle and reservation goes; the lines' vehicles start again from their
+   * stops on the next ticks.
+   */
+  reset(lines: readonly Line[] = []): void {
+    this.trucks = [];
+    this.trains = [];
+    this.railHeld.clear();
+    this.routeCache.clear();
+    this.routeVersion = -1;
+    this.zones = [];
+    this.yard.clear();
+    this.bays.clear();
+    this.reserved.clear();
+    this.junctions = null;
+    this.junctionVersion = -1;
+    this.payments.length = 0;
+    this.nextLine = lines.reduce((m, l) => Math.max(m, l.id), 0) + 1;
+    this.set({ lines: lines.slice(), view: false, draft: null, noRoute: [], stalled: [], fleet: this.snap.fleet + 1 });
   }
 
   /** Turn the draft into a line (with one truck). Returns it, or null. */
@@ -908,6 +944,7 @@ export class TransportSim {
         if (!road(x, z)) continue;
         let k = 0;
         for (let d = 0; d < 4; d++) if (road(x + DX[d], z + DZ[d])) k++;
+        if (roadLinkFrom(map, x, z)) k++; // the road over a bridge / through a tunnel
         if (k >= 3) j[x * n + z] = 1;
       }
     this.junctions = j;
@@ -932,6 +969,7 @@ export class TransportSim {
     const jm = this.junctionMap(map);
     const cellAt = (d: number) => {
       const [x, z] = laneAt(lane, d);
+      if (inBoxes(lane.deck, x, z)) return -1; // up on a bridge: no junction below counts
       const cx = Math.round(x), cz = Math.round(z);
       return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
     };
@@ -974,6 +1012,7 @@ export class TransportSim {
       const body: Array<[number, number]> = [op.front, [op.x, op.z], op.rear, [(op.x + op.rear[0]) / 2, (op.z + op.rear[1]) / 2]];
       for (let d = sIn; d <= end + 1e-6; d += 0.1) {
         const [px, pz] = laneAt(lane, d);
+        if (inBoxes(lane.deck, px, pz) !== !!op.deck) continue;
         for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP) return this.waitOn(t, o);
       }
     }
@@ -1024,6 +1063,7 @@ export class TransportSim {
       const ol = o.lane;
       const oc = (d: number) => {
         const [x, z] = laneAt(ol, d);
+        if (inBoxes(ol.deck, x, z)) return -1;
         const cx = Math.round(x), cz = Math.round(z);
         return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
       };
@@ -1054,18 +1094,20 @@ export class TransportSim {
     const range = (TRUCK_SPEED * TRUCK_SPEED) / (2 * DECEL) + LOOK_AHEAD;
     let cap = TRUCK_SPEED;
     // The nearest truck body on the lane ahead.
-    const near: Array<[number, number]> = [];
+    const near: Array<[number, number, boolean]> = [];
     for (const o of this.trucks) {
       const op = o !== t && poses.get(o.id);
       if (!op || Math.hypot(op.x - me.x, op.z - me.z) > range + 1.5) continue;
       if (Math.hypot(op.x - me.x, op.z - me.z) < 0.1) continue; // same spot (see heldUp)
-      near.push(op.front, [op.x, op.z], op.rear, [(op.x + op.rear[0]) / 2, (op.z + op.rear[1]) / 2]);
+      const dk = !!op.deck;
+      near.push([op.front[0], op.front[1], dk], [op.x, op.z, dk], [op.rear[0], op.rear[1], dk], [(op.x + op.rear[0]) / 2, (op.z + op.rear[1]) / 2, dk]);
     }
     if (near.length)
       for (let d = 0.12; d <= range; d += 0.1) {
         if (t.s + d > lane.length + 0.05) break;
         const [px, pz] = laneAt(lane, t.s + d);
-        if (near.some(([bx, bz]) => Math.hypot(bx - px, bz - pz) < BODY_GAP)) {
+        const up = inBoxes(lane.deck, px, pz);
+        if (near.some(([bx, bz, dk]) => dk === up && Math.hypot(bx - px, bz - pz) < BODY_GAP)) {
           cap = Math.sqrt(2 * DECEL * Math.max(0, d - LOOK_AHEAD));
           break;
         }
@@ -1079,6 +1121,7 @@ export class TransportSim {
       const jm = this.junctionMap(map);
       const cellAt = (d: number) => {
         const [x, z] = laneAt(lane, d);
+        if (inBoxes(lane.deck, x, z)) return -1;
         const cx = Math.round(x), cz = Math.round(z);
         return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
       };
@@ -1113,6 +1156,7 @@ export class TransportSim {
     const jm = this.junctionMap(map);
     for (let d = 0.05; d <= 0.8 && t.s + d <= lane.length; d += 0.05) {
       const [x, z] = laneAt(lane, t.s + d);
+      if (inBoxes(lane.deck, x, z)) continue;
       const cx = Math.round(x), cz = Math.round(z);
       if (cx >= 0 && cz >= 0 && cx < n && cz < n && jm[cx * n + cz] === 1) return Math.max(0, d - STOP_LINE);
     }
@@ -1209,6 +1253,7 @@ export class TransportSim {
       const body: Array<[number, number]> = [op.front, [op.x, op.z], op.rear];
       for (let d = -TRUCK_HITCH - TRAILER_AXLE - (fresh ? 0.2 : 0.6); d <= LOOK_AHEAD; d += 0.11) {
         const [px, pz] = laneAt(lane, s0 + d);
+        if (inBoxes(lane.deck, px, pz) !== !!op.deck) continue;
         for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP + 0.05) return this.waitOn(t, o);
       }
     }
@@ -1223,6 +1268,7 @@ export class TransportSim {
     for (let d = 0.12; d <= LOOK_AHEAD + 1e-6; d += 0.11) {
       if (t.s + d > lane.length + 0.05) break;
       const [px, pz] = laneAt(lane, t.s + d);
+      if (inBoxes(lane.deck, px, pz) !== !!o.deck) continue; // other level (bridge / tunnel)
       for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP) return true;
     }
     return false;
@@ -1458,8 +1504,8 @@ export class TransportSim {
       else for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
     }
     const depot = isDepot(here);
-    // The market: the city takes all it accepts and pays by its demand.
-    const city = !depot && map.cells[here.anchor[0]][here.anchor[1]] === CellType.Market ? this.market : null;
+    // A city stop: the city takes all it accepts and pays by its demand.
+    const city = !depot && map.cells[here.anchor[0]][here.anchor[1]] === CellType.CityCenter ? this.market : null;
 
     // Unload. An industry takes (and pays for) what it accepts; a depot
     // stores what this line can't deliver itself.
@@ -1974,6 +2020,7 @@ export class TransportSim {
     const n = map.size;
     const cellAt = (d: number) => {
       const [x, z] = laneAt(lane, d);
+      if (inBoxes(lane.deck, x, z)) return -1; // over / under the tracks
       const cx = Math.round(x), cz = Math.round(z);
       return cx >= 0 && cz >= 0 && cx < n && cz < n ? cx * n + cz : -1;
     };
@@ -2111,7 +2158,10 @@ export class TransportSim {
    * (a new truck, before it first drives off; not drawn).
    */
   pose(t: Truck): TruckPose | null {
-    return t.lane ? poseOnLane(t.lane, t.s) : null;
+    if (!t.lane) return null;
+    const p = poseOnLane(t.lane, t.s);
+    if (t.lane.deck && inBoxes(t.lane.deck, p.x, p.z)) p.deck = true;
+    return p;
   }
 
   private set(patch: Partial<TransportSnapshot>): void {

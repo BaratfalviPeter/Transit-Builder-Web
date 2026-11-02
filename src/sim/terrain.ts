@@ -43,11 +43,6 @@ export enum CellType {
    */
   OilRig = 'OilRig',
   /**
-   * The city market (piac): exactly one per map, on a 6×6 lot at the edge of
-   * the city. The town takes in goods / timber here (see city.ts).
-   */
-  Market = 'Market',
-  /**
    * A cell occupied by the footprint of a large (3×3) industry, around its
    * center cell. Nothing can be built, sculpted or bulldozed here.
    */
@@ -70,7 +65,6 @@ export const SPECIAL_BUILDINGS: ReadonlySet<CellType> = new Set([
   CellType.PowerPlant,
   CellType.Factory,
   CellType.OilRig,
-  CellType.Market,
 ]);
 
 /** Industries that occupy a large INDUSTRY_LOT_SIZE² footprint (6×6). */
@@ -80,8 +74,27 @@ export const LARGE_INDUSTRY: ReadonlySet<CellType> = new Set([
   CellType.Mine,
   CellType.Factory,
   CellType.OilRig,
-  CellType.Market,
 ]);
+
+/** Bounding box of the city square (its CityCenter cells), or null. Cached per cell grid. */
+const cityBoxCache = new WeakMap<object, { x0: number; x1: number; z0: number; z1: number } | null>();
+export function cityBounds(map: TerrainMap): { x0: number; x1: number; z0: number; z1: number } | null {
+  if (cityBoxCache.has(map.cells)) return cityBoxCache.get(map.cells)!;
+  let box: { x0: number; x1: number; z0: number; z1: number } | null = null;
+  for (let x = 0; x < map.size; x++)
+    for (let z = 0; z < map.size; z++) {
+      if (map.cells[x][z] !== CellType.CityCenter) continue;
+      if (!box) box = { x0: x, x1: x, z0: z, z1: z };
+      else {
+        box.x0 = Math.min(box.x0, x);
+        box.x1 = Math.max(box.x1, x);
+        box.z0 = Math.min(box.z0, z);
+        box.z1 = Math.max(box.z1, z);
+      }
+    }
+  cityBoxCache.set(map.cells, box);
+  return box;
+}
 
 /** Edge length (in cells) of a large industry's square lot. */
 export const INDUSTRY_LOT_SIZE = 6;
@@ -350,6 +363,8 @@ export interface TerrainMap {
   readonly controls?: ReadonlyMap<number, import('./traffic').ControlKind>;
   /** Rail signals (see signals.ts). */
   readonly signals?: readonly import('./signals').RailSignal[];
+  /** Bridges and tunnels (see structures.ts): a second level above / below the cells. */
+  readonly structures?: readonly import('./structures').Structure[];
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.
@@ -566,10 +581,6 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
   // industry, so the lake never cuts through them.
   placeOilRig();
 
-  // --- Pass 1d: the city market ---------------------------------------------
-  // A 6×6 lot just outside the city square (one cell of gap for a road), on
-  // the first side with level, empty ground. Before forests and industry.
-  placeMarket();
 
   // --- Pass 2: forests (trees) on top of the terrain ----------------------
   // Trees grow on grass OR on flat hill tops (raised), on moist ground, but
@@ -579,7 +590,9 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     for (let z = 0; z < size; z++) {
       const t = cells[x][z];
       if (t !== CellType.Empty && t !== CellType.Hill) continue;
-      if (distFromCity(x, z) <= cityHalf + 1) continue; // keep city clear
+      // Keep the city and a ring around it clear: room for stops on its sides
+      // (platform + track) and a road along them.
+      if (distFromCity(x, z) <= cityHalf + 4) continue;
       if (!isFlatCell(x, z)) continue; // corner rule for trees too
       if (levels[x][z] > TREELINE_LEVEL) continue; // no forest above the treeline
       const m = moisture(x * freq * 1.3 + 10, z * freq * 1.3 + 10);
@@ -700,40 +713,6 @@ export function generateTerrain(options: GenerateOptions = {}): TerrainMap {
     for (let dx = lo; dx <= hi; dx++)
       for (let dz = lo; dz <= hi; dz++) cells[site.x + dx][site.z + dz] = CellType.IndustryLot;
     cells[site.x][site.z] = CellType.OilRig;
-  }
-
-  /** The market lot: centred on a side of the city square, else slid along it. */
-  function placeMarket(): void {
-    const { lo, hi } = industryFootprint(CellType.Market);
-    const gap = cityHalf + 2; // first lot row/column outside the city (+1 cell gap)
-    const free = (ax: number, az: number): boolean => {
-      const level = cornerHeightAt(base, ax, az);
-      for (let dx = lo; dx <= hi; dx++)
-        for (let dz = lo; dz <= hi; dz++) {
-          const x = ax + dx, z = az + dz;
-          if (x < 1 || z < 1 || x >= size - 1 || z >= size - 1) return false;
-          if (cells[x][z] !== CellType.Empty || !isFlatCell(x, z) || cornerHeightAt(base, x, z) !== level) return false;
-        }
-      return true;
-    };
-    // Anchor offsets that put the lot's near edge `gap` from the centre, per side (S, E, N, W).
-    const sides: Array<(t: number) => [number, number]> = [
-      (t) => [center + t, center + gap - lo],
-      (t) => [center + gap - lo, center + t],
-      (t) => [center + t, center - gap - hi],
-      (t) => [center - gap - hi, center + t],
-    ];
-    // From the seed, not the rng: the rest of the map stays as it was without a market.
-    const start = seed % 4;
-    for (const slide of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
-      for (let k = 0; k < 4; k++) {
-        const [ax, az] = sides[(start + k) % 4](slide);
-        if (!free(ax, az)) continue;
-        for (let dx = lo; dx <= hi; dx++) for (let dz = lo; dz <= hi; dz++) cells[ax + dx][az + dz] = CellType.IndustryLot;
-        cells[ax][az] = CellType.Market;
-        return;
-      }
-    }
   }
 
   /** Chebyshev distance (in cells) from the city center. */

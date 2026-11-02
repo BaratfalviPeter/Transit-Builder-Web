@@ -15,6 +15,7 @@
  * Pure TypeScript; immutable (copy-on-write) like the rest of TerrainMap.
  */
 
+import { interiorOf } from './structures';
 import {
   CellType,
   cellCornerHeights,
@@ -27,6 +28,12 @@ export interface RailEdge {
   readonly id: number;
   /** Centre-line points [x0, z0, x1, z1, …] in grid coords. */
   readonly pts: readonly number[];
+  /**
+   * The bridge / tunnel (structures.ts) this edge runs on, abutment to
+   * abutment: its footprint skips the interior cells, and it is never split
+   * (no switch or signal on it, bulldozing a cell leaves it).
+   */
+  readonly structure?: number;
 }
 
 export interface RailNet {
@@ -145,12 +152,18 @@ export function railIndex(map: TerrainMap): Map<number, CellTrack[]> {
   const n = map.size;
   for (const e of net.edges) {
     const seen = new Set<number>();
+    // On a structure: only its abutment cells (the interior is another level).
+    const skip = new Set<number>();
+    if (e.structure !== undefined) {
+      const s = map.structures?.find((q) => q.id === e.structure);
+      if (s) for (const [x, z] of interiorOf(s)) skip.add(x * n + z);
+    }
     forEachSample(e.pts, 0.1, (x, z, tx, tz) => {
       for (const o of [-TRACK_HALF, 0, TRACK_HALF]) {
         const cx = Math.round(x - tz * o), cz = Math.round(z + tx * o);
         if (cx < 0 || cz < 0 || cx >= n || cz >= n) continue;
         const k = cx * n + cz;
-        if (seen.has(k)) continue;
+        if (seen.has(k) || skip.has(k)) continue;
         seen.add(k);
         let arr = idx.get(k);
         if (!arr) idx.set(k, (arr = []));
@@ -286,9 +299,11 @@ export function snapToNet(net: RailNet, x: number, z: number, maxDist = SNAP_DIS
       const sg = atStart ? -1 : 1;
       return { edge: best.e.id, along: s, x: o[0], z: o[1], tx: o[2] * sg, tz: o[3] * sg, kind: 'end' };
     }
+    if (best.e.structure !== undefined) return null; // no switch on a bridge / in a tunnel
     if (w.total < SWITCH_CLEAR * 2 + 0.2) return null;
     best.along = atStart ? SWITCH_CLEAR : w.total - SWITCH_CLEAR;
   }
+  if (best.e.structure !== undefined) return null; // no switch on a bridge / in a tunnel
   const o = w.at(best.along);
   return { edge: best.e.id, along: best.along, x: o[0], z: o[1], tx: o[2], tz: o[3], kind: 'mid' };
 }
@@ -300,6 +315,7 @@ export function splitAtPoint(net: RailNet, x: number, z: number): RailNet {
   const s = snapToNet(net, x, z, 0.05);
   if (!s) return net;
   const e = net.edges.find((q) => q.id === s.edge)!;
+  if (e.structure !== undefined) return net; // never split a bridge / tunnel track
   const w = new LineWalker(e.pts);
   // Exact along of the point (snapToNet may have nudged it — recompute).
   let along = s.along;
@@ -324,9 +340,10 @@ export function splitAtPoint(net: RailNet, x: number, z: number): RailNet {
   return { edges: net.edges.map((q) => (q === e ? a : q)).concat(b), nextId: net.nextId + 1 };
 }
 
-/** Add a new edge. */
-export function addEdge(net: RailNet, pts: number[]): RailNet {
-  return { edges: net.edges.concat({ id: net.nextId, pts }), nextId: net.nextId + 1 };
+/** Add a new edge (`structure`: it runs on that bridge / tunnel). */
+export function addEdge(net: RailNet, pts: number[], structure?: number): RailNet {
+  const e: RailEdge = structure === undefined ? { id: net.nextId, pts } : { id: net.nextId, pts, structure };
+  return { edges: net.edges.concat(e), nextId: net.nextId + 1 };
 }
 
 /** Is the point at arc length s of `w` on the lattice (a cell centre, octilinear heading)? */
@@ -371,6 +388,11 @@ export function cutAtCell(net: RailNet, x: number, z: number): RailNet {
   let nextId = net.nextId;
   const out: RailEdge[] = [];
   for (const e of net.edges) {
+    // A bridge / tunnel track goes only with its structure (TerrainStore.removeStructure).
+    if (e.structure !== undefined) {
+      out.push(e);
+      continue;
+    }
     const w = new LineWalker(e.pts);
     const STEP = 0.05;
     const n = Math.max(1, Math.ceil(w.total / STEP));

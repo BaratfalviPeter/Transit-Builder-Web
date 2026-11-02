@@ -19,6 +19,7 @@
  * `blocked: true`, so the UI can show it red.
  */
 
+import { groundStepOk } from './structures';
 import {
   canBuildRailAt,
   canBuildRoadAt,
@@ -237,6 +238,7 @@ export function findTrackPath(
       const nz = z + DZ[nd];
       if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
       if (!passable(nx, nz)) continue;
+      if (!groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // not along under a bridge
       // Level crossings: the road runs straight across the rail.
       if (type === CellType.Road) {
         const axis = isXDir(nd) ? 'x' : 'z';
@@ -283,6 +285,7 @@ export function findTrackPath(
 export function trackStepOk(map: TerrainMap, a: GridCell, b: GridCell, type: TrackType): boolean {
   const ddx = b.x - a.x, ddz = b.z - a.z;
   if (Math.abs(ddx) + Math.abs(ddz) !== 1 || !isTrackPassable(map, b.x, b.z, type)) return false;
+  if (!groundStepOk(map, a, b)) return false; // not along under a bridge / over a tunnel
   const nd = ddx === 1 ? 0 : ddx === -1 ? 1 : ddz === 1 ? 2 : 3;
   if (type === CellType.Road) {
     const axis = isXDir(nd) ? 'x' : 'z';

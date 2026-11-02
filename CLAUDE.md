@@ -205,9 +205,13 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   alatta), a `snapToNet` nem ad 'mid'-et rajta, a `splitAtPoint` / `cutAtCell` nem vágja. A földi út /
   sín a szerkezet alatt csak KERESZTBEN mehet (`groundStepOk`, `validate`). Bontás: a belső cellán
   (ha ott nincs földi út / sín / fa) a szerkezet a tartalmával együtt megy (`removeStructure`); a
-  szerkezet celláin nincs tereprendezés. Render: híd = beton pálya, pillérek, korlát (+ útburkolat);
-  sín a pálya magasságán (`sampleTrack` `level`, `deckRailHeight`); alagút = kőkapu a két végén, a
-  belső rész (sín, kamion, vonatkocsi) nem látszik. Teszt: scratchpad `bridge.ts`, `under.ts`
+  szerkezet celláin nincs tereprendezés. Render (`Structures.tsx`): híd = beton ívhíd (`deckGeometry`:
+  oldalprofil ívekkel a pillérek között, ~2,4 cellánként pillér sapkával, hídfők); közúti: mellvéd +
+  lámpák + útburkolat; vasúti: acél rácsos tartó (`Truss`). Sín a pálya magasságán (`sampleTrack`
+  `level`, `deckRailHeight`). Alagút = íves kőkapu (`PORTAL_GEOM`, zárókő, párkány, szárnyfalak),
+  és a domb alatt ÁTLÁTSZÓ „röntgen” cső (`GHOST.tube`, mélységteszt nélkül — a felhasználó kérte,
+  hogy át lehessen rajta látni); a bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz
+  (`GHOST.vehicle`, Trains.tsx / Transport.tsx). Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
@@ -269,7 +273,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (megállók a városközpont oldalain), bent organikusan nő; áru automatikusan (Mini Motorways),
   utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). Kint ezért a megállók a
   városközpont oldalain vannak (ezek lesznek a belső város kapui).
-- Folyamatban (#88): megállók a város szélén (piac helyett), mentés / betöltés, hidak és alagutak.
+- Mergelve: #88 (megállók a város szélén, mentés / betöltés, hidak és alagutak).
+- Folyamatban: szebb híd- és alagútmodell, átlátszó alagút.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

@@ -24,6 +24,9 @@ import {
   type Train,
 } from '../sim';
 import { deckRailHeight, sampleTrack, type TrackSamples } from './railGeometry';
+import { GHOST } from './Structures';
+
+const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
 import { CAR_BOGIE, LOCO_BOGIE, LOCO_COLORS, Locomotive, Wagon, WAGON_FOR, type WagonKind } from './TrainModel';
 
 /** Rail top above the track's (smoothed) ground line — see Rails.tsx. */
@@ -74,6 +77,8 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
   const sim = useTransport();
   const root = useRef<THREE.Group>(null);
   const cars = useRef<Array<THREE.Group | null>>([]);
+  /** Each car's see-through stand-in while it is in a tunnel. */
+  const ghosts = useRef<Array<THREE.Mesh | null>>([]);
   const last = useRef<WagonKind[]>([]);
   const [loads, setLoads] = useState(() => wagonLoads({ cargo: {}, wagons: 0 } as unknown as Train, last.current));
   const sig = useRef('');
@@ -102,6 +107,15 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
       car.position.set((f[0] + r[0]) / 2 - half, (f[1] + r[1]) / 2, (f[2] + r[2]) / 2 - half);
       const dx = f[0] - r[0], dz = f[2] - r[2];
       car.rotation.set(0, Math.atan2(-dz, dx), Math.atan2(f[1] - r[1], Math.hypot(dx, dz)));
+      const gh = ghosts.current[k];
+      if (gh) {
+        gh.visible = !car.visible;
+        if (gh.visible) {
+          gh.position.copy(car.position);
+          gh.position.y += 0.2 * TRAIN_SCALE;
+          gh.rotation.copy(car.rotation);
+        }
+      }
     });
     const s = t.wagons + ':' + (Object.keys(t.cargo) as Item[]).map((i) => `${i}${Math.ceil((t.cargo[i] ?? 0) / WAGON_CAPACITY)}`).join();
     if (s !== sig.current) {
@@ -118,6 +132,17 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
         <group key={j} ref={(g) => (cars.current[j + 1] = g)} scale={TRAIN_SCALE}>
           <Wagon kind={w.kind} loaded={w.loaded} />
         </group>
+      ))}
+      {[LOCO_LEN, ...loads.map(() => CAR_LEN)].map((l, k) => (
+        <mesh
+          key={`g${k}`}
+          ref={(m) => (ghosts.current[k] = m)}
+          geometry={GHOST_BOX}
+          material={GHOST.vehicle}
+          scale={[l * 0.95, 0.34 * TRAIN_SCALE, 0.28 * TRAIN_SCALE]}
+          visible={false}
+          renderOrder={20}
+        />
       ))}
     </group>
   );

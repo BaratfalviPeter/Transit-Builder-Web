@@ -27,7 +27,7 @@ import {
   type TerrainMap,
 } from '../sim';
 import { groundAtGrid } from './railGeometry';
-import { DECK_LIFT } from './Structures';
+import { DECK_LIFT, GHOST } from './Structures';
 import { CELL_STYLE } from './terrainStyle';
 import { Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
 import './transport.css';
@@ -47,6 +47,7 @@ type Cell = [number, number];
 const ROAD_TOP = 0.026;
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
+const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
 
 // ---------------------------------------------------------------- trucks
 
@@ -56,6 +57,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
   const root = useRef<THREE.Group>(null);
   const tractor = useRef<THREE.Group>(null);
   const trailer = useRef<THREE.Group>(null);
+  const ghost = useRef<THREE.Mesh>(null);
   const half = (map.size - 1) / 2;
   useFrame(() => {
     const g = root.current, tr = tractor.current, tl = trailer.current;
@@ -66,10 +68,20 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     if (!p) return;
     // Up on a bridge: the deck's height; inside a tunnel: not seen.
     const span = spanUnder(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw), 'road');
+    const ghostMesh = ghost.current;
+    if (ghostMesh) ghostMesh.visible = span?.kind === 'tunnel';
     if (span?.kind === 'tunnel') {
-      g.visible = false;
+      // In a tunnel: a see-through stand-in instead of the truck.
+      tr.visible = tl.visible = false;
+      g.position.set((p.x - half) * cellSize, (FLAT_TOP + span.level) * cellSize, (p.z - half) * cellSize);
+      if (ghostMesh) {
+        // Centred a little behind the hitch (over the trailer), along the heading.
+        ghostMesh.position.set(-Math.cos(p.yaw) * 0.2, 0.12, Math.sin(p.yaw) * 0.2);
+        ghostMesh.rotation.set(0, p.yaw, 0);
+      }
       return;
     }
+    tr.visible = tl.visible = true;
     const deck = span ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : null;
     const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
     const gh = ground(p.x, p.z);
@@ -83,6 +95,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     <group ref={root} scale={cellSize} visible={false}>
       <Tractor ref={tractor} colors={colors} />
       <Trailer ref={trailer} colors={colors} />
+      <mesh ref={ghost} geometry={GHOST_BOX} material={GHOST.vehicle} scale={[0.75, 0.22, 0.2]} visible={false} renderOrder={20} />
     </group>
   );
 }

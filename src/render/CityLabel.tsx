@@ -1,5 +1,5 @@
 /**
- * CityLabel — the city card floating above the market: population, this
+ * CityLabel — the city card floating above the city square: population, this
  * month's demand per item (delivered / wanted, with a bar), last month's
  * supply and whether the town is growing (see sim/CityDevelopment.ts).
  *
@@ -11,9 +11,7 @@ import { useMemo } from 'react';
 import {
   CellType,
   CITY_ITEMS,
-  cornerHeightAt,
-  INDUSTRY_CENTER_OFFSET,
-  INDUSTRY_MODEL_SCALE,
+  cityBounds,
   ITEMS,
   useCitySnapshot,
   type TerrainMap,
@@ -26,23 +24,21 @@ const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 const GROWTH_TEXT = {
   free: 'Kisváros — magától nő',
   supplied: 'Nő, amíg ellátod',
-  stalled: 'Nem nő — szállíts ide árut és deszkát',
+  stalled: 'Nem nő — szállíts ide árut és deszkát (megálló a város szélén)',
 } as const;
 
 export function CityLabel({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   const city = useCitySnapshot();
   const half = (map.size - 1) / 2;
 
-  const market = useMemo(() => {
-    for (let x = 0; x < map.size; x++) for (let z = 0; z < map.size; z++) if (map.cells[x][z] === CellType.Market) return { x, z };
-    return null;
-  }, [map]);
-  if (!market) return null;
+  const box = useMemo(() => cityBounds(map), [map]);
+  if (!box) return null;
 
-  const y = (FLAT_TOP + cornerHeightAt(map, market.x, market.z)) * cellSize + 3.2 * INDUSTRY_MODEL_SCALE * cellSize;
+  // Above the middle of the city, over its tallest buildings.
+  const y = (FLAT_TOP + 4.5) * cellSize;
   return (
     <Html
-      position={[(market.x - half + INDUSTRY_CENTER_OFFSET) * cellSize, y, (market.z - half + INDUSTRY_CENTER_OFFSET) * cellSize]}
+      position={[((box.x0 + box.x1) / 2 - half) * cellSize, y, ((box.z0 + box.z1) / 2 - half) * cellSize]}
       center
       distanceFactor={16}
       zIndexRange={[10, 0]}
@@ -50,8 +46,8 @@ export function CityLabel({ map, cellSize }: { map: TerrainMap; cellSize: number
     >
       <div className="citycard">
         <div className="citycard__head">
-          <span className="citycard__icon">🏪</span>
-          <span className="citycard__title">Piac</span>
+          <span className="citycard__icon">🏙️</span>
+          <span className="citycard__title">Város</span>
           <span className="citycard__pop">{city.population.toLocaleString('hu-HU')} lakos</span>
         </div>
         {CITY_ITEMS.map((it) => {

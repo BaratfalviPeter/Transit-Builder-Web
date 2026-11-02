@@ -8,10 +8,11 @@
  * Buildings: each growth step picks a random cell of the central CityCenter
  * zone — empty: a level-1 building; below MAX_LEVEL: one level up.
  *
- * Economy (the city as a consumer, through its MARKET — terrain.ts):
+ * Economy (the city as a consumer, through the stops on its square's sides —
+ * stations.ts):
  *   - size = the sum of building levels; population = size × POP_PER_LEVEL;
  *   - monthly DEMAND per item (DEMAND: base + per level);
- *   - deliveries to the market count towards this month's demand and are paid
+ *   - deliveries to a city stop count towards this month's demand and are paid
  *     in full up to it — beyond it at OVERSUPPLY_PRICE only;
  *   - SATISFACTION = delivered / demand per month (per item, max 1), averaged
  *     with the month before (deliveries come in loads, not evenly);
@@ -32,7 +33,7 @@ export const DEMAND: Readonly<Partial<Record<Item, { base: number; perLevel: num
   goods: { base: 5, perLevel: 0.25 },
   plank: { base: 3, perLevel: 0.15 },
 };
-/** The items the city takes (its market's ACCEPTS). */
+/** The items the city takes (its stops' ACCEPTS). */
 export const CITY_ITEMS = Object.keys(DEMAND) as Item[];
 /** Price factor for deliveries beyond this month's demand. */
 export const OVERSUPPLY_PRICE = 0.25;
@@ -125,7 +126,7 @@ export class CityDevelopment {
   }
 
   /**
-   * `n` units of `item` delivered to the market. Returns the units to pay
+   * `n` units of `item` delivered to a city stop. Returns the units to pay
    * for: in full up to what's still wanted this month, OVERSUPPLY_PRICE beyond.
    */
   deliver(item: Item, n: number): number {

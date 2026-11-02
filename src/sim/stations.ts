@@ -9,11 +9,17 @@
  * road (ordinary Road cells, so it joins the road network). At most one stop
  * per side; each is a gate of the industry's interior.
  *
+ * The CITY works the same way: a stop takes a 6×6 window of the city square
+ * that touches one of its sides (`cityAnchor` — its anchor is a CityCenter
+ * cell), slid along the side to where the cursor is; several stops fit on a
+ * side. They are the gates of the city (see CityDevelopment.ts).
+ *
  * Pure TypeScript.
  */
 
 import {
   CellType,
+  cityBounds,
   cornerHeightAt,
   industryAnchorOf,
   industryFootprint,
@@ -105,11 +111,58 @@ export function stationAt(map: TerrainMap, x: number, z: number): Station | null
 }
 
 /**
+ * A city stop's anchor for `side` with the cursor at `along` (x for N/S, z for
+ * W/E): the 6×6 window inside the city square touching that side, centred on
+ * the cursor and kept inside the square. Null without a city.
+ */
+export function cityAnchor(map: TerrainMap, side: Side, along: number): [number, number] | null {
+  const b = cityBounds(map);
+  if (!b) return null;
+  const { lo, hi } = industryFootprint(CellType.Mine);
+  const clamp = (v: number, a: number, c: number) => Math.max(a, Math.min(c, v));
+  if (side === 'N' || side === 'S') {
+    const ax = clamp(along, b.x0 - lo, b.x1 - hi);
+    return [ax, side === 'N' ? b.z0 - lo : b.z1 - hi];
+  }
+  const az = clamp(along, b.z0 - lo, b.z1 - hi);
+  return [side === 'W' ? b.x0 - lo : b.x1 - hi, az];
+}
+
+/** Is (anchor, side) a valid city stop window (inside the square, on that side)? */
+function cityWindowOk(map: TerrainMap, anchor: readonly [number, number], side: Side): boolean {
+  const b = cityBounds(map);
+  if (!b) return false;
+  const { x0, x1, z0, z1 } = lotBounds(anchor);
+  if (x0 < b.x0 || x1 > b.x1 || z0 < b.z0 || z1 > b.z1) return false;
+  return side === 'N' ? z0 === b.z0 : side === 'S' ? z1 === b.z1 : side === 'W' ? x0 === b.x0 : x1 === b.x1;
+}
+
+/** The city side the cursor at (x, z) points at: inside the square near a side, or the band just outside it. */
+function citySideAt(map: TerrainMap, x: number, z: number): { anchor: [number, number]; side: Side } | null {
+  const b = cityBounds(map);
+  if (!b) return null;
+  const R = STATION_DEPTH;
+  if (x < b.x0 - R || x > b.x1 + R || z < b.z0 - R || z > b.z1 + R) return null;
+  const inX = x >= b.x0 && x <= b.x1, inZ = z >= b.z0 && z <= b.z1;
+  // Distance to each side (negative = outside it); only sides the cursor faces.
+  const opts: Array<[number, Side]> = [];
+  if (inX) opts.push([z - b.z0, 'N'], [b.z1 - z, 'S']);
+  if (inZ) opts.push([x - b.x0, 'W'], [b.x1 - x, 'E']);
+  if (!opts.length) return null; // a corner
+  opts.sort((p, q) => p[0] - q[0]);
+  const side = opts[0][1];
+  const anchor = cityAnchor(map, side, side === 'N' || side === 'S' ? x : z);
+  return anchor && { anchor, side };
+}
+
+/**
  * The industry side the cursor at (x, z) points at: a cell in the
  * two-row band just outside a side, or a cell of the lot itself (its nearest
  * side). Null when no large industry is that close.
  */
 export function sideAt(map: TerrainMap, x: number, z: number): { anchor: [number, number]; side: Side } | null {
+  const city = citySideAt(map, x, z);
+  if (city) return city;
   const inLot = industryAnchorOf(map, x, z);
   if (inLot) {
     const { x0, x1, z0, z1 } = lotBounds(inLot);
@@ -140,7 +193,9 @@ export function sideAt(map: TerrainMap, x: number, z: number): { anchor: [number
 /** Why a station can't go on (anchor, side) — Hungarian, for the UI — or null. */
 export function stationProblem(map: TerrainMap, anchor: readonly [number, number], side: Side, ext = 0): string | null {
   const type = map.cells[anchor[0]][anchor[1]];
-  if (!LARGE_INDUSTRY.has(type)) return 'Itt nincs ipar';
+  if (type === CellType.CityCenter) {
+    if (!cityWindowOk(map, anchor, side)) return 'Itt nincs város';
+  } else if (!LARGE_INDUSTRY.has(type)) return 'Itt nincs ipar';
   if (type === CellType.OilRig) return 'A fúrótoronyhoz nem építhető megálló';
   if (stationOn(map, anchor, side)) return 'Ezen az oldalon már van megálló';
   const level = cornerHeightAt(map, anchor[0], anchor[1]);

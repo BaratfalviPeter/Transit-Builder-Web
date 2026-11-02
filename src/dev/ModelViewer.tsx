@@ -9,7 +9,7 @@
  * the dev model editor works here too.
  *
  * URL parameters:
- *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | MarketModel | OilRigModel | StationModel
+ *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | StationModel
  *   view  = iso | front | side | back | top   (starting camera view)
  *   ui=0  → no panel (clean screenshots)
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
@@ -26,7 +26,6 @@ import { LumberMillModel } from '../render/LumberMillModel';
 import { PowerPlantModel } from '../render/PowerPlantModel';
 import { FactoryModel } from '../render/FactoryModel';
 import { OilRigModel } from '../render/OilRigModel';
-import { MarketModel } from '../render/MarketModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
 import { TruckPreview } from '../render/TruckModel';
@@ -61,7 +60,6 @@ export const VIEWER_MODELS: Array<{
   { id: 'LumberMillModel', label: 'Fatelep', Comp: LumberMillModel },
   { id: 'PowerPlantModel', label: 'Erőmű', Comp: PowerPlantModel },
   { id: 'FactoryModel', label: 'Gyár', Comp: FactoryModel },
-  { id: 'MarketModel', label: 'Piac', Comp: MarketModel },
   { id: 'OilRigModel', label: 'Olajfúró', Comp: OilRigModel, water: true, zoom: 1.2, lookY: 0.9 },
   { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },

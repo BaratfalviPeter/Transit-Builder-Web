@@ -1458,8 +1458,8 @@ export class TransportSim {
       else for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
     }
     const depot = isDepot(here);
-    // The market: the city takes all it accepts and pays by its demand.
-    const city = !depot && map.cells[here.anchor[0]][here.anchor[1]] === CellType.Market ? this.market : null;
+    // A city stop: the city takes all it accepts and pays by its demand.
+    const city = !depot && map.cells[here.anchor[0]][here.anchor[1]] === CellType.CityCenter ? this.market : null;
 
     // Unload. An industry takes (and pays for) what it accepts; a depot
     // stores what this line can't deliver itself.

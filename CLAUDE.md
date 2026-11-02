@@ -161,13 +161,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 5 + 0,25/szint, deszka 3 + 0,15/szint;
   a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
   az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
-  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). PIAC (`CellType.Market`,
-  6×6, a generátor a város mellé rakja: `placeMarket`, 1 cella hely az útnak; az oldal `seed % 4`,
-  NEM az rng — különben az egész térkép (erdők, iparágak) megváltozna, és a tesztek mást mérnének): ACCEPTS áru +
-  deszka; a `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim
-  `tick` 5. paramétere a város). Modell: `MarketModel.tsx` (`?model=MarketModel`), kártya a piac
-  fölött: `CityLabel.tsx`. Teszt: scratchpad `market.ts` (30/30 térképen van piac; ellátatlan
-  város 40-nél megáll; fatelep → gyár → piac kamionjárat).
+  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). A VÁROS KAPUI (a felhasználónak
+  nem tetszett a külön piac-épület, kivettük): megálló a városközpont négyzetének bármely oldalára
+  (`stations.ts`: `cityAnchor` — a négyzeten belüli, az oldalt érintő 6×6-os ablak, a kurzorhoz
+  csúsztatva; `citySideAt` a `sideAt`-ben; `cityWindowOk` a `stationProblem`-ben; az anchor egy
+  CityCenter cella, egy oldalra több megálló is fér). ACCEPTS[CityCenter] = áru + deszka; a
+  `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim `tick` 5.
+  paramétere a város). A generátor a város körüli 4 cellás sávban nem rak erdőt (víz lehet).
+  Kártya a város fölött: `CityLabel.tsx` (`cityBounds`). Teszt: scratchpad `market.ts` (25/30
+  térképen mind a 4 oldal szabad; ellátatlan város 40-nél megáll; fatelep → gyár → város).
 - GAZDASÁG: `GameState` könyvel (`FinCat`: income / build / vehicles / upkeep / running /
   interest; `month` + `lastMonth` (`MonthBooks`, járatonként `lineIncome` / `lineCost`)). `spend(cost,
   cat)` (alap 'build'; járművek: 'vehicles'), `earn(amount, lineId)` — a TransportSim `Earn`
@@ -207,7 +209,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
-- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, MarketModel, OilRig,
+- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
   StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
@@ -235,14 +237,13 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   fenntartás, járműköltség, Pénzügyek panel, hitel).
 - TERV (`ötletek.md`, a felhasználó jóváhagyta): a városnak belső nézete lesz — kint csak a kapuk
   (megállók a városközpont oldalain), bent organikusan nő; áru automatikusan (Mini Motorways),
-  utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). A piac ezért cserére vár:
-  a felhasználónak nem tetszik a „letett” piac; javasolt (A): megálló a városközpont oldalaira.
+  utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). Kint ezért a megállók a
+  városközpont oldalain vannak (ezek lesznek a belső város kapui).
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Piac helyett megállók a városközpont oldalain (A változat, a belső nézet kapui)
 - Mentés / betöltés (most nincs: frissítéskor minden elvész), utána hidak
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
 - Döntés a lerakható iparágakról (`ötletek.md`)

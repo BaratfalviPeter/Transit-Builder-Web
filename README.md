@@ -18,7 +18,7 @@ src/
             #   tools.ts            – építési eszközök + áraik (adat)
             #   GameState.ts        – aktív eszköz + pénz
             #   useGameState.ts     – GameProvider + snapshot hook
-            #   CityDevelopment.ts  – a város: növekedés + kereslet a piacon (játékórával)
+            #   CityDevelopment.ts  – a város: növekedés + kereslet a kapuinál (játékórával)
             #   useCityDevelopment.ts – játékciklus (setInterval) + snapshot
   render/   # R3F komponensek
             #   GameCanvas     – gyökér jelenet, click -> aktív eszköz
@@ -216,14 +216,14 @@ A jobb oldali **panel** három füle:
   lehet építeni és járművet venni. **Hitel** $10 000-es lépésekben, legfeljebb $200 000.
   A panel mutatja az e havi és a múlt havi könyvelést kategóriánként, a várható havi
   fix költséget tételesen, és **járatonként** a múlt havi bevételt, költséget, hasznot.
-- **Város és piac** (`src/sim/CityDevelopment.ts`, `src/render/MarketModel.tsx`,
-  `CityLabel.tsx`): a város mellett egy **Piac** áll (6×6, az oldalaira vasútállomás
-  vagy kamionrakodó építhető). A város havonta **árut** és **deszkát** kér
-  (a méretével arányosan); a keresletig teljes áron fizet, fölötte csak negyed áron.
-  Kisvárosként (40-es méretig) magától nő, utána **csak akkor nő, ha ellátod** —
-  minél jobban, annál gyorsabban. A piac fölötti kártya mutatja a lakosságot, a havi
-  keresletet (szállítva / kért) és az ellátottságot. A város a játékórával nő
-  (szünetben áll, gyorsításnál gyorsabb).
+- **Város** (`src/sim/CityDevelopment.ts`, `CityLabel.tsx`): a városközpont négyzetének
+  bármelyik oldalára építhetsz **vasútállomást** vagy **kamionrakodót** (az oldal mentén
+  oda kerül, ahová mutatsz; egy oldalra több is fér) — ezek a város kapui. A város havonta
+  **árut** és **deszkát** kér (a méretével arányosan); a keresletig teljes áron fizet,
+  fölötte csak negyed áron. Kisvárosként (40-es méretig) magától nő, utána **csak akkor
+  nő, ha ellátod** — minél jobban, annál gyorsabban. A város fölötti kártya mutatja a
+  lakosságot, a havi keresletet (szállítva / kért) és az ellátottságot. A város a
+  játékórával nő (szünetben áll, gyorsításnál gyorsabb).
 - **Raktár** ($6000, 9-es gomb, `src/sim/depot.ts`, `src/render/DepotModel.tsx`):
   6×6-os átrakóhely sík, üres területre (**Q**: forgatás). Két vágány
   (vonatoknak, később), csarnok, 5 rakodóállás és egy **egyirányú behajtó**

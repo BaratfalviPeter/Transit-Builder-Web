@@ -550,8 +550,7 @@ function Scene() {
           if (!terrain.inBounds(x, z)) return;
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
-          // The market has no interior (it is the city's).
-          if (a && INTERIORS_ENABLED && m.cells[a[0]][a[1]] !== CellType.Market) interiors.open(a, m.cells[a[0]][a[1]]);
+          if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
           return;
         }
         if (tool.id === 'signal') {

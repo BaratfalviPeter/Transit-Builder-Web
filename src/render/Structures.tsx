@@ -41,7 +41,19 @@ const M = {
   line: new THREE.MeshBasicMaterial({ color: '#e8e4d6' }),
   stone: std('#8d877c'),
   stoneDark: std('#6f6a61'),
-  hole: new THREE.MeshBasicMaterial({ color: '#141518' }),
+  hole: new THREE.MeshBasicMaterial({ color: '#141518', side: THREE.DoubleSide }),
+  steel: std('#4f5d63', { roughness: 0.55, metalness: 0.35 }),
+  lamp: new THREE.MeshBasicMaterial({ color: '#ffe3a1', toneMapped: false }),
+};
+
+/**
+ * See-through ("x-ray") materials: the tunnel tube and the vehicles inside it
+ * show through the hill (no depth test, drawn last).
+ */
+export const GHOST = {
+  tube: new THREE.MeshBasicMaterial({ color: '#bcd8ff', transparent: true, opacity: 0.16, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+  lines: new THREE.LineBasicMaterial({ color: '#dcebff', transparent: true, opacity: 0.55, depthTest: false, depthWrite: false }),
+  vehicle: new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.7, depthTest: false, depthWrite: false }),
 };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 
@@ -78,49 +90,78 @@ function frameOf(map: TerrainMap, s: Pick<Structure, 'a' | 'b'>, cellSize: numbe
   return { pos: [(cx - half) * cellSize, 0, (cz - half) * cellSize] as V3, len, yaw: Math.atan2(-dz, dx) };
 }
 
+/**
+ * The deck's side profile (x along the span, y up), extruded across its
+ * width: flat on top; underneath, an arch over each bay between the piers.
+ */
+function deckGeometry(len: number, top: number, bays: number, rise: number, width: number): THREE.BufferGeometry {
+  const sh = new THREE.Shape();
+  const x0 = -len / 2, x1 = len / 2, under = top - DECK_T;
+  sh.moveTo(x0, top);
+  sh.lineTo(x1, top);
+  sh.lineTo(x1, under - rise);
+  const bay = len / bays;
+  for (let k = bays - 1; k >= 0; k--) {
+    const a = x0 + bay * (k + 1), b = x0 + bay * k;
+    // From pier a back to pier b: up to the crown and down again (half an ellipse).
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      sh.lineTo(a + (b - a) * t, under - rise + Math.sin(Math.PI * t) * rise);
+    }
+  }
+  sh.lineTo(x0, top);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: width, bevelEnabled: false, curveSegments: 4 });
+  g.translate(0, 0, -width / 2);
+  return g;
+}
+
 function Bridge({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
   const parts = useMemo(() => {
     const { pos, len, yaw } = frameOf(map, s, cellSize);
     const top = FLAT_TOP + s.level + DECK_LIFT;
-    const W = s.carries === 'road' ? 0.86 : 0.72;
+    const rail = s.carries === 'rail';
+    const W = rail ? 0.72 : 0.9;
     const cells = interiorOf(s);
-    // Pillars: under every spanned cell, from the deck to the ground / river bed.
-    const pillars = cells.map(([x, z], i) => {
-      const water = map.cells[x][z] === CellType.Water;
-      const g = water ? WATER_LEVEL - 0.25 : groundAtGrid(map, x, z) - 0.05;
-      const t = i - (cells.length - 1) / 2; // along the span, cells from its middle
-      return { t, g };
-    });
-    return { pos, len, yaw, top, W, pillars };
+    const bottomAt = (x: number, z: number) => (map.cells[x][z] === CellType.Water ? WATER_LEVEL - 0.3 : groundAtGrid(map, x, z) - 0.05);
+    // The lowest ground under the span: how deep the arches may reach.
+    const low = Math.min(...cells.map(([x, z]) => bottomAt(x, z)));
+    const bays = Math.max(1, Math.round(len / 2.4));
+    const rise = Math.max(0, Math.min(0.22, len / bays / 4, top - DECK_T - low - 0.12));
+    const deck = deckGeometry(len, top, bays, rise, W);
+    // Piers between the bays, down to the ground / river bed under them.
+    const piers: Array<{ t: number; g: number }> = [];
+    for (let k = 1; k < bays; k++) {
+      const t = -len / 2 + (len * k) / bays;
+      const ci = Math.min(cells.length - 1, Math.max(0, Math.round(t + (cells.length - 1) / 2)));
+      piers.push({ t, g: bottomAt(cells[ci][0], cells[ci][1]) });
+    }
+    return { pos, len, yaw, top, W, rail, deck, piers, spring: top - DECK_T - rise, ends: [s.a, s.b].map(([x, z]) => bottomAt(x, z)) };
   }, [map, s, cellSize]);
-  const { pos, len, yaw, top, W, pillars } = parts;
-  const y0 = top - DECK_T / 2;
+  const { pos, len, yaw, top, W, rail, deck, piers, spring, ends } = parts;
   return (
     <group position={pos} rotation-y={yaw} scale={cellSize}>
-      {/* deck */}
-      <Box p={[0, y0, 0]} s={[len, DECK_T, W]} m={M.concrete} />
-      <Box p={[0, top - DECK_T - 0.02, 0]} s={[len, 0.04, W * 0.7]} m={M.concreteDark} />
-      {/* pillars */}
-      {pillars.map(({ t, g }) => {
-        const h = top - DECK_T - g;
-        return h > 0.02 ? <Box key={t} p={[t, g + h / 2, 0]} s={[0.16, h, W * 0.55]} m={M.concreteDark} /> : null;
-      })}
-      {/* railings: a rail on posts along both edges */}
-      {[-1, 1].map((sd) => {
-        const posts = Math.max(2, Math.round(len * 3) + 1);
+      <mesh geometry={deck} material={M.concrete} castShadow receiveShadow />
+      {/* piers with a cap */}
+      {piers.map(({ t, g }) => {
+        const h = spring - g;
+        if (h <= 0.02) return null;
         return (
-          <group key={sd}>
-            <Box p={[0, top + 0.07, (sd * W) / 2]} s={[len, 0.02, 0.025]} m={M.rail} />
-            {Array.from({ length: posts }, (_, k) => (
-              <Box key={k} p={[-len / 2 + (len * k) / (posts - 1), top + 0.035, (sd * W) / 2]} s={[0.02, 0.07, 0.02]} m={M.rail} />
-            ))}
+          <group key={t}>
+            <Box p={[t, g + h / 2, 0]} s={[0.2, h, W * 0.8]} m={M.concreteDark} />
+            <Box p={[t, spring - 0.02, 0]} s={[0.28, 0.05, W + 0.04]} m={M.concrete} />
           </group>
         );
       })}
+      {/* bridge heads at both ends */}
+      {[-1, 1].map((sd, i) => {
+        const h = top - ends[i];
+        return h > 0.02 ? <Box key={sd} p={[(sd * len) / 2, ends[i] + h / 2, 0]} s={[0.14, h, W + 0.12]} m={M.concreteDark} /> : null;
+      })}
+      {rail ? <Truss len={len} top={top} W={W} /> : <Parapets len={len} top={top} W={W} />}
       {/* road surface + centre dashes */}
       {s.carries === 'road' && (
         <>
-          <Box p={[0, top + 0.004, 0]} s={[len, 0.008, 0.7]} m={M.asphalt} />
+          <Box p={[0, top + 0.004, 0]} s={[len, 0.008, 0.72]} m={M.asphalt} />
           {Array.from({ length: Math.max(1, Math.floor(len / 0.26)) }, (_, k) => (
             <Box key={k} p={[-len / 2 + 0.13 + k * 0.26, top + 0.01, 0]} s={[0.14, 0.004, 0.032]} m={M.line} />
           ))}
@@ -130,23 +171,142 @@ function Bridge({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
   );
 }
 
+/** Road bridge: low concrete parapets with a coping and small lamp posts at the ends. */
+function Parapets({ len, top, W }: { len: number; top: number; W: number }) {
+  return (
+    <group>
+      {[-1, 1].map((sd) => (
+        <group key={sd}>
+          <Box p={[0, top + 0.045, (sd * W) / 2]} s={[len + 0.1, 0.09, 0.05]} m={M.concrete} />
+          <Box p={[0, top + 0.095, (sd * W) / 2]} s={[len + 0.14, 0.015, 0.07]} m={M.concreteDark} />
+          {[-1, 1].map((e) => (
+            <group key={e} position={[(e * (len + 0.05)) / 2, top, (sd * W) / 2]}>
+              <Box p={[0, 0.2, 0]} s={[0.025, 0.4, 0.025]} m={M.rail} />
+              <Box p={[0, 0.41, 0]} s={[0.06, 0.04, 0.06]} m={M.lamp} />
+            </group>
+          ))}
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** Rail bridge: a steel through truss on each side (chords, posts, diagonals) with cross bracing on top. */
+function Truss({ len, top, W }: { len: number; top: number; W: number }) {
+  const H = 0.36;
+  const panels = Math.max(2, Math.round(len / 0.5));
+  const pw = len / panels;
+  const diag = Math.hypot(pw, H);
+  const ang = Math.atan2(H, pw);
+  return (
+    <group>
+      {[-1, 1].map((sd) => {
+        const z = (sd * W) / 2;
+        return (
+          <group key={sd}>
+            <Box p={[0, top + 0.02, z]} s={[len, 0.04, 0.045]} m={M.steel} />
+            <Box p={[0, top + H, z]} s={[len - pw, 0.04, 0.045]} m={M.steel} />
+            {Array.from({ length: panels + 1 }, (_, k) => {
+              const x = -len / 2 + k * pw;
+              const inner = k > 0 && k < panels;
+              return inner ? <Box key={`v${k}`} p={[x, top + H / 2, z]} s={[0.03, H, 0.035]} m={M.steel} /> : null;
+            })}
+            {Array.from({ length: panels }, (_, k) => {
+              const x = -len / 2 + (k + 0.5) * pw;
+              // Diagonals lean towards the middle of the span (a Pratt / Howe-like look).
+              const a = k < panels / 2 ? ang : -ang;
+              return (
+                <mesh key={`d${k}`} geometry={BOX} material={M.steel} position={[x, top + H / 2, z]} rotation-z={a} scale={[diag, 0.028, 0.03]} castShadow />
+              );
+            })}
+          </group>
+        );
+      })}
+      {/* top cross bracing */}
+      {Array.from({ length: panels - 1 }, (_, k) => (
+        <Box key={k} p={[-len / 2 + (k + 1) * pw, top + H, 0]} s={[0.025, 0.025, W]} m={M.steel} />
+      ))}
+    </group>
+  );
+}
+
+/** An arched opening (x across, y up), for extruding portals and the tunnel tube. */
+function archShape(w: number, spring: number, rise: number): THREE.Shape {
+  const sh = new THREE.Shape();
+  sh.moveTo(-w / 2, 0);
+  sh.lineTo(w / 2, 0);
+  sh.lineTo(w / 2, spring);
+  for (let i = 0; i <= 16; i++) {
+    const a = (Math.PI * i) / 16;
+    sh.lineTo((Math.cos(a) * w) / 2, spring + Math.sin(a) * rise);
+  }
+  sh.lineTo(-w / 2, 0);
+  return sh;
+}
+
+const MOUTH = { w: 0.6, spring: 0.24, rise: 0.2 };
+
+/** Stone portal facade: a wall with an arched hole, a keystone and a cornice (faces −x). */
+const PORTAL_GEOM = (() => {
+  const wall = new THREE.Shape();
+  wall.moveTo(-0.52, 0);
+  wall.lineTo(0.52, 0);
+  wall.lineTo(0.52, 0.56);
+  wall.lineTo(-0.52, 0.56);
+  wall.lineTo(-0.52, 0);
+  const hole = archShape(MOUTH.w, MOUTH.spring, MOUTH.rise);
+  wall.holes.push(new THREE.Path(hole.getPoints()));
+  const g = new THREE.ExtrudeGeometry(wall, { depth: 0.12, bevelEnabled: false });
+  // Shape x → world z (across), extrusion z → world x (into the span).
+  g.rotateY(-Math.PI / 2);
+  g.translate(0.12, 0, 0);
+  return g;
+})();
+/** The dark inside of the mouth (a short arched tube into the hill). */
+const MOUTH_GEOM = (() => {
+  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.12, bevelEnabled: false });
+  g.rotateY(-Math.PI / 2);
+  g.translate(0.24, 0, 0);
+  return g;
+})();
+
 function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
   const { pos, len, yaw } = frameOf(map, s, cellSize);
   const floor = FLAT_TOP + s.level;
-  // A portal at each end of the span, facing out (towards its abutment).
+  const tube = useMemo(() => {
+    // The see-through tube: the arch section along the whole span.
+    const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: len, bevelEnabled: false });
+    g.rotateY(-Math.PI / 2);
+    g.translate(len / 2, 0, 0);
+    return { g, edges: new THREE.EdgesGeometry(g, 30) };
+  }, [len]);
   return (
     <group position={pos} rotation-y={yaw} scale={cellSize}>
+      {/* the tunnel seen through the hill (x-ray) */}
+      <group position={[0, floor, 0]}>
+        <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
+        <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
+      </group>
       {[-1, 1].map((sd) => (
         <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
-          {/* facade wall with the opening; the face looks towards −x (the abutment) */}
-          <Box p={[0.06, 0.24, -0.38]} s={[0.12, 0.48, 0.22]} m={M.stone} />
-          <Box p={[0.06, 0.24, 0.38]} s={[0.12, 0.48, 0.22]} m={M.stone} />
-          <Box p={[0.06, 0.43, 0]} s={[0.12, 0.1, 0.98]} m={M.stone} />
-          <Box p={[0.04, 0.49, 0]} s={[0.15, 0.03, 1.02]} m={M.stoneDark} />
-          {/* the dark mouth, a little way in */}
-          <Box p={[0.15, 0.19, 0]} s={[0.1, 0.38, 0.54]} m={M.hole} />
-          {/* a short roof slab into the span (an underpass reads as going under) */}
-          <Box p={[0.28, 0.42, 0]} s={[0.36, 0.05, 0.98]} m={M.stoneDark} />
+          <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
+          <mesh geometry={MOUTH_GEOM} material={M.hole} />
+          {/* keystone + cornice */}
+          <Box p={[-0.01, MOUTH.spring + MOUTH.rise + 0.03, 0]} s={[0.05, 0.1, 0.1]} m={M.stoneDark} />
+          <Box p={[0.05, 0.585, 0]} s={[0.18, 0.05, 1.12]} m={M.stoneDark} />
+          {/* wing walls, splayed out along the cutting */}
+          {[-1, 1].map((w) => (
+            <mesh
+              key={w}
+              geometry={BOX}
+              material={M.stone}
+              position={[-0.14, 0.13, w * 0.6]}
+              rotation-y={w * 0.4}
+              scale={[0.32, 0.26, 0.07]}
+              castShadow
+              receiveShadow
+            />
+          ))}
         </group>
       ))}
     </group>

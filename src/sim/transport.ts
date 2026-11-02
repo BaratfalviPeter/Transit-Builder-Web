@@ -177,6 +177,33 @@ export const ROUNDABOUT_R = 0.3;
 const STOP_TIME = 2;
 /** Delivery pay grows with the distance carried (cells). */
 const DISTANCE_SCALE = 25;
+/**
+ * Time pay: a delivery is paid in full when it got there at least PAY_SPEED
+ * cells (straight line) a second, plus PAY_GRACE seconds; slower, the pay
+ * drops in proportion, down to MIN_PAY_FACTOR.
+ */
+export const PAY_SPEED = 1.2;
+const PAY_GRACE = 12;
+export const MIN_PAY_FACTOR = 0.4;
+/** Pay factor of a delivery over `dist` cells that took `secs`. */
+export function timeFactor(dist: number, secs: number): number {
+  const expected = dist / PAY_SPEED + PAY_GRACE;
+  return Math.max(MIN_PAY_FACTOR, Math.min(1, expected / Math.max(secs, 1e-6)));
+}
+
+/** A line's figures over a month (see TransportSim.lineStats). */
+export interface LineFigures {
+  /** Units delivered. */
+  units: number;
+  /** Σ units × time factor (÷ units = the mean time factor). */
+  paidW: number;
+  /** Vehicle-seconds on the line / of them held up (traffic, signals, full yards). */
+  time: number;
+  held: number;
+}
+const noFigures = (): LineFigures => ({ units: 0, paidW: 0, time: 0, held: 0 });
+/** Held-up seconds per cell this month above which it shows as a jam (network view). */
+export const HOTSPOT_MIN = 20;
 
 export const LINE_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#ff6fb5'];
 
@@ -216,6 +243,8 @@ export interface Truck {
   cargo: Partial<Record<Item, number>>;
   /** Where each kind of cargo came from (grid coords; for the distance pay). */
   origin: Partial<Record<Item, [number, number]>>;
+  /** When each kind of cargo was loaded (`clock`, weighted mean; for the time pay). */
+  since: Partial<Record<Item, number>>;
 }
 
 /** A truck's visit to a depot: wait → in (past the bay) → back (in) → load → out. */
@@ -293,6 +322,7 @@ export interface Train {
   blocked: number;
   cargo: Partial<Record<Item, number>>;
   origin: Partial<Record<Item, [number, number]>>;
+  since: Partial<Record<Item, number>>;
   /** Its wagons (the line's choice, taken on at a stop) and its length (cells). */
   wagons: number;
   len: number;
@@ -579,6 +609,11 @@ export class TransportSim {
   private junctionVersion = -1;
   private routeVersion = -1;
   readonly payments: Payment[] = [];
+  /** Per line: this month's / last month's figures. */
+  private stats = new Map<number, { month: LineFigures; last: LineFigures | null }>();
+  /** Held-up vehicle-seconds per cell (x·n + z) this month (smoothed with the last). */
+  private heldCells = new Map<number, number>();
+  private mapSize = 0;
   /** The city behind the market (set every tick). */
   private market: MarketSink | null = null;
   private readonly listeners = new Set<Listener>();
@@ -590,6 +625,38 @@ export class TransportSim {
   subscribe(l: Listener): () => void {
     this.listeners.add(l);
     return () => this.listeners.delete(l);
+  }
+
+  /** A line's figures: this month so far and the last whole month. */
+  lineStats(id: number): { month: LineFigures; last: LineFigures | null } {
+    return this.stats.get(id) ?? { month: noFigures(), last: null };
+  }
+
+  /** Where the traffic stands most (cells, held-up seconds), for the network view. */
+  hotspots(): Array<{ x: number; z: number; secs: number }> {
+    const out: Array<{ x: number; z: number; secs: number }> = [];
+    const n = this.mapSize || 1;
+    for (const [k, secs] of this.heldCells) if (secs >= HOTSPOT_MIN) out.push({ x: Math.floor(k / n), z: k % n, secs });
+    return out.sort((a, b) => b.secs - a.secs).slice(0, 12);
+  }
+
+  /** A month is over: this month's figures become the last. */
+  closeMonth(): void {
+    for (const st of this.stats.values()) {
+      st.last = st.month;
+      st.month = noFigures();
+    }
+    // Jams fade: half carries over.
+    for (const [k, v] of this.heldCells) {
+      if (v < 2) this.heldCells.delete(k);
+      else this.heldCells.set(k, v / 2);
+    }
+  }
+
+  private figures(lineId: number): LineFigures {
+    let st = this.stats.get(lineId);
+    if (!st) this.stats.set(lineId, (st = { month: noFigures(), last: null }));
+    return st.month;
   }
 
   /** Current trucks (mutable runtime objects; read-only for callers). */
@@ -640,6 +707,8 @@ export class TransportSim {
     this.junctions = null;
     this.junctionVersion = -1;
     this.payments.length = 0;
+    this.stats.clear();
+    this.heldCells.clear();
     this.nextLine = lines.reduce((m, l) => Math.max(m, l.id), 0) + 1;
     this.set({ lines: lines.slice(), view: false, draft: null, noRoute: [], stalled: [], fleet: this.snap.fleet + 1 });
   }
@@ -759,6 +828,10 @@ export class TransportSim {
     if (dt <= 0) return;
     this.clock += dt;
     this.syncFleet();
+    this.mapSize = map.size;
+    const blockedBefore = new Map<object, number>();
+    for (const t of this.trucks) blockedBefore.set(t, t.blocked);
+    for (const t of this.trains) blockedBefore.set(t, t.blocked);
     const byId = new Map((map.stations ?? []).map((s) => [s.id, s]));
     const noRoute = new Set<number>();
     // Everyone's position at the start of the tick (for the traffic rules).
@@ -901,6 +974,32 @@ export class TransportSim {
     if (nr.join() !== this.snap.noRoute.join()) this.set({ noRoute: nr });
     const sl = [...stalled].sort((a, b) => a - b);
     if (sl.join() !== this.snap.stalled.join()) this.set({ stalled: sl });
+    // Line figures: time on the line / held up, and where (the jams).
+    const n = map.size;
+    for (const t of this.trucks) {
+      const f = this.figures(t.lineId);
+      f.time += dt;
+      if (t.blocked > (blockedBefore.get(t) ?? 0)) {
+        f.held += dt;
+        const p = poses.get(t.id) ?? this.pose(t);
+        if (p) {
+          const k = Math.round(p.x) * n + Math.round(p.z);
+          this.heldCells.set(k, (this.heldCells.get(k) ?? 0) + dt);
+        }
+      }
+    }
+    for (const t of this.trains) {
+      const f = this.figures(t.lineId);
+      f.time += dt;
+      if (t.blocked > (blockedBefore.get(t) ?? 0)) {
+        f.held += dt;
+        if (t.path) {
+          const [x, z] = laneAt(t.path, Math.min(t.s, t.path.length));
+          const k = Math.round(x) * n + Math.round(z);
+          this.heldCells.set(k, (this.heldCells.get(k) ?? 0) + dt);
+        }
+      }
+    }
   }
 
   /** Note that `t` waits for `o`; returns true (= wait). */
@@ -1483,7 +1582,7 @@ export class TransportSim {
 
   /** Unload what this stop takes (and get paid), then load (up to `cap`) for later stops. */
   private serveStop(
-    t: Pick<Truck, 'cargo' | 'origin'>,
+    t: Pick<Truck, 'cargo' | 'origin' | 'since'>,
     cap: number,
     line: Line,
     here: Station,
@@ -1516,21 +1615,30 @@ export class TransportSim {
       const n = t.cargo[item] ?? 0;
       if (!n) continue;
       const origin = t.origin[item] ?? [hx, hz];
+      // Loaded when (a reload restarts the clock: never in the future).
+      const since = Math.min(this.clock, t.since[item] ?? this.clock);
       if (depot) {
         if (laterTakes.has(item)) continue;
-        const k = prod.store(here.id, item, n, origin);
+        const k = prod.store(here.id, item, n, origin, since);
         t.cargo[item] = n - k;
       } else {
         if (!takes!.includes(item)) continue;
         const k = city ? n : prod.deliver(here.id, item, n);
         t.cargo[item] = n - k;
         // Paid for the whole way from where the cargo came from (the city:
-        // only what it still wants this month in full).
+        // only what it still wants this month in full), less if it was slow.
         const units = city ? city.deliver(item, k) : k;
         const dist = Math.hypot(origin[0] - hx, origin[1] - hz);
-        pay += Math.round(units * ITEMS[item].value * (1 + dist / DISTANCE_SCALE));
+        const f = timeFactor(dist, this.clock - since);
+        pay += Math.round(units * ITEMS[item].value * (1 + dist / DISTANCE_SCALE) * f);
+        const fig = this.figures(line.id);
+        fig.units += k;
+        fig.paidW += k * f;
       }
-      if (!t.cargo[item]) delete t.origin[item];
+      if (!t.cargo[item]) {
+        delete t.origin[item];
+        delete t.since[item];
+      }
     }
     if (pay > 0) {
       earn(pay, line.id);
@@ -1545,13 +1653,16 @@ export class TransportSim {
     for (const item of wanted) {
       if (load >= cap) break;
       const from = depot ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
+      const when = Math.min(this.clock, (depot ? prod.sinceOf(here.id, item) : null) ?? this.clock);
       const k = prod.take(here.id, item, cap - load);
       if (k <= 0) continue;
       const had = t.cargo[item] ?? 0;
       const o = t.origin[item];
       const src = from ?? [hx, hz];
-      // Mixed loads: the origin is the weighted mean of where it came from.
+      // Mixed loads: the origin / load time is the weighted mean.
       t.origin[item] = o ? [(o[0] * had + src[0] * k) / (had + k), (o[1] * had + src[1] * k) / (had + k)] : src;
+      const w = t.since[item];
+      t.since[item] = w !== undefined && had > 0 ? (w * had + when * k) / (had + k) : when;
       t.cargo[item] = had + k;
       load += k;
     }
@@ -2079,6 +2190,7 @@ export class TransportSim {
             blocked: 0,
             cargo: {},
             origin: {},
+            since: {},
             wagons: line.wagons ?? DEFAULT_WAGONS,
             len: trainLength(line.wagons ?? DEFAULT_WAGONS),
             holds: new Map(),
@@ -2117,6 +2229,7 @@ export class TransportSim {
           stopDone: -1,
           cargo: {},
           origin: {},
+          since: {},
           depot: null,
         });
         changed = true;

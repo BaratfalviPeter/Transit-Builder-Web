@@ -91,3 +91,30 @@
 .lines__del {
   margin-left: auto;
 }
+
+.lines__stats {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lines__stats-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+.lines__stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-variant-numeric: tabular-nums;
+}
+.lines__stats .is-minus {
+  color: #f87171;
+}
+.lines__stats .is-plus {
+  color: #86efac;
+}

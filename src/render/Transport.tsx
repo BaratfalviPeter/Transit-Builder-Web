@@ -5,7 +5,7 @@
  * like on a metro map; a new line is drafted by clicking stops in order.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html, Line as DreiLine } from '@react-three/drei';
 import * as THREE from 'three';
@@ -313,9 +313,39 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
           </group>
         );
       })}
+      <NetJams map={map} cellSize={cellSize} />
       <NetTrucks map={map} cellSize={cellSize} />
       <NetTrains map={map} cellSize={cellSize} />
       <NetSignals map={map} cellSize={cellSize} />
+    </group>
+  );
+}
+
+/** Where the traffic stands most (TransportSim.hotspots): pulsing red rings, bigger for longer jams. */
+function NetJams({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
+  const sim = useTransport();
+  const half = (map.size - 1) / 2;
+  const [spots, setSpots] = useState(() => sim.hotspots());
+  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ff3b30', transparent: true, depthTest: false }), []);
+  const since = useRef(0);
+  useFrame((state, dt) => {
+    since.current += dt;
+    if (since.current > 1) {
+      since.current = 0;
+      setSpots(sim.hotspots());
+    }
+    mat.opacity = 0.45 + 0.3 * Math.sin(state.clock.elapsedTime * 4);
+  });
+  return (
+    <group>
+      {spots.map(({ x, z, secs }) => {
+        const r = Math.min(2.4, 0.8 + secs / 60);
+        return (
+          <mesh key={`${x},${z}`} material={mat} position={[(x - half) * cellSize, (groundAtGrid(map, x, z) + NET_LIFT + 0.03) * cellSize, (z - half) * cellSize]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}>
+            <ringGeometry args={[r * 0.6 * cellSize, r * cellSize, 28]} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }

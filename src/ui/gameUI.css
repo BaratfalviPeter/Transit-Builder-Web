@@ -439,3 +439,58 @@
 .ui-bar__money.is-minus {
   color: var(--ui-minus);
 }
+
+.ui-bar__warn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(248, 113, 113, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  color: var(--ui-minus);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: ui-warn-pulse 1.6s ease-in-out infinite;
+}
+@keyframes ui-warn-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Game over (bankrupt): covers the map, takes the clicks. */
+.ui-over {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 9, 12, 0.6);
+  pointer-events: auto;
+}
+.ui-over__box {
+  max-width: 360px;
+  padding: 20px 24px;
+  border-radius: 14px;
+  background: var(--ui-bg);
+  border: 1px solid rgba(248, 113, 113, 0.6);
+  color: #f1f2f5;
+  text-align: center;
+  font-size: 14px;
+}
+.ui-over__title {
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.ui-over__box button {
+  margin-top: 8px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #3b82f6;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}

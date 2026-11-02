@@ -21,6 +21,8 @@ import {
   type LineKind,
   WAGON_CAPACITY,
   WAGON_PRICE,
+  MIN_PAY_FACTOR,
+  type LineFigures,
 } from '../sim';
 import './linesPanel.css';
 
@@ -34,7 +36,7 @@ export function LinesPanel() {
   const sim = useTransport();
   const snap = useTransportSnapshot();
   const game = useGame();
-  const { money } = useGameSnapshot();
+  const { money, month, lastMonth } = useGameSnapshot();
   const map = useTerrainMap();
 
   const stopName = (id: number) => {
@@ -149,6 +151,12 @@ export function LinesPanel() {
             )}
           </div>
           <div className="lines__route">{l.stops.map(stopName).join(' → ')} ↺</div>
+          <LineStatsRow
+            fig={sim.lineStats(l.id)}
+            income={(lastMonth ?? month).lineIncome[l.id] ?? 0}
+            cost={lastMonth ? (lastMonth.lineCost[l.id] ?? 0) : null}
+            last={!!lastMonth}
+          />
           <div className="lines__row">
             <span>
               {ICON[l.kind]} {l.vehicles}
@@ -185,8 +193,58 @@ export function LinesPanel() {
       ))}
       <div className="panel__hint">
         A járművek felrakják, amit egy későbbi megálló átvesz, és ott leadják. Fizetés leszállításkor: minél messzebbre és minél
-        értékesebb árut viszel, annál több. A vonat drága (mozdony + kocsik), de sokat visz (kocsinként {WAGON_CAPACITY} egység) és gyors; a hossza
+        értékesebb árut viszel, annál több; a lassú (dugóban, jelzőnél, raktárban álló) szállítmány kevesebbet ér (menetidő, min.{' '}
+        {Math.round(MIN_PAY_FACTOR * 100)}%). Az ipar nő, ha elviszed, amit termel, és visszaesik, ha nem. A vonat drága (mozdony + kocsik), de sokat visz (kocsinként {WAGON_CAPACITY} egység) és gyors; a hossza
         járatonként állítható ({MIN_WAGONS}–{MAX_WAGONS} kocsi). A peronnál hosszabb vonat hátul kilóg.
+      </div>
+    </div>
+  );
+}
+
+const usd = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('hu-HU')}`;
+
+/** A line's month: income / cost / profit, units delivered, time pay, share of time held up. */
+function LineStatsRow({
+  fig,
+  income,
+  cost,
+  last,
+}: {
+  fig: { month: LineFigures; last: LineFigures | null };
+  income: number;
+  cost: number | null;
+  last: boolean;
+}) {
+  const f = (last ? fig.last : null) ?? fig.month;
+  const speed = f.units > 0 ? Math.round((f.paidW / f.units) * 100) : null;
+  const held = f.time > 0 ? Math.round((f.held / f.time) * 100) : null;
+  return (
+    <div className="lines__stats">
+      <div className="lines__stats-head">{last ? 'Múlt hónap' : 'Ebben a hónapban eddig'}</div>
+      <div className="lines__stats-grid">
+        <span title="Bevétel a szállításokból">💰 {usd(income)}</span>
+        {cost !== null && <span title="Üzemeltetés (járművek)">− {usd(cost)}</span>}
+        {cost !== null && (
+          <b className={income - cost < 0 ? 'is-minus' : 'is-plus'} title="Nyereség">
+            = {usd(income - cost)}
+          </b>
+        )}
+      </div>
+      <div className="lines__stats-grid">
+        <span title="Leszállított egység">📦 {Math.round(f.units)}</span>
+        {speed !== null && (
+          <span title="Menetidő: a lassú szállítmány kevesebbet ér (100% = teljes ár)" className={speed < 75 ? 'is-minus' : ''}>
+            ⏱ {speed}%
+          </span>
+        )}
+        {held !== null && (
+          <span
+            title="Az idő hány százalékában álltak a járművek (forgalom, jelző, sorompó, teli raktárudvar). A hálózati nézetben piros kör jelzi, hol."
+            className={held > 25 ? 'is-minus' : ''}
+          >
+            🚦 állt {held}%
+          </span>
+        )}
       </div>
     </div>
   );

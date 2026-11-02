@@ -1,5 +1,6 @@
 /* Floating UI icon badge shown above special buildings. */
 .bicon {
+  position: relative;
   /* Center the badge on its 3D anchor point (drei <Html center> helps too). */
   display: flex;
   align-items: center;
@@ -40,4 +41,34 @@
   50% {
     transform: translateY(-8px);
   }
+}
+
+/* Industry level under the badge (production.ts LEVEL_RATE). */
+.bicon__lvl {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 3px 12px;
+  border-radius: 14px;
+  background: rgba(18, 20, 28, 0.82);
+  color: #ffd25e;
+  font: 700 22px/1.2 system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  letter-spacing: 2px;
+}
+.bicon__lvl-off {
+  color: rgba(255, 255, 255, 0.22);
+}
+.bicon__up {
+  color: #6ee787;
+}
+.bicon__down {
+  color: #f87171;
+}
+.bicon__served {
+  color: #d6d9e0;
+  font-weight: 600;
+  letter-spacing: 0;
 }

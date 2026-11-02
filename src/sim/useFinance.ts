@@ -1,12 +1,14 @@
 /**
  * FinanceDriver — closes the books at the end of every game month: charges
  * the infrastructure upkeep and the vehicles' running costs (economy.ts) and
- * the loan interest into GameState (`closeMonth`).
+ * the loan interest into GameState (`closeMonth`); the industries' levels
+ * (ProductionSim) and the lines' monthly figures (TransportSim) roll over too.
  */
 
 import { useEffect } from 'react';
 import { runningOf, upkeepOf } from './economy';
 import { useGame } from './useGameState';
+import { useInteriorStore } from './useInterior';
 import { useTerrainStore } from './useTerrain';
 import { useTransport } from './useTransport';
 
@@ -19,6 +21,7 @@ export function FinanceDriver(): null {
   const game = useGame();
   const terrain = useTerrainStore();
   const transport = useTransport();
+  const production = useInteriorStore().production;
   useEffect(() => {
     let month = monthOf(game.getSnapshot().dateMs);
     return game.subscribe(() => {
@@ -34,7 +37,10 @@ export function FinanceDriver(): null {
         running += c;
       }
       game.closeMonth({ upkeep, running, lineCost });
+      // Industries grow / shrink by how well they were served; line figures roll over.
+      production.closeMonth();
+      transport.closeMonth();
     });
-  }, [game, terrain, transport]);
+  }, [game, terrain, transport, production]);
   return null;
 }

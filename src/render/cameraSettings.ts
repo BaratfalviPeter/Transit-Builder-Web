@@ -1,6 +1,7 @@
 /**
  * Camera sensitivity (how fast WASD pans, the mouse turns and zooms),
- * remembered per browser. 1 = default; the Dev tab has the slider.
+ * and whether the wheel zooms towards the mouse — remembered per browser.
+ * 1 = default; the Játék panel (Beállítások) and the Dev tab have the controls.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -43,5 +44,38 @@ export function useCameraSens(): number {
       return () => listeners.delete(l);
     },
     () => sens,
+  );
+}
+
+// ------------------------------------------------- zoom towards the mouse
+
+const ZOOM_KEY = 'tb.zoomToCursor';
+let zoomCursor = (() => {
+  try {
+    return localStorage.getItem(ZOOM_KEY) !== '0';
+  } catch {
+    return true;
+  }
+})();
+const zoomListeners = new Set<() => void>();
+
+/** The wheel zooms towards the point under the mouse (else towards the screen's centre). */
+export function setZoomToCursor(on: boolean): void {
+  zoomCursor = on;
+  try {
+    localStorage.setItem(ZOOM_KEY, on ? '1' : '0');
+  } catch {
+    // Not remembered — still applied for this session.
+  }
+  for (const l of zoomListeners) l();
+}
+
+export function useZoomToCursor(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      zoomListeners.add(l);
+      return () => zoomListeners.delete(l);
+    },
+    () => zoomCursor,
   );
 }

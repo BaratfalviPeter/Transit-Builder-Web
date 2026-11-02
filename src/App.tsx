@@ -37,7 +37,7 @@ import { SaveProvider } from './sim/useSave';
 export default function App() {
   return (
     <TerrainProvider options={{ size: DEFAULT_MAP_SIZE }}>
-      <GameProvider startingMoney={100000}>
+      <GameProvider startingMoney={50000}>
         <TerraformPlanProvider>
           <PathPlanProvider>
             <InteriorProvider>

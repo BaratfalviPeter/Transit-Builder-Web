@@ -40,6 +40,7 @@ import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { DepotPlacement } from './Stations';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
+import { CityLabel } from './CityLabel';
 import { usePointerBuild } from './usePointerBuild';
 import { TerraformSelection } from './TerraformSelection';
 import { PathPreview } from './PathPreview';
@@ -61,7 +62,7 @@ import {
   TOOLS,
   usePathPlan,
   usePathPlanSnapshot,
-  useCityDevelopment,
+  useCitySnapshot,
   useGame,
   useGameSnapshot,
   useTerraformPlan,
@@ -288,9 +289,6 @@ function trackOf(id: string): CellType.Road | CellType.Rail | null {
   return id === 'road' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
 }
 
-/** Game tick interval in ms (auto-spawn / growth cadence). */
-const TICK_MS = 2500;
-
 function Scene() {
   const { cellSize } = DEFAULT_CONFIG;
 
@@ -315,8 +313,8 @@ function Scene() {
     }
   }, [activeTool, plan]);
 
-  // Auto-spawning / growing city buildings, driven by the game-loop timer.
-  const { buildings } = useCityDevelopment(map, TICK_MS);
+  // The growing city buildings (CityDriver steps them with the game clock).
+  const { buildings } = useCitySnapshot();
 
   // Remember the last cell acted on during a drag so we don't re-process the
   // same cell many times as the pointer wiggles within it.
@@ -552,7 +550,8 @@ function Scene() {
           if (!terrain.inBounds(x, z)) return;
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
-          if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          // The market has no interior (it is the city's).
+          if (a && INTERIORS_ENABLED && m.cells[a[0]][a[1]] !== CellType.Market) interiors.open(a, m.cells[a[0]][a[1]]);
           return;
         }
         if (tool.id === 'signal') {
@@ -794,6 +793,7 @@ function Scene() {
       <EditorGizmo />
       {/* Floating UI icons above special buildings (for easy identification). */}
       <BuildingIconsM map={map} cellSize={cellSize} />
+      <CityLabel map={map} cellSize={cellSize} />
       {/* Roads: flat on ground, raised onto hills. */}
       <RoadsM map={map} cellSize={cellSize} />
       {/* Rails: gravel bed + sleepers + metal rails, slope-aware. */}

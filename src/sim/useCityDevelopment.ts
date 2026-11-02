@@ -1,38 +1,58 @@
 /**
- * React bindings for the pure `CityDevelopment` simulation.
+ * React bindings for the pure `CityDevelopment` simulation (the city: growing
+ * buildings + its demand at the market).
  *
- * `useCityDevelopment(map, tickMs)`:
- *   - Creates one CityDevelopment bound to the given terrain map.
- *   - Runs the game loop with setInterval at `tickMs`, calling `tick()` each
- *     time (spawn a level-1 building or level up an existing one).
- *   - Returns the current buildings snapshot (via useSyncExternalStore), so
- *     only discrete growth events re-render consumers.
- *
- * The timer is the one place React drives time here; all growth rules stay in
- * the pure sim. Per-frame animation (if we later animate growth) would move to
- * useFrame, not through this snapshot.
+ *   - `CityProvider`: one city shared by the map (buildings, label), the
+ *     transport driver (market deliveries) and the UI.
+ *   - `CityDriver`: advances it with the GAME clock (whole days — follows the
+ *     game speed and pause) and restarts it when a new map is generated.
+ *   - `useCity` / `useCitySnapshot`: access + subscribe.
  */
 
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { CityDevelopment, type Building } from './CityDevelopment';
-import type { TerrainMap } from './terrain';
+import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { CityDevelopment, type CitySnapshot } from './CityDevelopment';
+import { useGame } from './useGameState';
+import { useTerrainMap, useTerrainStore } from './useTerrain';
 
-export function useCityDevelopment(
-  map: TerrainMap,
-  tickMs = 2500,
-): { buildings: Building[]; sim: CityDevelopment } {
-  // One sim per map instance.
-  const sim = useMemo(() => new CityDevelopment(map), [map]);
+const Ctx = createContext<CityDevelopment | null>(null);
 
-  useEffect(() => {
-    const id = setInterval(() => sim.tick(), tickMs);
-    return () => clearInterval(id);
-  }, [sim, tickMs]);
+export function CityProvider({ children }: { children: ReactNode }) {
+  const terrain = useTerrainStore();
+  const city = useMemo(() => new CityDevelopment(terrain.getMap()), [terrain]);
+  return createElement(Ctx.Provider, { value: city }, children);
+}
 
-  const buildings = useSyncExternalStore(
-    (onChange) => sim.subscribe(onChange),
-    () => sim.getBuildings(),
+export function useCity(): CityDevelopment {
+  const c = useContext(Ctx);
+  if (!c) throw new Error('useCity must be used within a <CityProvider>');
+  return c;
+}
+
+export function useCitySnapshot(): CitySnapshot {
+  const c = useCity();
+  return useSyncExternalStore(
+    (l) => c.subscribe(l),
+    () => c.getSnapshot(),
   );
+}
 
-  return { buildings, sim };
+const DAY_MS = 86_400_000;
+
+/** Steps the city day by day with the game clock; a new map restarts it. */
+export function CityDriver(): null {
+  const city = useCity();
+  const game = useGame();
+  const map = useTerrainMap();
+  useEffect(() => city.reset(map), [city, map]);
+  useEffect(() => {
+    let last = game.getSnapshot().dateMs;
+    return game.subscribe(() => {
+      const now = game.getSnapshot().dateMs;
+      const days = Math.round((now - last) / DAY_MS);
+      if (days <= 0) return;
+      last = now;
+      city.advance(days, now);
+    });
+  }, [city, game]);
+  return null;
 }

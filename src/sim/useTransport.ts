@@ -9,6 +9,7 @@ import { TransportSim, type TransportSnapshot } from './transport';
 import { useGame } from './useGameState';
 import { useTerrainStore } from './useTerrain';
 import { useInteriorStore } from './useInterior';
+import { useCity } from './useCityDevelopment';
 
 const Ctx = createContext<TransportSim | null>(null);
 
@@ -40,12 +41,13 @@ export function TransportDriver(): null {
   const game = useGame();
   const terrain = useTerrainStore();
   const interiors = useInteriorStore();
+  const city = useCity();
   useEffect(() => {
     const id = setInterval(() => {
       const dt = (TICK_MS / 1000) * game.getSpeed();
-      sim.tick(dt, terrain.getMap(), interiors.production, (amount) => game.earn(amount));
+      sim.tick(dt, terrain.getMap(), interiors.production, (amount) => game.earn(amount), city);
     }, TICK_MS);
     return () => clearInterval(id);
-  }, [sim, game, terrain, interiors]);
+  }, [sim, game, terrain, interiors, city]);
   return null;
 }

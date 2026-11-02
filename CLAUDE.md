@@ -155,6 +155,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   betolatási zónát. Átrakás / forrás: `serveStop`, `ProductionSim.store/originOf`.
   Tesztek: scratchpad `depot.ts` (hub-szimuláció; a teszt utakat a behajtó zárásával
   építi, különben azon vezetne át).
+- VÁROS (`CityDevelopment.ts`, `useCityDevelopment.ts`: `CityProvider` + `CityDriver`): a
+  játékórával lép (egész napok, sebesség/szünet szerint), CSAK új térképnél (más seed) indul újra
+  (`reset`) — előtte minden építésnél elölről nőtt, mert új map-objektum jött. Méret = szintek
+  összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 5 + 0,25/szint, deszka 3 + 0,15/szint;
+  a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
+  az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
+  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). PIAC (`CellType.Market`,
+  6×6, a generátor a város mellé rakja: `placeMarket`, 1 cella hely az útnak; az oldal `seed % 4`,
+  NEM az rng — különben az egész térkép (erdők, iparágak) megváltozna, és a tesztek mást mérnének): ACCEPTS áru +
+  deszka; a `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim
+  `tick` 5. paramétere a város). Modell: `MarketModel.tsx` (`?model=MarketModel`), kártya a piac
+  fölött: `CityLabel.tsx`. Teszt: scratchpad `market.ts` (30/30 térképen van piac; ellátatlan
+  város 40-nél megáll; fatelep → gyár → piac kamionjárat).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -185,7 +198,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
-- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
+- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, MarketModel, OilRig,
   StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
@@ -208,11 +221,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #83 (Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva).
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
 - Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
-- Folyamatban: párhuzamos sínek bekötése (S-ív, csúszó becsatlakozás, irány a kurzor szerint).
+- Mergelve: #86 (párhuzamos sínek bekötése: S-ív, csúszó becsatlakozás, irány a kurzor szerint).
+- Folyamatban: a város mint fogyasztó (piac, kereslet, ellátottság, növekedés). Utána: gazdasági
+  nyomás (fenntartás, járműköltség, Pénzügyek panel, hitel). Feltételes ötlet: lerakható iparágak
+  fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- A város mint fogyasztó (keresletet támaszt az árukra)
+- Gazdasági nyomás: havi fenntartás (sín/út/megálló/jelző/raktár), járműköltség, Pénzügyek panel
+  tételesen + járatonként, hitel (kamattal; negatív egyenlegnél nincs építés)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

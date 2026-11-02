@@ -47,6 +47,9 @@ import { TerraformSelection } from './TerraformSelection';
 import { PathPreview } from './PathPreview';
 import {
   CellType,
+  isDepot,
+  selection,
+  stationAt,
   canStartRoute,
   controlOfTool,
   controlProblem,
@@ -614,8 +617,11 @@ function Scene() {
           const { x, z } = cellOf(wx, wz);
           if (!terrain.inBounds(x, z)) return;
           const m = terrain.getMap();
-          const a = industryAnchorOf(m, x, z);
+          // An industry (or one of its stops): its panel (stops in / out, shares).
+          const st = stationAt(m, x, z);
+          const a = industryAnchorOf(m, x, z) ?? (st && !isDepot(st) && m.cells[st.anchor[0]][st.anchor[1]] !== CellType.CityCenter ? st.anchor : null);
           if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          else selection.set(a ? [a[0], a[1]] : null);
           return;
         }
         const sk = structKindOf(tool.id);

@@ -494,3 +494,29 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+.ui-bar__goal {
+  font-variant-numeric: tabular-nums;
+}
+.ui-bar__goal.is-done {
+  color: #86efac;
+}
+.ui-over__box--goal {
+  border-color: rgba(134, 239, 172, 0.6);
+  max-width: 420px;
+}
+.ui-over__figs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.ui-over__note {
+  color: var(--ui-dim);
+  font-size: 13px;
+}

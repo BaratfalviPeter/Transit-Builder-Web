@@ -13,6 +13,7 @@ import {
   CITY_ITEMS,
   cityBounds,
   ITEMS,
+  POWER_MIN,
   useCitySnapshot,
   type TerrainMap,
 } from '../sim';
@@ -25,7 +26,13 @@ const GROWTH_TEXT = {
   free: 'Kisváros — magától nő',
   supplied: 'Nő, amíg ellátod',
   stalled: 'Nem nő — szállíts ide árut és deszkát (megálló a város szélén)',
+  nopower: 'Nem nő — kevés az áram (vigyél szenet az erőműbe)',
 } as const;
+
+/** MW → "1,25 GW" / "800 MW". */
+export function formatPower(mw: number): string {
+  return mw >= 1000 ? `${(mw / 1000).toLocaleString('hu-HU', { maximumFractionDigits: 2 })} GW` : `${Math.round(mw)} MW`;
+}
 
 export function CityLabel({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
   const city = useCitySnapshot();
@@ -70,6 +77,20 @@ export function CityLabel({ map, cellSize }: { map: TerrainMap; cellSize: number
             </div>
           );
         })}
+        <div className="citycard__row" title="Áram: az erőművek automatikusan ellátják a várost, ha szenet (vagy olajat) kapnak">
+          <span className="citycard__item">⚡ Áram</span>
+          <span className="citycard__bar">
+            <span
+              className={'citycard__fill' + (city.power.supply < city.power.demand * POWER_MIN ? ' citycard__fill--low' : '')}
+              style={{ width: `${city.power.demand > 0 ? Math.min(1, city.power.supply / city.power.demand) * 100 : 100}%` }}
+            />
+          </span>
+          <span className="citycard__num">{formatPower(city.power.supply)}</span>
+          <span className="citycard__last">
+            igény {formatPower(city.power.demand)}
+            {city.powerSat !== null && ` · ellátottság ${Math.round(city.powerSat * 100)}% (min. ${Math.round(POWER_MIN * 100)}%)`}
+          </span>
+        </div>
         <div className={`citycard__growth citycard__growth--${city.growth}`}>{GROWTH_TEXT[city.growth]}</div>
       </div>
     </Html>

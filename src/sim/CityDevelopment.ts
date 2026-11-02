@@ -18,7 +18,8 @@
  *     with the month before (deliveries come in loads, not evenly);
  *   - growth: up to UNSUPPLIED_LEVELS the town grows on its own (GROWTH_BASE a
  *     day); beyond that only as fast as it is supplied (GROWTH_SUPPLIED × the
- *     mean satisfaction) — an unsupplied city stops growing.
+ *     mean satisfaction) — an unsupplied city stops growing, and so does one
+ *     short of power (below POWER_MIN of POWER_PER_POP per inhabitant).
  */
 
 import type { Item } from './interior';
@@ -26,6 +27,8 @@ import { CellType, type TerrainMap } from './terrain';
 
 /** Maximum development level a building can reach. */
 export const MAX_LEVEL = 5;
+/** The beta test's goal: this many inhabitants. */
+export const GOAL_POPULATION = 5000;
 /** Inhabitants per building level (display only). */
 export const POP_PER_LEVEL = 40;
 /** Monthly demand per item: `base + perLevel × size`. */
@@ -38,6 +41,13 @@ export const DEMAND: Readonly<Partial<Record<Item, { base: number; perLevel: num
 export const CITY_ITEMS = Object.keys(DEMAND) as Item[];
 /** Price factor for deliveries beyond this month's demand. */
 export const OVERSUPPLY_PRICE = 0.25;
+/**
+ * POWER: the city needs POWER_PER_POP MW per inhabitant, from the power
+ * plants (automatic, see production.ts). Beyond the small town, below
+ * POWER_MIN of it (the month's mean) it stops growing.
+ */
+export const POWER_PER_POP = 0.5;
+export const POWER_MIN = 0.8;
 /** Size (sum of levels) the town reaches without any supply. */
 export const UNSUPPLIED_LEVELS = 40;
 /** Expected growth steps per game day: on its own / when fully supplied. */
@@ -61,8 +71,12 @@ export interface CitySnapshot {
   delivered: Partial<Record<Item, number>>;
   /** Supply (0…1) per item — last months' delivered / demand, smoothed; null before the first month ends. */
   satisfaction: Partial<Record<Item, number>> | null;
-  /** Growing right now: 'free' (small town), 'supplied', or 'stalled' (needs supply). */
-  growth: 'free' | 'supplied' | 'stalled';
+  /** Growing right now: 'free' (small town), 'supplied', 'stalled' (needs supply) or 'nopower'. */
+  growth: 'free' | 'supplied' | 'stalled' | 'nopower';
+  /** Power: the plants' output now / what the city needs now (MW). */
+  power: { supply: number; demand: number };
+  /** Power supply (0…1) of the last months, smoothed; null before the first month ends. */
+  powerSat: number | null;
 }
 
 /** The saved part of the city. */
@@ -73,6 +87,9 @@ export interface CitySave {
   satisfaction: Partial<Record<Item, number>> | null;
   month: number | null;
   growthCarry: number;
+  powerSat?: number | null;
+  powerSum?: number;
+  powerDays?: number;
 }
 
 type Listener = () => void;
@@ -100,6 +117,11 @@ export class CityDevelopment {
   private growthCarry = 0;
   /** The map (seed) the city belongs to. */
   private seed: number | null = null;
+  /** Power now (MW) / Σ supply × days this month / days counted / smoothed supply share. */
+  private powerNow = 0;
+  private powerSum = 0;
+  private powerDays = 0;
+  private powerSat: number | null = null;
 
   // Cached immutable snapshot so React's useSyncExternalStore gets a stable
   // reference between mutations (no re-render loops).
@@ -127,6 +149,9 @@ export class CityDevelopment {
     this.satisfaction = null;
     this.month = null;
     this.growthCarry = 0;
+    this.powerSum = 0;
+    this.powerDays = 0;
+    this.powerSat = null;
     this.emit();
   }
 
@@ -139,6 +164,9 @@ export class CityDevelopment {
       satisfaction: this.satisfaction && { ...this.satisfaction },
       month: this.month,
       growthCarry: this.growthCarry,
+      powerSat: this.powerSat,
+      powerSum: this.powerSum,
+      powerDays: this.powerDays,
     };
   }
 
@@ -152,6 +180,9 @@ export class CityDevelopment {
     this.satisfaction = s.satisfaction && { ...s.satisfaction };
     this.month = s.month;
     this.growthCarry = s.growthCarry;
+    this.powerSat = s.powerSat ?? null;
+    this.powerSum = s.powerSum ?? 0;
+    this.powerDays = s.powerDays ?? 0;
     this.emit();
   }
 
@@ -175,9 +206,25 @@ export class CityDevelopment {
     return full + (n - full) * OVERSUPPLY_PRICE;
   }
 
+  /** The power plants' output now (MW); counted into the month by `advance`. */
+  setPower(mw: number): void {
+    if (Math.abs(mw - this.powerNow) < 1) return;
+    this.powerNow = mw;
+    this.emit();
+  }
+
+  /** What the city needs now (MW). */
+  powerDemand(): number {
+    return this.size * POP_PER_LEVEL * POWER_PER_POP;
+  }
+
   /** `days` whole game days passed; it is now `dateMs`. */
   advance(days: number, dateMs: number, rng: () => number = Math.random): void {
     if (days <= 0) return;
+    // This month's power: the supply share of each day.
+    const need = this.powerDemand();
+    this.powerSum += (need > 0 ? Math.min(1, this.powerNow / need) : 1) * days;
+    this.powerDays += days;
     const m = monthOf(dateMs);
     if (this.month === null) this.month = m;
     else if (m !== this.month) {
@@ -222,6 +269,7 @@ export class CityDevelopment {
 
   private growthMode(): CitySnapshot['growth'] {
     if (this.size < UNSUPPLIED_LEVELS) return 'free';
+    if (this.powerSat !== null && this.powerSat < POWER_MIN) return 'nopower';
     return this.meanSatisfaction() > 0.05 ? 'supplied' : 'stalled';
   }
 
@@ -242,6 +290,10 @@ export class CityDevelopment {
     }
     this.satisfaction = sat;
     this.delivered = {};
+    const p = this.powerDays > 0 ? this.powerSum / this.powerDays : 1;
+    this.powerSat = this.powerSat === null ? p : (this.powerSat + p) / 2;
+    this.powerSum = 0;
+    this.powerDays = 0;
     this.emit();
   }
 
@@ -271,6 +323,8 @@ export class CityDevelopment {
       delivered: { ...this.delivered },
       satisfaction: this.satisfaction && { ...this.satisfaction },
       growth: this.growthMode(),
+      power: { supply: this.powerNow, demand: this.powerDemand() },
+      powerSat: this.powerSat,
     };
   }
 

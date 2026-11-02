@@ -80,7 +80,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
               )}
             </StaticBatch>
             {total > 0 && (
-              <Html position={[pos[0], pos[1] + cellSize * 1.3, pos[2]]} center style={{ pointerEvents: 'none' }}>
+              <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 1.3, pos[2]]} center style={{ pointerEvents: 'none' }}>
                 <div className={'station-tip station-stock' + (total >= STATION_CAPACITY ? ' is-bad' : '')}>
                   {parts.join('  ')} · {total}/{STATION_CAPACITY}
                 </div>
@@ -114,7 +114,7 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
       <group position={pos} rotation-y={rotY} scale={scale}>
         <DepotDynamic fill={total / DEPOT_CAPACITY} bays={sim.depotBays(st.id)} open={sim.depotOpen(st.id)} />
       </group>
-      <Html position={[pos[0], pos[1] + cellSize * 2.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip station-stock' + (total >= DEPOT_CAPACITY ? ' is-bad' : '')}>
           🏬 {parts.length ? parts.join('  ') : 'üres'} · {total}/{DEPOT_CAPACITY}
         </div>
@@ -165,7 +165,7 @@ export function StationPreview({
           </mesh>
         );
       })}
-      <Html position={[pos[0], pos[1] + cellSize * 1.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 1.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? (kind === 'truck' ? `🚚 Kamionrakodó · $${cost}` : `🚉 Vasútállomás · ${6 + 2 * hover.ext} cellás peron · $${cost} · Q: hossz`) : reason}</div>
       </Html>
     </group>
@@ -212,13 +212,13 @@ export function DepotPlacement({
           <meshBasicMaterial color={ok ? DEPOT_ROW_COLOR[lz] : '#f87171'} transparent opacity={0.5} depthWrite={false} />
         </mesh>
       ))}
-      <Html position={[(ex - half) * cellSize, y + cellSize * 0.6, (ez - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[(ex - half) * cellSize, y + cellSize * 0.6, (ez - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
         <div className="station-tip">➡ behajtó</div>
       </Html>
-      <Html position={[(ox - half) * cellSize, y + cellSize * 0.6, (oz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[(ox - half) * cellSize, y + cellSize * 0.6, (oz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
         <div className="station-tip">kihajtó ➡</div>
       </Html>
-      <Html position={[(mx - half) * cellSize, y + cellSize * 1.6, (mz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[(mx - half) * cellSize, y + cellSize * 1.6, (mz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `🏬 Raktár · $${cost} · Q: forgatás` : reason}</div>
       </Html>
     </group>

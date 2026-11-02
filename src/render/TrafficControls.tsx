@@ -215,7 +215,7 @@ export function TrafficPreview({
         <planeGeometry args={[cellSize * 0.94, cellSize * 0.94]} />
         <meshBasicMaterial color={ok ? '#4ade80' : '#f87171'} transparent opacity={0.45} depthWrite={false} />
       </mesh>
-      <Html position={[0, cellSize * 0.9, 0]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[0, cellSize * 0.9, 0]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${CONTROL_LABEL[kind]} · $${cost}` : reason}</div>
       </Html>
     </group>

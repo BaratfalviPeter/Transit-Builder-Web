@@ -149,7 +149,7 @@ function Payments({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
     <group>
       {Array.from({ length: pool }).map((_, i) => (
         <group key={i} ref={(g) => (anchors.current[i] = g)}>
-          <Html center style={{ pointerEvents: 'none' }}>
+          <Html zIndexRange={[10, 0]} center style={{ pointerEvents: 'none' }}>
             <div ref={(d) => (labels.current[i] = d)} className="pay-pop" style={{ opacity: 0 }} />
           </Html>
         </group>
@@ -304,7 +304,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
               <circleGeometry args={[1.1 * cellSize, 24]} />
               <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={lit ? 1 : 0.35} />
             </mesh>
-            <Html center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
+            <Html zIndexRange={[10, 0]} center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
               <div className={'net-stop' + (lit ? '' : ' is-rail') + (picked ? ' is-picked' : '')}>
                 {depot ? '' : truck ? '🚚 ' : '🚉 '}
                 {nameOf(s.id)}

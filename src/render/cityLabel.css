@@ -73,3 +73,11 @@
 .citycard__growth--stalled {
   color: #ffb36b;
 }
+
+.citycard__fill--low {
+  background: #f0a03a;
+}
+.citycard__growth--nopower,
+.citycard__growth--stalled {
+  color: #f8b26a;
+}

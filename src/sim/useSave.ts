@@ -9,6 +9,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import { clearSave, mapOf, readSave, writeSave } from './save';
 import { useCity } from './useCityDevelopment';
 import { useGame } from './useGameState';
+import { selection } from './selection';
 import { useInteriorStore } from './useInterior';
 import { useTerrainStore } from './useTerrain';
 import { useTransport } from './useTransport';
@@ -54,6 +55,7 @@ export function SaveProvider({ children }: { children: ReactNode }) {
     transport.reset([]);
     game.importState(null);
     interiors.production.importState(null);
+    selection.set(null);
     setLastSaved(null);
   }, [terrain, transport, game, city, interiors]);
 

@@ -57,7 +57,7 @@ import {
   type TerrainMap,
 } from './terrain';
 import { hasRailAt, roadCrossingAxis } from './railNet';
-import { stationGeom, stopKind, type Station } from './stations';
+import { stationGeom, stopGivesOut, stopKind, stopTakesIn, type Station } from './stations';
 import { ACCEPTS, INDUSTRY_ICON, INDUSTRY_NAME, ITEMS, type Item } from './interior';
 import {
   bayApproach,
@@ -1606,7 +1606,7 @@ export class TransportSim {
     prod: ProductionSim,
     earn: Earn,
   ): boolean {
-    if (!line.fullLoad || isDepot(here)) return false;
+    if (!line.fullLoad || isDepot(here) || !stopGivesOut(here)) return false;
     const p = FIXED_PRODUCTION[map.cells[here.anchor[0]][here.anchor[1]]];
     const makes = p?.makes ?? p?.turns?.to;
     if (!makes) return false;
@@ -1614,7 +1614,7 @@ export class TransportSim {
     for (const id of line.stops) {
       if (id === here.id) continue;
       const st = byId.get(id);
-      if (st && (isDepot(st) || (ACCEPTS[map.cells[st.anchor[0]][st.anchor[1]]] ?? []).includes(makes))) later = true;
+      if (st && (isDepot(st) || (stopTakesIn(st) && (ACCEPTS[map.cells[st.anchor[0]][st.anchor[1]]] ?? []).includes(makes)))) later = true;
     }
     if (!later) return false;
     this.serveStop(t, cap, line, here, byId, map, prod, earn);
@@ -1647,7 +1647,7 @@ export class TransportSim {
       const s = byId.get(id);
       if (!s) continue;
       if (isDepot(s)) laterDepot = true;
-      else for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
+      else if (stopTakesIn(s)) for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
     }
     const depot = isDepot(here);
     // A city stop: the city takes all it accepts and pays by its demand.
@@ -1655,7 +1655,8 @@ export class TransportSim {
 
     // Unload. An industry takes (and pays for) what it accepts; a depot
     // stores what this line can't deliver itself.
-    const takes = depot ? null : (ACCEPTS[map.cells[here.anchor[0]][here.anchor[1]]] ?? []);
+    // (A stop set to 'out' only gives its industry's products, takes nothing in.)
+    const takes = depot ? null : stopTakesIn(here) ? (ACCEPTS[map.cells[here.anchor[0]][here.anchor[1]]] ?? []) : [];
     let pay = 0;
     for (const item of Object.keys(t.cargo) as Item[]) {
       const n = t.cargo[item] ?? 0;
@@ -1697,7 +1698,7 @@ export class TransportSim {
     let load = 0;
     for (const v of Object.values(t.cargo)) load += v ?? 0;
     for (const item of wanted) {
-      if (load >= cap) break;
+      if (load >= cap || (!depot && !stopGivesOut(here))) break;
       const from = depot ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
       const when = Math.min(this.clock, (depot ? prod.sinceOf(here.id, item) : null) ?? this.clock);
       const k = prod.take(here.id, item, cap - load);

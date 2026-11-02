@@ -72,8 +72,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Ára: vasútállomás $500, kamionmegálló $300. Vasútállomás peronhossza: `Station.ext` (0–3
   cella mindkét végén → 6/8/10/12), `stationGeom(anchor, side, ext)`; az eszköznél Q váltja,
   +$100 / többletcella; `StationModel ext` nyújtja a peront.
-- **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya érc 0,5/s, fatelep
-  deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s, erőmű éget max. 2/s.
+- **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya SZÉN 0,5/s (az `ore` azonosító
+  maradt, csak a felirat „Szén”), fatelep deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s,
+  erőmű éget max. 4/s. ÁRAM (automatikus, nincs vezeték): az erőmű a készletét egyenletesen égeti
+  (`BURN_SPREAD` 30 s), 1 egység/s = `MW_PER_FUEL` 1000 MW, simítva (`POWER_TAU` 20 s) →
+  `powerSupply()` / `plantPower()`; a `CityDriver` átadja (`city.setPower`). A város igénye
+  `POWER_PER_POP` 0,5 MW/lakos; a havi átlagos ellátottság (`powerSat`) < `POWER_MIN` 0,8 → a 40-es
+  méret fölött nem nő ('nopower'). Egy 5. szintű bánya (1,5/s) kb. 3700 lakosig elég (a felhasználó
+  kérte, hogy 4–5000-hez ne legyen elég). Térképenként 3 bánya, 3 erőmű. A megálló bejövő készlete
+  `INBOUND_CAPACITY` 300. UI: városkártya ⚡ sor (`formatPower`), az erőmű ikonja fölött MW.
   Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
   IPARI SZINTEK: alap × `LEVEL_RATE` [0,5; 1; 1,5; 2; 3] (szint 1–5, kezdő `START_LEVEL` 2). Havonta
   (`ProductionSim.closeMonth`, a FinanceDriverből) a kínált (`offered`, akkor is, ha a megálló tele)
@@ -258,6 +265,25 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Transport). Alagút max. `MAX_TUNNEL` 40 cella (híd: `MAX_SPAN` 14). A bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
   Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
+- MEGÁLLÓ SZEREPE (`Station.role` 'both' | 'in' | 'out', `share` 0–100, alap 50; `stopTakesIn` /
+  `stopGivesOut` / `stopShare`, `TerrainStore.setStopRole`): a termék csak a 'in'-től különböző
+  megállókba kerül, a `share` arányában (`ProductionSim.outCount`, havonta nullázva); a 'out' megálló
+  nem vesz át szállítmányt (`serveStop` `takes`, `laterTakes`), az 'in' nem ad ki (`waitForLoad` sem vár
+  ott). UI: KIJELÖLÉS eszközzel épületre (vagy a megállójára) kattintva `selection` (sim/selection.ts) →
+  `IndustryPanel` a jobb oldali panel helyén (szint, termelés, megállók: Be / Ki / Mindkettő + csúszka).
+- STATISZTIKA (K, `StatsWindow.tsx`): `GameState.history` (`MonthRecord`, max. `HISTORY_MONTHS` 24, mentve),
+  a `FinanceDriver` tölti hónapzáráskor (könyvek, egyenleg, járatonként bevétel / költség / egység /
+  menetidő / állás, lakosság, áram, ellátottság). Fülek: Pénz (oszlop + vonal + táblázat), Járatok,
+  Város; SVG, a dataviz-referencia sötét kategória-színei (#3987e5, #d95926, #199e70), hover-sáv `<title>`
+  tooltippel. CÉL: `GOAL_POPULATION` elérésekor `game.reachGoal()` (`goalAt`, mentve) + `GoalReached`
+  ablak (GameUI), a felső sávban 🎯 lakos / 5000. A 3D `<Html>` feliratok `zIndexRange={[10, 0]}`-t
+  kapnak, különben az ablakok fölé kerülnek.
+- BEMUTATÓ (`src/ui/Tutorial.tsx`, `tutorial.css`): `Intro` (6 oldalas ablak a játék logikájáról,
+  első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
+  (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,
+  városba szállítás — a `done` listában maradnak). Állapot: localStorage `transit-builder:tutorial`
+  (`useTutorial`). A Súgóból (H) mindkettő újra előhozható. Cél: `GOAL_POPULATION` 5000
+  (`CityDevelopment.ts`).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -326,7 +352,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
 - Mergelve: #94 (a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella).
 - Mergelve: #95 (játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók).
-- Folyamatban: a város nem nőtt (dátumugrás-hiba), nagyobb városi kereslet, „csak tele induljon”.
+- Mergelve: #96 (a város nem nőtt — dátumugrás-hiba, nagyobb városi kereslet, „csak tele induljon”).
+- BÉTATESZT-CSOMAG (a felhasználó jóváhagyta, ebben a sorrendben): 1) áram (szén → erőmű → város,
+  automatikus) — kész (#97); 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
+  szélén (mindkettő átugorható) — kész (#97); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
+  ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

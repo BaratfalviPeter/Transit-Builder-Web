@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { runningOf, upkeepOf } from './economy';
 import { useGame } from './useGameState';
 import { useInteriorStore } from './useInterior';
+import { useCity } from './useCityDevelopment';
 import { useTerrainStore } from './useTerrain';
 import { useTransport } from './useTransport';
 
@@ -22,6 +23,7 @@ export function FinanceDriver(): null {
   const terrain = useTerrainStore();
   const transport = useTransport();
   const production = useInteriorStore().production;
+  const city = useCity();
   useEffect(() => {
     let month = monthOf(game.getSnapshot().dateMs);
     return game.subscribe(() => {
@@ -44,7 +46,32 @@ export function FinanceDriver(): null {
       // Industries grow / shrink by how well they were served; line figures roll over.
       production.closeMonth();
       transport.closeMonth();
+      // The statistics window's record of the month just closed.
+      const g = game.getSnapshot();
+      const c = city.getSnapshot();
+      const books = g.lastMonth!;
+      const lines: Record<number, { income: number; cost: number; units: number; speed: number | null; held: number | null }> = {};
+      for (const l of transport.getSnapshot().lines) {
+        const f = transport.lineStats(l.id).last;
+        lines[l.id] = {
+          income: books.lineIncome[l.id] ?? 0,
+          cost: books.lineCost[l.id] ?? 0,
+          units: f?.units ?? 0,
+          speed: f && f.units > 0 ? f.paidW / f.units : null,
+          held: f && f.time > 0 ? f.held / f.time : null,
+        };
+      }
+      game.pushHistory({
+        month: m - 1,
+        cat: { ...books.cat },
+        money: g.money,
+        lines,
+        population: c.population,
+        powerSupply: c.power.supply,
+        powerDemand: c.power.demand,
+        sat: { goods: c.satisfaction?.goods ?? null, plank: c.satisfaction?.plank ?? null, power: c.powerSat },
+      });
     });
-  }, [game, terrain, transport, production]);
+  }, [game, terrain, transport, production, city]);
   return null;
 }

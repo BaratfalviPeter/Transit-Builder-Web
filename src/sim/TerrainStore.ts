@@ -28,7 +28,7 @@ import {
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
 import { axisOf, interiorAt, interiorOf, isUnderpass, TUNNEL_COVER, levelAt, structureAt, structureProblem, structureStep, trenchAt, type Structure, type StructureKind } from './structures';
-import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
+import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind, type StopRole } from './stations';
 
 type Listener = () => void;
 
@@ -241,6 +241,14 @@ export class TerrainStore {
     if (cells) partial.cells = cells;
     if (cleared) partial.cleared = cleared;
     this.commit(partial, true);
+    this.emit();
+  }
+
+  /** Set a stop's role / output share (see stations.ts `StopRole`). */
+  setStopRole(id: number, patch: { role?: StopRole; share?: number }): void {
+    const list = this.map.stations ?? [];
+    if (!list.some((s) => s.id === id)) return;
+    this.commit({ stations: list.map((s) => (s.id === id ? { ...s, ...patch } : s)) }, false);
     this.emit();
   }
 

@@ -1,0 +1,139 @@
+/* StatsWindow: the big statistics window (dark UI; text in text tokens, marks carry the colour). */
+.stats {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 12, 0.45);
+  pointer-events: auto;
+}
+.stats__card.ui-help__card {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  color: #f0efec;
+}
+.stats__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+.stats__tabs button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f0efec;
+  font-size: 13px;
+  cursor: pointer;
+}
+.stats__tabs button.is-on {
+  background: rgba(57, 135, 229, 0.3);
+  border-color: rgba(57, 135, 229, 0.8);
+  font-weight: 700;
+}
+.stats__body {
+  padding: 6px 16px 16px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.stats__body h4 {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c3c2b7;
+}
+.stats__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.stats__grid {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+.stats__zero {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1;
+}
+.stats__tick {
+  fill: #c3c2b7;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.stats__dot {
+  stroke: #1a1a19;
+  stroke-width: 2;
+}
+.stats__hover {
+  fill: transparent;
+}
+.stats__hover:hover {
+  fill: rgba(255, 255, 255, 0.06);
+}
+.stats__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: #c3c2b7;
+  font-size: 12px;
+}
+.stats__legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+.stats__table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stats__table th,
+.stats__table td {
+  padding: 3px 6px;
+  text-align: right;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.stats__table th:first-child,
+.stats__table td:first-child {
+  text-align: left;
+}
+.stats__table th {
+  color: #c3c2b7;
+  font-weight: 600;
+}
+.stats .is-minus {
+  color: #f87171;
+}
+.stats .is-plus {
+  color: #86efac;
+}
+.stats__line {
+  margin: 10px 0;
+}
+.stats__line-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.stats__line-figs {
+  margin-left: auto;
+  font-weight: 400;
+  color: #c3c2b7;
+}
+.stats__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}

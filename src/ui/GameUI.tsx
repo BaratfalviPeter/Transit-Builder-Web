@@ -35,7 +35,7 @@ import { getDev } from '../dev/modelEditorStore';
 import { DevTab } from './DevTab';
 import { LinesPanel } from './LinesPanel';
 import { FinancePanel } from './FinancePanel';
-import { GamePanel } from './GamePanel';
+import { Feedback, GamePanel } from './GamePanel';
 import { Checklist, Intro, useTutorial } from './Tutorial';
 import { IndustryPanel } from './IndustryPanel';
 import { StatsWindow } from './StatsWindow';
@@ -97,7 +97,7 @@ const KEY_OF = Object.fromEntries(KEYS.map((k) => [k.tool, k.label])) as Record<
 const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: string; icon: string }> = [
   { code: 'KeyJ', label: 'J', panel: 'lines', title: 'Járatok', icon: '🗺️' },
   { code: 'KeyP', label: 'P', panel: 'economy', title: 'Pénzügyek', icon: '💰' },
-  { code: 'KeyM', label: 'M', panel: 'game', title: 'Játék', icon: '💾' },
+  { code: 'KeyM', label: 'M', panel: 'game', title: 'Játék', icon: '⚙️' },
   { code: 'Digit0', label: '0', panel: 'dev', title: 'Dev', icon: '🛠️' },
 ];
 
@@ -285,12 +285,14 @@ export function GameUI() {
 
       {/* Top-right: panel buttons + help */}
       <div className="ui-menu">
+        <Feedback compact />
         <button type="button" className={'ui-menu__btn' + (stats ? ' is-active' : '')} onClick={() => setStats((v) => !v)} title="Statisztika (K)">
           <span aria-hidden>📊</span>
           <span className="ui-menu__label">Statisztika</span>
           <kbd>K</kbd>
         </button>
-        {PANEL_KEYS.map((k) => (
+        {/* The Dev tab has no button (beta): its key (0) still opens it. */}
+        {PANEL_KEYS.filter((k) => k.panel !== 'dev').map((k) => (
           <button
             key={k.panel}
             type="button"

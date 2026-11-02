@@ -34,8 +34,8 @@ export const VISUAL_DEFAULTS = {
   liveShadows: false,
 
   // --- Day / night ---
-  /** Run the day/night cycle. Off = fixed time of day (`timeOfDay`). */
-  dayCycle: true,
+  /** Run the day/night cycle. Off = fixed time of day (`timeOfDay`). Off by default (the user asked). */
+  dayCycle: false,
   /** Real seconds for one full day. */
   dayLength: 480,
   /** Time of day when the cycle is off (and the cycle's start): 0.5 = noon. */
@@ -110,10 +110,22 @@ export type VisualKey = keyof VisualSettings;
 
 const STORAGE_KEY = 'tb.visual.v1';
 
+/** Once: switch a stored day/night cycle off (it used to be on by default); it can be turned on again. */
+const DAY_OFF_KEY = 'tb.visual.dayCycleOff';
+
 function load(): VisualSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...VISUAL_DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const s = { ...VISUAL_DEFAULTS, ...JSON.parse(raw) } as VisualSettings;
+      if (!localStorage.getItem(DAY_OFF_KEY)) {
+        s.dayCycle = false;
+        localStorage.setItem(DAY_OFF_KEY, '1');
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      }
+      return s;
+    }
+    localStorage.setItem(DAY_OFF_KEY, '1');
   } catch {
     /* ignore */
   }

@@ -32,7 +32,7 @@ export const UPKEEP = {
 } as const;
 
 /** Monthly running cost of a vehicle ($). */
-export const RUNNING = { truck: 100, loco: 400, wagon: 40 } as const;
+export const RUNNING = { truck: 250, loco: 900, wagon: 90 } as const;
 
 export interface UpkeepItem {
   label: string;

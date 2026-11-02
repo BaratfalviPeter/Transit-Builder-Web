@@ -200,15 +200,22 @@ const PAGES: Page[] = [
           <kbd>1–9</kbd> építőeszközök (lent) · <kbd>Esc</kbd> mégse
         </div>
         <div>
-          <kbd>Szóköz</kbd> szünet · <kbd>T</kbd> gyorsítás
+          <kbd>Szóköz</kbd> szünet · <kbd>T</kbd> gyorsítás (vagy a ⏸ ▶ ⏩ gombok bal fent)
         </div>
         <div>
-          <kbd>J</kbd> Járatok · <kbd>P</kbd> Pénzügyek · <kbd>K</kbd> statisztika · <kbd>M</kbd> mentés / új játék
+          <kbd>J</kbd> Járatok · <kbd>P</kbd> Pénzügyek · <kbd>K</kbd> statisztika · <kbd>M</kbd> mentés, új játék, beállítások
         </div>
         <div>
           <kbd>H</kbd> súgó (innen a bemutató és a feladatlista is újra elérhető)
         </div>
-        <p>A játék percenként magától ment. Jó szállítást!</p>
+        <p>
+          ⚙️ <b>Beállítások</b> (M): <b>grafika</b> — ha akad a játék, válaszd az „Energiatakarékos” fokozatot; <b>kamera</b> sebessége; a
+          görgő az <b>egér felé zoomoljon</b>-e.
+        </p>
+        <p>
+          💬 Hibát találtál vagy ötleted van? A jobb felső <b>Visszajelzés</b> gombbal írd meg (GitHub-fiók kell). A játék percenként
+          magától ment. Jó szállítást!
+        </p>
       </div>
     ),
   },

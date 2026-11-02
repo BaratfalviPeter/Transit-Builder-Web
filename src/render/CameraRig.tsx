@@ -23,7 +23,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
-import { cameraSens, useCameraSens } from './cameraSettings';
+import { cameraSens, useCameraSens, useZoomToCursor } from './cameraSettings';
 
 /** Pan speed (world units/s) at full ramp: PAN_BASE + PAN_PER_DIST × the camera's distance. */
 const PAN_BASE = 5;
@@ -39,6 +39,7 @@ export function CameraRig() {
   const controlsRef = useRef<MapControlsImpl | null>(null);
   const camera = useThree((s) => s.camera);
   const sens = useCameraSens();
+  const zoomCursor = useZoomToCursor();
 
   // Track which movement keys are currently held.
   const keys = useRef({
@@ -160,8 +161,8 @@ export function CameraRig() {
       dampingFactor={0.1}
       rotateSpeed={0.6 * sens}
       zoomSpeed={0.7 * sens}
-      // The wheel zooms towards the point under the mouse.
-      zoomToCursor
+      // The wheel zooms towards the point under the mouse (a setting).
+      zoomToCursor={zoomCursor}
       mouseButtons={mouseButtons}
       // Keep the camera above the horizon so you always look down onto the map.
       minPolarAngle={0}

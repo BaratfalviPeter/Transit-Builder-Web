@@ -190,7 +190,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   szállított mennyiséghez képest elhanyagolható);
   a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
   az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
-  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). A VÁROS KAPUI (a felhasználónak
+  ellátással (0,6 × átlagos ellátottság, ha az áru + deszka átlaga ≥ `SUPPLY_MIN` 0,25), különben
+  megáll ('stalled'). A VÁROS KAPUI (a felhasználónak
   nem tetszett a külön piac-épület, kivettük): megálló a városközpont négyzetének bármely oldalára
   (`stations.ts`: `cityAnchor` — a négyzeten belüli, az oldalt érintő 6×6-os ablak, a kurzorhoz
   csúsztatva; `citySideAt` a `sideAt`-ben; `cityWindowOk` a `stationProblem`-ben; az anchor egy
@@ -204,8 +205,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   cat)` (alap 'build'; járművek: 'vehicles'), `earn(amount, lineId)` — a TransportSim `Earn`
   típusa a járat id-t is adja. `FinanceDriver` (`useFinance.ts`) hónapváltáskor `closeMonth`:
   fenntartás (`economy.ts` `upkeepOf(map)`: út 1, sín 2 / cella, állomás 50, rakodó 25, raktár 300,
-  jelző 8, lámpa/körforg. 15, tábla 3 $/hó) + üzemeltetés (`runningOf(line)`: kamion 100,
-  mozdony 400, kocsi 40 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
+  jelző 8, lámpa/körforg. 15, tábla 3 $/hó) + üzemeltetés (`runningOf(line)`: kamion 250,
+  mozdony 900, kocsi 90 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
   mínuszba vihetik az egyenleget; akkor a `spend` nem enged építeni / vásárolni. UI:
   `FinancePanel.tsx` (P). Teszt: scratchpad `market.ts` (MONTH sorok).
 - MENTÉS (`save.ts` + `useSave.ts` `SaveProvider`, UI: `GamePanel.tsx`, M): localStorage
@@ -278,6 +279,17 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   tooltippel. CÉL: `GOAL_POPULATION` elérésekor `game.reachGoal()` (`goalAt`, mentve) + `GoalReached`
   ablak (GameUI), a felső sávban 🎯 lakos / 5000. A 3D `<Html>` feliratok `zIndexRange={[10, 0]}`-t
   kapnak, különben az ablakok fölé kerülnek.
+- EGYENSÚLY (2026-11 ellenőrzés, scratchpad `bot.ts`: automatikus játékos, ami havonta bővít: több
+  kamion, ahol a megálló telik, 2. bánya áramhiánynál, új fatelep / 2. gyár, ha a város megáll):
+  kezdőtőke 50 000 (`App.tsx`), 5000 lakos a ~800–960. játéknapon (1× sebességen ~15 perc a botnak,
+  embernek kb. 30–40), a pénz mélypontja ~28 000. Futtatás: `node bot.cjs <seed> <napok> <tőke>`.
+- BEÁLLÍTÁSOK + VISSZAJELZÉS: a Játék panelen (M, ⚙️) grafika, kamera-érzékenység, „Görgővel az egér felé
+  zoomol” (`cameraSettings.ts` `setZoomToCursor`, localStorage `tb.zoomToCursor`, a `CameraRig` `zoomToCursor`).
+  Visszajelzés (`src/ui/feedback.ts` `feedbackUrl`): GitHub issue (issues/new) előre kitöltve a játék
+  állapotával és a böngészővel — gomb a jobb felső menüben (`Feedback compact`) és a Játék panelen.
+- NAPSZAKVÁLTÁS alapból KI (`visualSettings.ts` `dayCycle: false`; a már elmentett beállításoknál
+  egyszer kikapcsolja: `tb.visual.dayCycleOff`), a Látvány panelen (Dev → Látvány beállítás) bekapcsolható.
+  A Dev fülnek nincs gombja a menüben (bétateszt), a 0 billentyű nyitja.
 - BEMUTATÓ (`src/ui/Tutorial.tsx`, `tutorial.css`): `Intro` (6 oldalas ablak a játék logikájáról,
   első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
   (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,
@@ -357,6 +369,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   automatikus) — kész (#97); 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
   szélén (mindkettő átugorható) — kész (#97); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
+- Mergelve: #97 (bétateszt-csomag). Folyamatban: egyensúly-ellenőrzés + hangolás, beállítások a Játék
+  panelen, egér felé zoom kapcsoló, visszajelzés gomb.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

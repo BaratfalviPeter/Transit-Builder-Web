@@ -48,6 +48,8 @@ export const OVERSUPPLY_PRICE = 0.25;
  */
 export const POWER_PER_POP = 0.5;
 export const POWER_MIN = 0.8;
+/** Mean supply of goods + planks below which a city past the small town doesn't grow. */
+export const SUPPLY_MIN = 0.25;
 /** Size (sum of levels) the town reaches without any supply. */
 export const UNSUPPLIED_LEVELS = 40;
 /** Expected growth steps per game day: on its own / when fully supplied. */
@@ -270,7 +272,7 @@ export class CityDevelopment {
   private growthMode(): CitySnapshot['growth'] {
     if (this.size < UNSUPPLIED_LEVELS) return 'free';
     if (this.powerSat !== null && this.powerSat < POWER_MIN) return 'nopower';
-    return this.meanSatisfaction() > 0.05 ? 'supplied' : 'stalled';
+    return this.meanSatisfaction() >= SUPPLY_MIN ? 'supplied' : 'stalled';
   }
 
   private growthPerDay(): number {

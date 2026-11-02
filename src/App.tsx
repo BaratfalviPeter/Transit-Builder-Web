@@ -12,6 +12,7 @@ import { InteriorProvider, ProductionDriver } from './sim/useInterior';
 import { TransportDriver, TransportProvider } from './sim/useTransport';
 import { InteriorView } from './interior/InteriorView';
 import { CityDriver, CityProvider } from './sim/useCityDevelopment';
+import { FinanceDriver } from './sim/useFinance';
 
 /**
  * App root. Providers own the single simulation instances, shared between the
@@ -41,6 +42,7 @@ export default function App() {
             <TransportProvider>
             <CityProvider>
             <CityDriver />
+            <FinanceDriver />
             <ProductionDriver />
             <TransportDriver />
             <GameCanvas />

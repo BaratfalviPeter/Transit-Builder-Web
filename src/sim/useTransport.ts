@@ -45,7 +45,7 @@ export function TransportDriver(): null {
   useEffect(() => {
     const id = setInterval(() => {
       const dt = (TICK_MS / 1000) * game.getSpeed();
-      sim.tick(dt, terrain.getMap(), interiors.production, (amount) => game.earn(amount), city);
+      sim.tick(dt, terrain.getMap(), interiors.production, (amount, lineId) => game.earn(amount, lineId), city);
     }, TICK_MS);
     return () => clearInterval(id);
   }, [sim, game, terrain, interiors, city]);

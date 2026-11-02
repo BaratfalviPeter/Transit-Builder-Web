@@ -73,6 +73,9 @@ import {
 } from './depot';
 import type { ProductionSim } from './production';
 
+/** Pays a delivery (to the game's money), booked to the line that made it. */
+export type Earn = (amount: number, lineId: number) => void;
+
 /** The city's market (CityDevelopment): takes deliveries, says how many units to pay for. */
 export interface MarketSink {
   deliver(item: Item, n: number): number;
@@ -697,7 +700,7 @@ export class TransportSim {
    * Advance the trucks by `dt` game seconds. `earn` is paid for deliveries
    * (amount and where, for the floating "+$").
    */
-  tick(dt: number, map: TerrainMap, prod: ProductionSim, earn: (amount: number) => void, market?: MarketSink): void {
+  tick(dt: number, map: TerrainMap, prod: ProductionSim, earn: Earn, market?: MarketSink): void {
     this.market = market ?? null;
     for (let i = this.payments.length - 1; i >= 0; i--) {
       this.payments[i].age += dt;
@@ -1318,7 +1321,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
     poses: Map<number, TruckPose>,
   ): void {
     const v = t.depot;
@@ -1440,7 +1443,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
   ): void {
     const [hx, hz] = stopCenter(here);
     // What the line's OTHER stops take: industries their ACCEPTS, a depot
@@ -1483,7 +1486,7 @@ export class TransportSim {
       if (!t.cargo[item]) delete t.origin[item];
     }
     if (pay > 0) {
-      earn(pay);
+      earn(pay, line.id);
       this.payments.push({ amount: pay, x: hx, z: hz, age: 0 });
     }
 
@@ -1515,7 +1518,7 @@ export class TransportSim {
     map: TerrainMap,
     byId: Map<number, Station>,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
     noRoute: Set<number>,
     stalled: Set<number>,
     poses: Map<number, TruckPose>,
@@ -1672,7 +1675,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
   ): 'go' | 'wait' | 'noroute' {
     const net = netOf(map);
     const path = t.path!;

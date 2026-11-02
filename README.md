@@ -209,6 +209,13 @@ A jobb oldali **panel** három füle:
     közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
+- **Pénzügyek** (P; `src/sim/economy.ts`, `src/ui/FinancePanel.tsx`): havonta
+  **fenntartás** (út $1, sín $2 / cella; állomás $50, rakodó $25, raktár $300, jelző,
+  lámpa, tábla) és **üzemeltetés** (kamion $100, mozdony $400, kocsi $40 / hó) vonódik le,
+  hitel esetén **kamat** (évi 6%). Ez mínuszba is viheti az egyenleget — ilyenkor nem
+  lehet építeni és járművet venni. **Hitel** $10 000-es lépésekben, legfeljebb $200 000.
+  A panel mutatja az e havi és a múlt havi könyvelést kategóriánként, a várható havi
+  fix költséget tételesen, és **járatonként** a múlt havi bevételt, költséget, hasznot.
 - **Város és piac** (`src/sim/CityDevelopment.ts`, `src/render/MarketModel.tsx`,
   `CityLabel.tsx`): a város mellett egy **Piac** áll (6×6, az oldalaira vasútállomás
   vagy kamionrakodó építhető). A város havonta **árut** és **deszkát** kér

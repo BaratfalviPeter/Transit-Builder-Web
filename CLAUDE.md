@@ -168,6 +168,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   `tick` 5. paramétere a város). Modell: `MarketModel.tsx` (`?model=MarketModel`), kártya a piac
   fölött: `CityLabel.tsx`. Teszt: scratchpad `market.ts` (30/30 térképen van piac; ellátatlan
   város 40-nél megáll; fatelep → gyár → piac kamionjárat).
+- GAZDASÁG: `GameState` könyvel (`FinCat`: income / build / vehicles / upkeep / running /
+  interest; `month` + `lastMonth` (`MonthBooks`, járatonként `lineIncome` / `lineCost`)). `spend(cost,
+  cat)` (alap 'build'; járművek: 'vehicles'), `earn(amount, lineId)` — a TransportSim `Earn`
+  típusa a járat id-t is adja. `FinanceDriver` (`useFinance.ts`) hónapváltáskor `closeMonth`:
+  fenntartás (`economy.ts` `upkeepOf(map)`: út 1, sín 2 / cella, állomás 50, rakodó 25, raktár 300,
+  jelző 8, lámpa/körforg. 15, tábla 3 $/hó) + üzemeltetés (`runningOf(line)`: kamion 100,
+  mozdony 400, kocsi 40 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
+  mínuszba vihetik az egyenleget; akkor a `spend` nem enged építeni / vásárolni. UI:
+  `FinancePanel.tsx` (P). Teszt: scratchpad `market.ts` (MONTH sorok).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -222,14 +231,14 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
 - Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
 - Mergelve: #86 (párhuzamos sínek bekötése: S-ív, csúszó becsatlakozás, irány a kurzor szerint).
-- Folyamatban: a város mint fogyasztó (piac, kereslet, ellátottság, növekedés). Utána: gazdasági
+- Folyamatban (#87): a város mint fogyasztó (piac, kereslet, ellátottság, növekedés) + gazdasági
   nyomás (fenntartás, járműköltség, Pénzügyek panel, hitel). Feltételes ötlet: lerakható iparágak
   fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Gazdasági nyomás: havi fenntartás (sín/út/megálló/jelző/raktár), járműköltség, Pénzügyek panel
-  tételesen + járatonként, hitel (kamattal; negatív egyenlegnél nincs építés)
+- A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
+- Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

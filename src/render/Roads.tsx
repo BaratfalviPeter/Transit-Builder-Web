@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { activeControl, CellType, cellCornerHeights, hasRailAt, roadLinkDir, type TerrainMap } from '../sim';
+import { activeControl, CellType, cellCornerHeights, hasRailAt, overpassLift, roadLinkDir, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -38,6 +38,13 @@ const SURFACE_LIFT = 0.012;
  * to actually sit on the incline. This mirrors the build rule's corner-based
  * slope check, fixing roads that previously rendered flat at the slope's base.
  */
+/** A road cell lifted over an underpass: drawn by Structures.tsx (it ramps up), not here. */
+export function overUnderpass(map: TerrainMap, x: number, z: number): boolean {
+  if (!map.structures?.length) return false;
+  for (const [cx, cz] of [[x - 0.5, z - 0.5], [x + 0.5, z - 0.5], [x - 0.5, z + 0.5], [x + 0.5, z + 0.5], [x, z]]) if (overpassLift(map, cx, cz) > 1e-4) return true;
+  return false;
+}
+
 function isFlatRoad(map: TerrainMap, x: number, z: number): boolean {
   const [h00, h10, h11, h01] = cellCornerHeights(map, x, z);
   return h00 === h10 && h10 === h11 && h11 === h01;
@@ -91,7 +98,7 @@ export function Roads({ map, cellSize }: RoadsProps) {
     const round: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
-        if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z)) {
+        if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z) && !overUnderpass(map, x, z)) {
           const pts = roundedOutline(map, x, z);
           if (pts) round.push({ x, z, pts });
           else out.push([x, z]);

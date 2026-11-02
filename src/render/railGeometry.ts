@@ -8,7 +8,7 @@
  */
 
 import * as THREE from 'three';
-import { CellType, cellCornerHeights, LineWalker, type TerrainMap } from '../sim';
+import { CellType, cellCornerHeights, LineWalker, overpassLift, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 /** Length of one track unit (cells). The track is this short piece, repeated. */
@@ -23,7 +23,8 @@ export function groundAtGrid(map: TerrainMap, x: number, z: number): number {
   const [h00, h10, h11, h01] = cellCornerHeights(map, cx, cz);
   const s = Math.min(1, Math.max(0, x - cx + 0.5));
   const t = Math.min(1, Math.max(0, z - cz + 0.5));
-  return FLAT_TOP + (h00 * (1 - s) + h10 * s) * (1 - t) + (h01 * (1 - s) + h11 * s) * t;
+  // Over an underpass the road / rail crossing it rises (a small overpass).
+  return FLAT_TOP + (h00 * (1 - s) + h10 * s) * (1 - t) + (h01 * (1 - s) + h11 * s) * t + overpassLift(map, x, z);
 }
 
 export interface TrackSamples {

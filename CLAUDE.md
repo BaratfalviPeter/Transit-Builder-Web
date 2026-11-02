@@ -194,10 +194,21 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   tengelyen; `level` = a hídfők talaja; `carries` road | rail | nincs). A belső cellák NEM
   változnak (víz, alatta futó út / sín marad). Szabályok (`structureProblem`): hídfők síkok,
   egyforma magasak; híd: minden belső cella víz vagy ≥ 1 szinttel (HILL_STEP) lejjebb; alagút: nem
-  mélyebb a szájánál, nem víz, és hegy (≥ 1 szint) VAGY út / sín alatt megy (aluljáró). Max.
-  `MAX_SPAN` 14; ár / cella: híd 250, alagút 400; fenntartás 6 / 10 $/cella/hó. Előbb a szerkezet
-  (húzás vagy két kattintás), utána Út / Sín eszközzel kattintva rá: `layOnStructure` (út: a
-  hídfők Road cellák; sín: egy él `structure: id` jelzéssel a két hídfő között). Út: a `roadRoute`
+  mélyebb a szájánál, nem víz; HEGYI alagút: MINDEN belső cella a hegyhez tartozik (a hegy lábától a
+  túloldaláig — a felhasználó kérte), vagy ALULJÁRÓ: minden belső cella sík a száj szintjén, út /
+  sín van felette, max. `UNDERPASS_MAX` 3. Max. `MAX_SPAN` 14; ár / cella: híd 250, alagút 400;
+  fenntartás 6 / 10 $/cella/hó. Előbb a szerkezet (húzás vagy két kattintás), utána az Út / Sín
+  HÚZÁSA (vagy kattintás rá) átmegy rajta és ráépül (`layOnStructure`; út: a hídfők Road cellák;
+  sín: egy él `structure: id` jelzéssel a két hídfő között). Út: `structureStep` a `trackStepOk`-ban
+  és a `findTrackPath`-ban (a hídfőtől a tengely mentén a cellák alatta mindegy), a `buildPath` a
+  szerkezet celláit kihagyja és a végig bejárt szerkezetre ráteszi az utat. Sín: a `latticeAStar`
+  ugrólépése hídfőtől hídfőig, a `compOf` is átköt rajta, a `traceLine` megtartja a két pontot, a
+  `validate` a szerkezeten futó mintákat kihagyja, a `buildRail` az ugrást a szerkezetre teszi.
+  ALULJÁRÓ megjelenítése: a keresztező út / sín kis felüljárón megy át (`overpassLift`: UNDERPASS_LIFT
+  0,6 a szerkezet fölött, UNDERPASS_RAMP 1,5 cellás rámpával, a `groundAtGrid` hozzáadja — így a
+  kamionok, sínek is követik); a `Roads.tsx` ezeket a cellákat kihagyja (`overUnderpass`), a
+  `Structures.tsx` rajzolja (`OverpassRoads`, `UnderpassBox`). Az aluljáróban hosszában haladó
+  kamion nem emelkedik meg (`alongUnderpass`). Út: a `roadRoute`
   a két hídfőt közvetlenül köti (`roadLinkFrom`), a kamion útvonala UGRIK; `buildLane` egységnyi
   irányokkal + `lane.deck` dobozok (`deckBoxes`), `TruckPose.deck` — a kereszteződés-, sorompó- és
   kamion-ütközésvizsgálat a másik szinten lévőt kihagyja (`inBoxes`). A csomópont-fokszámba a
@@ -274,7 +285,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). Kint ezért a megállók a
   városközpont oldalain vannak (ezek lesznek a belső város kapui).
 - Mergelve: #88 (megállók a város szélén, mentés / betöltés, hidak és alagutak).
-- Folyamatban: szebb híd- és alagútmodell, átlátszó alagút.
+- Mergelve: #89 (szebb híd- és alagútmodell, átlátszó alagút).
+- Folyamatban: út / sín húzása átmegy a hídon / alagúton, aluljáró felüljáróval, hegyi alagút csak a hegyen át.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

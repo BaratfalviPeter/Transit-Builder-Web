@@ -16,7 +16,7 @@
 import { Html } from '@react-three/drei';
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { axisOf, CellType, floorOf, hasRailAt, interiorOf, isUnderpass, RAMP_CELLS, type Structure, type StructureKind, type TerrainMap } from '../sim';
+import { axisOf, CellType, cornerHeightAt, floorOf, hasRailAt, interiorOf, isUnderpass, RAMP_CELLS, type Structure, type StructureKind, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchCloudShadows } from './cloudShadows';
 import { groundAtGrid } from './railGeometry';
@@ -46,6 +46,7 @@ const M = {
   // Two-sided: the ramp solids are built by hand (winding not guaranteed).
   bank: std('#9a9488', { side: THREE.DoubleSide }),
   ramp: std('#3a3d42', { roughness: 1, side: THREE.DoubleSide }),
+  earth: std('#7e9a45', { flatShading: true }),
   lamp: new THREE.MeshBasicMaterial({ color: '#ffe3a1', toneMapped: false }),
 };
 
@@ -279,11 +280,11 @@ const VOUSSOIR_GEOM = (() => {
   g.rotateY(-Math.PI / 2);
   return g;
 })();
-/** The dark inside of a hill tunnel, past the lining. */
+/** The dark of a hill tunnel: a black sheet just inside the mouth — the trains run into it. */
 const MOUTH_GEOM = (() => {
-  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.1, bevelEnabled: false });
+  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.01, bevelEnabled: false });
   g.rotateY(-Math.PI / 2);
-  g.translate(0.52, 0, 0);
+  g.translate(0.17, 0, 0);
   return g;
 })();
 
@@ -336,10 +337,44 @@ function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
     g.translate(len / 2, 0, 0);
     return g;
   }, [len]);
+  // Where the hill doesn't cover the tube (low ground, the hill's foot): an earth mound over it.
+  const mounds = useMemo(() => {
+    const need = interiorOf(s).map(([x, z]) => {
+      const lo = Math.min(cornerHeightAt(map, x, z), cornerHeightAt(map, x + 1, z), cornerHeightAt(map, x, z + 1), cornerHeightAt(map, x + 1, z + 1));
+      return lo - s.level < TUBE_TOP + 0.05;
+    });
+    const out: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < need.length; ) {
+      if (!need[i]) { i++; continue; }
+      let j = i;
+      while (j < need.length && need[j]) j++;
+      const sh = new THREE.Shape();
+      sh.moveTo(-MOUND.foot, -0.05);
+      sh.lineTo(MOUND.foot, -0.05);
+      sh.lineTo(MOUND.top, TUBE_TOP + 0.08);
+      sh.lineTo(-MOUND.top, TUBE_TOP + 0.08);
+      sh.lineTo(-MOUND.foot, -0.05);
+      // Hollow: the tube runs through it (its ends would close the mouth otherwise).
+      const [, sy, sz] = TUNNEL_SCALE;
+      const hole = archShape(MOUTH.w + 0.1, MOUTH.spring, MOUTH.rise + 0.05).getPoints().map((v) => new THREE.Vector2(v.x * sz, v.y * sy));
+      sh.holes.push(new THREE.Path(hole));
+      const g = new THREE.ExtrudeGeometry(sh, { depth: j - i, bevelEnabled: false });
+      g.rotateY(-Math.PI / 2);
+      g.translate(-len / 2 + j, 0, 0);
+      out.push(g);
+      i = j;
+    }
+    return out;
+  }, [map, s, len]);
   return (
     <group position={pos} rotation-y={yaw} scale={cellSize}>
       <group position={[0, floor, 0]} scale={TUNNEL_SCALE}>
         <mesh geometry={tube} material={M.stone} castShadow receiveShadow />
+      </group>
+      <group position={[0, floor, 0]}>
+        {mounds.map((g, i) => (
+          <mesh key={i} geometry={g} material={M.earth} castShadow receiveShadow />
+        ))}
       </group>
       {[-1, 1].map((sd) => (
         <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0} scale={TUNNEL_SCALE}>
@@ -352,6 +387,10 @@ function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
 
 /** A hill tunnel's portal and tube, scaled up from the model so a train fits (x: along, y: up, z: across). */
 const TUNNEL_SCALE: V3 = [1, 1.75, 1.45];
+/** Height of the tube's crown above the floor. */
+const TUBE_TOP = (MOUTH.spring + MOUTH.rise + 0.05) * TUNNEL_SCALE[1];
+/** The earth mound's half-widths: at its foot and on top. */
+const MOUND = { foot: 0.95, top: 0.58 };
 
 const SLAB_T = 0.12;
 const WALL_T = 0.1;

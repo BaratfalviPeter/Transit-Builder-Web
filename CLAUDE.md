@@ -296,7 +296,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #90 (út / sín húzása a hídon / alagúton át, hegyi alagút csak a hegyen át).
 - Mergelve: #91 (aluljáró bevágással, automatikus ráépítés, magasabb rácsos híd).
 - Mergelve: #92 (aluljáró mint nyitott betonárok, 2 cellás rámpa, átlátszó cső nélkül).
-- Folyamatban: nagyobb hegyi alagút, a béléscső végig ér.
+- Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
+- Folyamatban: földhalom a cső fölött, fekete kapu, alagút max. 40 cella, min. 2 szintes domb.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

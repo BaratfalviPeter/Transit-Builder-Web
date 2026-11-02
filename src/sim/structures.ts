@@ -46,6 +46,8 @@ export interface Structure {
 
 /** Longest span (interior cells). */
 export const MAX_SPAN = 14;
+/** Longest tunnel (cells spanned): through big hills. */
+export const MAX_TUNNEL = 40;
 /** Price per interior cell. */
 export const STRUCTURE_PRICE: Record<StructureKind, number> = { bridge: 250, tunnel: 400 };
 
@@ -121,7 +123,8 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
   if (a[0] !== b[0] && a[1] !== b[1]) return 'Csak egyenesen (sor vagy oszlop mentén)';
   const span = Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) - 1;
   if (span < 1) return kind === 'bridge' ? 'A hídnak legalább egy cellát át kell ívelnie' : 'Az alagútnak legalább egy cella hosszú kell legyen';
-  if (span > MAX_SPAN) return `Legfeljebb ${MAX_SPAN} cella hosszú lehet`;
+  const max = kind === 'tunnel' ? MAX_TUNNEL : MAX_SPAN;
+  if (span > max) return `Legfeljebb ${max} cella hosszú lehet`;
   // Abutments: free, flat, level with each other.
   let level: number | null = null;
   for (const [x, z] of [a, b]) {
@@ -133,7 +136,7 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
     level = h;
   }
   const L = level!;
-  let hill = 0, flat = 0, crossed = false;
+  let hill = 0, flat = 0, crossed = false, top = -Infinity;
   const inner = interiorOf({ a, b });
   for (const [x, z] of inner) {
     if (structureAt(map, x, z)) return 'Másik hidat / alagutat keresztezne';
@@ -145,6 +148,7 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
       if (!OVER_TUNNEL_OK.has(t)) return 'Az alagút nem vezethet itt át';
       if (minCorner(map, x, z) < L - EPS) return 'Az alagút nem mehet a szájánál mélyebbre (Emelés a szájaknál / Süllyesztés)';
       // Part of the hill (its slope or top), or flat ground at the portals' level.
+      top = Math.max(top, maxCorner(map, x, z));
       if (maxCorner(map, x, z) >= L + HILL_STEP - EPS) hill++;
       else flat++;
       if (t === CellType.Road || t === CellType.Rail || hasRailAt(map, x, z)) crossed = true;
@@ -153,6 +157,8 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
   if (kind === 'tunnel') {
     // Through a hill: from its foot to the other side — every cell is hill.
     if (hill > 0 && flat > 0) return 'Hegyi alagút csak a hegy lábától a túloldaláig vezethet';
+    // A real hill: at least two steps above the portals somewhere (the tube is that tall).
+    if (hill > 0 && top < L + 2 * HILL_STEP - EPS) return 'Ez a domb túl alacsony az alagúthoz (legalább 2 szint magas kell legyen)';
     // An underpass: short, and under a road / rail.
     if (hill === 0) {
       if (!crossed) return 'Az alagútnak hegy, út vagy sín alatt kell átmennie';

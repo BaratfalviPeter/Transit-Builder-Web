@@ -230,7 +230,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   oldalprofil ívekkel a pillérek között, ~2,4 cellánként pillér sapkával, hídfők); közúti: mellvéd +
   lámpák + útburkolat; vasúti: acél rácsos tartó (`Truss`). Sín a pálya magasságán (`sampleTrack`
   `level`, `deckRailHeight`). Alagút = íves kőkapu (`PORTAL_GEOM`, zárókő, párkány, szárnyfalak),
-  a bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
+  `TUNNEL_SCALE` [1; 1,75; 1,45]-szeresen (a vonat beférjen), + a béléscső VÉGIG a fesztávon; ahol
+  a domb alacsonyabb, a LERAKÁS MEGEMELI a terepet (`buildStructure`: a belső cellák magassága ≥
+  level + `TUNNEL_COVER` (2) × HILL_STEP, a kapuk melletti cellák kivételével, mert azok sarkai a
+  hídfőé is; a felhasználó ezt kérte a földhalom helyett). A kapuban fekete lap (`MOUTH_GEOM`, 0,17
+  mélyen): a jármű „a sötétbe megy”, és csak akkor tűnik el, ha TELJESEN bent van (Trains /
+  Transport). Alagút max. `MAX_TUNNEL` 40 cella (híd: `MAX_SPAN` 14). A bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
   Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
@@ -299,7 +304,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #91 (aluljáró bevágással, automatikus ráépítés, magasabb rácsos híd).
 - Mergelve: #92 (aluljáró mint nyitott betonárok, 2 cellás rámpa, átlátszó cső nélkül).
 - Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
-- Folyamatban: földhalom a cső fölött, fekete kapu, alagút max. 40 cella, min. 2 szintes domb.
+- Folyamatban: a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

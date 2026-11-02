@@ -297,7 +297,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
   (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,
   városba szállítás — a `done` listában maradnak). Állapot: localStorage `transit-builder:tutorial`
-  (`useTutorial`). A Súgóból (H) mindkettő újra előhozható. Cél: `GOAL_POPULATION` 5000
+  (`useTutorial`, közös modul-tároló). A Súgóból (H) mindkettő újra előhozható. ÚJ JÁTÉK (Játék panel,
+  csőd ablak) → `resetTutorial()`: újra feljön a bemutató, üres feladatlista. Cél: `GOAL_POPULATION` 5000
   (`CityDevelopment.ts`).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
@@ -374,7 +375,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
 - Mergelve: #97 (bétateszt-csomag), #98 (egyensúly, beállítások, visszajelzés gomb, Dev elrejtve,
   nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
-- Folyamatban: ipari szintek simított mérése (#99).
+- Folyamatban (#99): ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről.
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

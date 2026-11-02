@@ -75,7 +75,7 @@ export function IndustryPanel({ anchor }: { anchor: readonly [number, number] })
         </div>
       )}
       {makes && (
-        <div className="ind__row" title="Nő, ha a termelés ≥ 70%-át elviszed; visszaesik, ha < 30%-át">
+        <div className="ind__row" title="Az utolsó néhány (kb. 4) hónap átlagában: nő, ha a termelés ≥ 70%-át elviszed; visszaesik, ha < 30%-át (szintváltás után 3 hónapig nem változik)">
           <span>
             Szint: <span className="ind__dots">{'●'.repeat(st.level)}</span>
             <span className="ind__dots ind__dots--off">{'●'.repeat(MAX_INDUSTRY_LEVEL - st.level)}</span>

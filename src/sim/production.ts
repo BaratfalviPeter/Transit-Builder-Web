@@ -80,14 +80,20 @@ const BURN_SPREAD = 30;
 /**
  * Industry LEVELS (fixed production): an industry's output is its base rate ×
  * LEVEL_RATE[level − 1]. Every month it is judged by how much of what it
- * offered was taken away (`served`, smoothed with the month before): well
- * served (≥ LEVEL_UP) it grows a level, neglected (< LEVEL_DOWN) it shrinks.
+ * offered was taken away — running means over ~LEVEL_WINDOW months (`served`
+ * — a long round trip that leaves the stock waiting over a month's end still
+ * counts): well served (≥ LEVEL_UP) it grows a level, neglected (< LEVEL_DOWN)
+ * it shrinks; after a change it is judged again only after LEVEL_MIN_MONTHS.
  */
 export const LEVEL_RATE = [0.5, 1, 1.5, 2, 3];
 export const MAX_INDUSTRY_LEVEL = LEVEL_RATE.length;
 export const START_LEVEL = 2;
 const LEVEL_UP = 0.7;
 const LEVEL_DOWN = 0.3;
+/** Months the running means of offered / taken remember (≈). */
+const LEVEL_WINDOW = 4;
+/** Months judged before a level can change (again). */
+const LEVEL_MIN_MONTHS = 3;
 
 /** An industry's level and how well it is served (for the UI). */
 export interface IndustryState {
@@ -96,6 +102,11 @@ export interface IndustryState {
   served: number | null;
   /** Last change: +1 grew / −1 shrank / 0 (at the last month's end). */
   trend: number;
+  /** Running means of offered / taken a month (over ~LEVEL_WINDOW months). */
+  offAvg?: number;
+  takenAvg?: number;
+  /** Judged months since the last change. */
+  months?: number;
 }
 
 /** The saved stop stocks (station id → items) and the industries' levels. */
@@ -318,21 +329,27 @@ export class ProductionSim {
     for (const [key, off] of this.offered) {
       if (off < 1) continue;
       const st = this.industries.get(key) ?? { level: START_LEVEL, served: null, trend: 0 };
-      const share = Math.min(1, (this.taken.get(key) ?? 0) / off);
-      const first = st.served === null;
-      st.served = first ? share : (st.served! + share) / 2;
+      // Offered and taken, each a running mean over ~LEVEL_WINDOW months: a
+      // long round trip that leaves the stock waiting over a month's end (and
+      // takes it all later) still counts in full.
+      const a = 1 / LEVEL_WINDOW;
+      const tk = this.taken.get(key) ?? 0;
+      st.offAvg = st.offAvg === undefined ? off : st.offAvg + (off - st.offAvg) * a;
+      st.takenAvg = st.takenAvg === undefined ? tk : st.takenAvg + (tk - st.takenAvg) * a;
+      st.served = Math.min(1, st.takenAvg / st.offAvg);
+      st.months = (st.months ?? 0) + 1;
       st.trend = 0;
-      // Its first judged month (a new stop, a new line) doesn't count yet.
-      if (first) {
-        this.industries.set(key, st);
-        continue;
-      }
-      if (st.served >= LEVEL_UP && st.level < MAX_INDUSTRY_LEVEL) {
-        st.level++;
-        st.trend = 1;
-      } else if (st.served < LEVEL_DOWN && st.level > 1) {
-        st.level--;
-        st.trend = -1;
+      // Judged only LEVEL_MIN_MONTHS after the last change (a new stop / line,
+      // a new level: the trucks need time to catch up).
+      if (st.months >= LEVEL_MIN_MONTHS) {
+        if (st.served >= LEVEL_UP && st.level < MAX_INDUSTRY_LEVEL) {
+          st.level++;
+          st.trend = 1;
+        } else if (st.served < LEVEL_DOWN && st.level > 1) {
+          st.level--;
+          st.trend = -1;
+        }
+        if (st.trend) st.months = 0;
       }
       this.industries.set(key, st);
     }

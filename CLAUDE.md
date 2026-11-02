@@ -84,8 +84,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
   IPARI SZINTEK: alap × `LEVEL_RATE` [0,5; 1; 1,5; 2; 3] (szint 1–5, kezdő `START_LEVEL` 2). Havonta
   (`ProductionSim.closeMonth`, a FinanceDriverből) a kínált (`offered`, akkor is, ha a megálló tele)
-  és elvitt (`taken`, a `take`-ben) mennyiség aránya, az előző hónappal átlagolva (`served`): ≥ 0,7 →
-  +1 szint, < 0,3 → −1; az első értékelt hónap nem számít. UI: pöttyök az ipari ikon fölött
+  és elvitt (`taken`, a `take`-ben) mennyiség KÜLÖN-KÜLÖN mozgóátlagot kap (`offAvg` / `takenAvg`,
+  ~`LEVEL_WINDOW` 4 hónap), `served` = takenAvg / offAvg: ≥ 0,7 → +1 szint, < 0,3 → −1; csak
+  `LEVEL_MIN_MONTHS` (3) hónappal az előző váltás után dönt. (Előtte havi, 1-re vágott arány volt: a
+  hónapforduló előtt a megállóban váró, később elvitt rakomány elveszett — a felhasználó jelezte, hogy
+  így a hosszú körű, de mindent elvivő járatnál sem fejlődött.) Teszt: scratchpad `lvl.ts`. UI: pöttyök az ipari ikon fölött
   (`BuildingIcons` `Level`). Mentve: `ProductionSave.industries`.
 - **Belső (mikro) nézet kikapcsolva** (`INTERIORS_ENABLED = false`, `interior.ts`): a
   felhasználó kérésére, előbb a szállítás legyen jó. A kód megvan (12×12 rács, gépek,
@@ -369,8 +372,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   automatikus) — kész (#97); 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
   szélén (mindkettő átugorható) — kész (#97); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
-- Mergelve: #97 (bétateszt-csomag). Folyamatban: egyensúly-ellenőrzés + hangolás, beállítások a Játék
-  panelen, egér felé zoom kapcsoló, visszajelzés gomb.
+- Mergelve: #97 (bétateszt-csomag), #98 (egyensúly, beállítások, visszajelzés gomb, Dev elrejtve,
+  nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
+- Folyamatban: ipari szintek simított mérése. Utána javasolt: városkártya ne takarja a menüt (közelről
+  óriásira nő), mentés letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

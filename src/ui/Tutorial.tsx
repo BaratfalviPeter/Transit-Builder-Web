@@ -139,7 +139,7 @@ const PAGES: Page[] = [
           <li>⛏️ Bánya → 🪨 szén → ⚡ erőmű → áram → 🏙️ város (az áram magától eljut a városba)</li>
         </ul>
         <p>
-          Az iparágak <b>fejlődnek</b> (●●○○○): ha elviszed, amit termelnek, havonta nő a termelésük; ha nem, visszaesnek.
+          Az iparágak <b>fejlődnek</b> (●●○○○): ha (az utolsó hónapok átlagában) elviszed, amit termelnek, nő a termelésük; ha nem, visszaesnek. Szintváltás után 3 hónapig nem változnak.
         </p>
         <p>
           Tipp: a Járatok panelen a <b>„Csak tele induljon”</b> beállítással a jármű megvárja, amíg megtelik.

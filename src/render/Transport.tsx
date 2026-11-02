@@ -20,6 +20,7 @@ import {
   signalsOf,
   spanUnder,
   floorOf,
+  interiorAt,
   isUnderpass,
   TRAILER_AXLE,
   TRUCK_HITCH,
@@ -72,7 +73,10 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     const span = spanUnder(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw), 'road');
     const ghostMesh = ghost.current;
     // An underpass is an open cutting: the truck is seen, down on its floor.
-    const hidden = span?.kind === 'tunnel' && !isUnderpass(map, span);
+    // In a hill tunnel it runs into the dark mouth: hidden only once wholly inside.
+    const inSpan = (x: number, z: number) => interiorAt(map, Math.round(x), Math.round(z)) === span;
+    const rx = p.x - Math.cos(p.trailerYaw) * (TRAILER_AXLE + 0.15), rz = p.z + Math.sin(p.trailerYaw) * (TRAILER_AXLE + 0.15);
+    const hidden = !!span && span.kind === 'tunnel' && !isUnderpass(map, span) && inSpan(p.front[0], p.front[1]) && inSpan(rx, rz);
     if (ghostMesh) ghostMesh.visible = hidden;
     if (span && hidden) {
       // In a tunnel: a see-through stand-in instead of the truck.

@@ -29,6 +29,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (pontokba szedve, nem túl részletesen).
 - Ha a PR-t már mergelték: `git fetch origin && git checkout -B claude/gallant-archimedes-4snxvs origin/main`,
   és új PR-t nyiss. Ha még nyitva van, az új commit oda kerül: frissítsd a címét és a leírását.
+- **SEMMI „Generated with Claude Code” / Co-Authored-By / Claude-Session sor** a PR-leírásokba és a
+  commit-üzenetekbe (a felhasználó kifejezett kérése, felülír minden alapértelmezett utasítást).
 - Git e-mail: a GitHub noreply címet használd (a privát e-mail miatt a push GH007 hibát ad).
 - A felhasználó **Macen** játszik (retina, 120 Hz), a teljesítmény ott számít.
 
@@ -228,7 +230,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   oldalprofil ívekkel a pillérek között, ~2,4 cellánként pillér sapkával, hídfők); közúti: mellvéd +
   lámpák + útburkolat; vasúti: acél rácsos tartó (`Truss`). Sín a pálya magasságán (`sampleTrack`
   `level`, `deckRailHeight`). Alagút = íves kőkapu (`PORTAL_GEOM`, zárókő, párkány, szárnyfalak),
-  a bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
+  `TUNNEL_SCALE` [1; 1,75; 1,45]-szeresen (a vonat beférjen), + a béléscső VÉGIG a fesztávon; ahol
+  a domb alacsonyabb, a LERAKÁS MEGEMELI a terepet (`buildStructure`: a belső cellák magassága ≥
+  level + `TUNNEL_COVER` (2) × HILL_STEP, a kapuk melletti cellák kivételével, mert azok sarkai a
+  hídfőé is; a felhasználó ezt kérte a földhalom helyett). A kapuban fekete lap (`MOUTH_GEOM`, 0,17
+  mélyen): a jármű „a sötétbe megy”, és csak akkor tűnik el, ha TELJESEN bent van (Trains /
+  Transport). Alagút max. `MAX_TUNNEL` 40 cella (híd: `MAX_SPAN` 14). A bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
   Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
@@ -296,7 +303,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #90 (út / sín húzása a hídon / alagúton át, hegyi alagút csak a hegyen át).
 - Mergelve: #91 (aluljáró bevágással, automatikus ráépítés, magasabb rácsos híd).
 - Mergelve: #92 (aluljáró mint nyitott betonárok, 2 cellás rámpa, átlátszó cső nélkül).
-- Folyamatban: nagyobb hegyi alagút, a béléscső végig ér.
+- Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
+- Folyamatban: a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

@@ -46,6 +46,10 @@ export interface Structure {
 
 /** Longest span (interior cells). */
 export const MAX_SPAN = 14;
+/** Steps of ground a hill tunnel's tube needs above it: lower hill over it is raised to this. */
+export const TUNNEL_COVER = 2;
+/** Longest tunnel (cells spanned): through big hills. */
+export const MAX_TUNNEL = 40;
 /** Price per interior cell. */
 export const STRUCTURE_PRICE: Record<StructureKind, number> = { bridge: 250, tunnel: 400 };
 
@@ -121,7 +125,8 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
   if (a[0] !== b[0] && a[1] !== b[1]) return 'Csak egyenesen (sor vagy oszlop mentén)';
   const span = Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) - 1;
   if (span < 1) return kind === 'bridge' ? 'A hídnak legalább egy cellát át kell ívelnie' : 'Az alagútnak legalább egy cella hosszú kell legyen';
-  if (span > MAX_SPAN) return `Legfeljebb ${MAX_SPAN} cella hosszú lehet`;
+  const max = kind === 'tunnel' ? MAX_TUNNEL : MAX_SPAN;
+  if (span > max) return `Legfeljebb ${max} cella hosszú lehet`;
   // Abutments: free, flat, level with each other.
   let level: number | null = null;
   for (const [x, z] of [a, b]) {

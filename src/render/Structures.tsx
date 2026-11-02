@@ -279,11 +279,11 @@ const VOUSSOIR_GEOM = (() => {
   g.rotateY(-Math.PI / 2);
   return g;
 })();
-/** The dark inside of a hill tunnel, past the lining. */
+/** The dark of a hill tunnel: a black sheet just inside the mouth — the trains run into it. */
 const MOUTH_GEOM = (() => {
-  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.1, bevelEnabled: false });
+  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.01, bevelEnabled: false });
   g.rotateY(-Math.PI / 2);
-  g.translate(0.52, 0, 0);
+  g.translate(0.17, 0, 0);
   return g;
 })();
 

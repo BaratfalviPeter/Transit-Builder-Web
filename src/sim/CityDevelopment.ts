@@ -30,8 +30,9 @@ export const MAX_LEVEL = 5;
 export const POP_PER_LEVEL = 40;
 /** Monthly demand per item: `base + perLevel × size`. */
 export const DEMAND: Readonly<Partial<Record<Item, { base: number; perLevel: number }>>> = {
-  goods: { base: 5, perLevel: 0.25 },
-  plank: { base: 3, perLevel: 0.15 },
+  // Sized to a few trucks a month (one makes ~20–60 units a month).
+  goods: { base: 40, perLevel: 2 },
+  plank: { base: 20, perLevel: 1 },
 };
 /** The items the city takes (its stops' ACCEPTS). */
 export const CITY_ITEMS = Object.keys(DEMAND) as Item[];

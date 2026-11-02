@@ -91,7 +91,7 @@ export function SignalPreview({ map, cellSize, spot, canAfford }: { map: Terrain
       <group position={[mx - half, y, mz - half]} rotation-y={yaw}>
         <SignalMast ghost={reason ? '#f87171' : '#4ade80'} />
       </group>
-      <Html position={[spot.x - half, y + 0.9, spot.z - half]} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={[spot.x - half, y + 0.9, spot.z - half]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (reason ? ' is-bad' : '')}>{reason ?? (turn ? 'Jelző megfordítása' : `Jelző · $${SIGNAL_PRICE}`)}</div>
       </Html>
     </group>

@@ -1,0 +1,83 @@
+/* IndustryPanel: an industry's output and its stops (in / out, shares). */
+.ind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.ind__title {
+  font-size: 17px;
+  font-weight: 800;
+}
+.ind__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ind__dim {
+  color: var(--ui-dim);
+}
+.ind__dots {
+  color: #ffd25e;
+  letter-spacing: 1px;
+}
+.ind__dots--off {
+  color: rgba(255, 255, 255, 0.22);
+}
+.ind__head {
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.ind__stop {
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ind__stop-name {
+  font-weight: 600;
+}
+.ind__roles {
+  display: flex;
+  gap: 4px;
+}
+.ind__roles button {
+  flex: 1;
+  padding: 5px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9ebf0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ind__roles button.is-on {
+  background: rgba(96, 165, 250, 0.3);
+  border-color: rgba(96, 165, 250, 0.8);
+  font-weight: 700;
+}
+.ind__share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ind__share input {
+  flex: 1;
+  accent-color: #60a5fa;
+}
+.ind__share span {
+  width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ind__stock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--ui-dim);
+  font-size: 12px;
+}

@@ -43,7 +43,27 @@ export interface GameSave {
   lastMonth: MonthBooks | null;
   loan: number;
   negMonths?: number;
+  history?: MonthRecord[];
+  /** Date (ms) the goal population was first reached, if it was. */
+  goalAt?: number | null;
 }
+
+/** One closed month for the statistics window (kept HISTORY_MONTHS back). */
+export interface MonthRecord {
+  /** Calendar month index (year × 12 + month) of the closed month. */
+  month: number;
+  cat: Record<FinCat, number>;
+  /** Balance after the month was closed. */
+  money: number;
+  /** Per line id. */
+  lines: Record<number, { income: number; cost: number; units: number; speed: number | null; held: number | null }>;
+  population: number;
+  powerSupply: number;
+  powerDemand: number;
+  /** Supply shares (0…1) of the city, smoothed (null before known). */
+  sat: { goods: number | null; plank: number | null; power: number | null };
+}
+export const HISTORY_MONTHS = 24;
 
 /** Months in a row ending below zero after which the company goes bankrupt. */
 export const BANKRUPT_MONTHS = 6;
@@ -74,6 +94,10 @@ export interface GameSnapshot {
   negMonths: number;
   /** Bankrupt: the game is over (stopped; only a new game / load goes on). */
   bankrupt: boolean;
+  /** Closed months, oldest first (≤ HISTORY_MONTHS). */
+  history: readonly MonthRecord[];
+  /** Date (ms) the goal population was reached, or null. */
+  goalAt: number | null;
 }
 
 /** Game starts on 1 January 1970. */
@@ -92,6 +116,8 @@ export class GameState {
   private lastMonth: MonthBooks | null = null;
   private loan = 0;
   private negMonths = 0;
+  private history: MonthRecord[] = [];
+  private goalAt: number | null = null;
 
   // Clock
   private dateMs = START_DATE_MS;
@@ -201,7 +227,22 @@ export class GameState {
       lastMonth: this.lastMonth,
       loan: this.loan,
       negMonths: this.negMonths,
+      history: this.history,
+      goalAt: this.goalAt,
     };
+  }
+
+  /** Add a closed month to the statistics (FinanceDriver, right after `closeMonth`). */
+  pushHistory(r: MonthRecord): void {
+    this.history = [...this.history, r].slice(-HISTORY_MONTHS);
+    this.publish();
+  }
+
+  /** The goal was reached now (once). */
+  reachGoal(): void {
+    if (this.goalAt !== null) return;
+    this.goalAt = this.dateMs;
+    this.publish();
   }
 
   isBankrupt(): boolean {
@@ -219,6 +260,8 @@ export class GameState {
     this.lastMonth = s?.lastMonth ?? null;
     this.loan = s?.loan ?? 0;
     this.negMonths = s?.negMonths ?? 0;
+    this.history = s?.history ? [...s.history] : [];
+    this.goalAt = s?.goalAt ?? null;
     if (this.isBankrupt()) this.speed = 0;
     else if (this.speed === 0 && !s) this.speed = 1;
     this.publish();
@@ -296,6 +339,8 @@ export class GameState {
       loan: this.loan,
       negMonths: this.negMonths,
       bankrupt: this.isBankrupt(),
+      history: this.history,
+      goalAt: this.goalAt,
     };
   }
 

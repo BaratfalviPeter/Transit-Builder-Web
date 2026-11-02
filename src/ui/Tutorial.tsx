@@ -121,6 +121,10 @@ const PAGES: Page[] = [
           <li>
             A leszállításért <b>fizetnek</b>: minél messzebbre és minél gyorsabban viszed, annál többet.
           </li>
+          <li>
+            Egy épületre <b>kattintva</b> látod a megállóit: beállíthatod, melyik a <b>be</b> (alapanyag) és melyik a <b>ki</b>{' '}
+            (termék), és több kimenő megállónál az arányt.
+          </li>
         </ol>
       </>
     ),
@@ -199,7 +203,7 @@ const PAGES: Page[] = [
           <kbd>Szóköz</kbd> szünet · <kbd>T</kbd> gyorsítás
         </div>
         <div>
-          <kbd>J</kbd> Járatok · <kbd>P</kbd> Pénzügyek · <kbd>M</kbd> mentés / új játék
+          <kbd>J</kbd> Járatok · <kbd>P</kbd> Pénzügyek · <kbd>K</kbd> statisztika · <kbd>M</kbd> mentés / új játék
         </div>
         <div>
           <kbd>H</kbd> súgó (innen a bemutató és a feladatlista is újra elérhető)

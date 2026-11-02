@@ -45,7 +45,20 @@ export interface Station {
   readonly rot?: DepotRot;
   /** A rail station's platform runs this many cells past the lot at each end (0…3). */
   readonly ext?: number;
+  /** What it does for its industry: deliveries in, products out, or both (missing = both). */
+  readonly role?: StopRole;
+  /** Its share of the industry's output among the stops that take output (0…100; missing = 50). */
+  readonly share?: number;
 }
+
+/** A stop's job at its industry. */
+export type StopRole = 'both' | 'in' | 'out';
+export const stopRole = (s: Station): StopRole => s.role ?? 'both';
+/** Takes deliveries for its industry / gets the industry's products. */
+export const stopTakesIn = (s: Station): boolean => stopRole(s) !== 'out';
+export const stopGivesOut = (s: Station): boolean => stopRole(s) !== 'in';
+export const DEFAULT_SHARE = 50;
+export const stopShare = (s: Station): number => s.share ?? DEFAULT_SHARE;
 
 /** Longest platform extension (cells at each end): platforms of 6, 8, 10 or 12 cells. */
 export const MAX_PLATFORM_EXT = 3;

@@ -441,7 +441,7 @@ export function StructurePreview({ map, cellSize, plan, canAfford }: { map: Terr
           <meshBasicMaterial color={color} transparent opacity={0.85} depthTest={false} />
         </mesh>
       ))}
-      <Html position={mid} center style={{ pointerEvents: 'none' }}>
+      <Html zIndexRange={[10, 0]} position={mid} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>
           {plan.problem ?? (canAfford ? `${icon} · ${span.length} cella · $${plan.cost.toLocaleString('hu-HU')}` : `${icon} · nincs elég pénz ($${plan.cost.toLocaleString('hu-HU')})`)}
         </div>

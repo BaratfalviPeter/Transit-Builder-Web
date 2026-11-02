@@ -17,13 +17,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   BANKRUPT_MONTHS,
+  GOAL_POPULATION,
   TOOLS,
+  useCitySnapshot,
   useGame,
   useSave,
+  selection,
+  useSelection,
   useGameSnapshot,
-  useIndustryCount,
   useRoadCount,
   useTransport,
+  useTransportSnapshot,
   type GameSpeed,
   type ToolId,
 } from '../sim';
@@ -33,6 +37,8 @@ import { LinesPanel } from './LinesPanel';
 import { FinancePanel } from './FinancePanel';
 import { GamePanel } from './GamePanel';
 import { Checklist, Intro, useTutorial } from './Tutorial';
+import { IndustryPanel } from './IndustryPanel';
+import { StatsWindow } from './StatsWindow';
 import './financePanel.css';
 import './gameUI.css';
 
@@ -104,7 +110,7 @@ const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
 
 /** What to do with the active tool (the hint line above the dock). */
 const HINT: Record<ToolId, string> = {
-  select: 'Kijelölés — WASD / nyilak: mozgás · jobb húzás: forgatás · görgő: zoom (az egér felé) · H: gyorsbillentyűk',
+  select: 'Kijelölés — kattints egy épületre: megállói (be / ki) · WASD / nyilak: mozgás · jobb húzás: forgatás · görgő: zoom (az egér felé) · H: gyorsbillentyűk',
   raise: 'Emelés — húzd végig a cellákon (piros), majd Építés',
   lower: 'Süllyesztés — húzd végig a cellákon (piros), majd Építés',
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
@@ -142,11 +148,28 @@ export function GameUI() {
   const game = useGame();
   const snap = useGameSnapshot();
   const transport = useTransport();
-  const industries = useIndustryCount();
   const roads = useRoadCount();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [help, setHelp] = useState(false);
   const tut = useTutorial();
+  const picked = useSelection();
+  const [stats, setStats] = useState(false);
+  const city = useCitySnapshot();
+  // The goal (beta test's end): noted once, the window shown when it happens.
+  const [goalWin, setGoalWin] = useState(false);
+  useEffect(() => {
+    if (city.population >= GOAL_POPULATION && snap.goalAt === null) {
+      game.reachGoal();
+      setGoalWin(true);
+    }
+  }, [city.population, snap.goalAt, game]);
+  // Picking an industry closes the other panels; opening one drops the pick.
+  useEffect(() => {
+    if (picked) setPanel(null);
+  }, [picked]);
+  useEffect(() => {
+    if (panel) selection.set(null);
+  }, [panel]);
 
   // The Járatok panel IS the network view (and drops the build tool, so map
   // clicks don't build anything meanwhile).
@@ -179,6 +202,12 @@ export function GameUI() {
       if (getDev().editorOn) return; // the model editor has its own keys
       if (e.code === 'Escape') {
         setHelp(false); // (the canvas drops the tool / route on Esc)
+        setStats(false);
+        selection.set(null);
+        return;
+      }
+      if (e.code === 'KeyK') {
+        setStats((v) => !v);
         return;
       }
       if (e.code === 'KeyH' || e.key === '?') {
@@ -209,6 +238,8 @@ export function GameUI() {
   return (
     <div className="ui">
       {snap.bankrupt && <Bankrupt />}
+      {stats && <StatsWindow onClose={() => setStats(false)} />}
+      {goalWin && <GoalReached onClose={() => setGoalWin(false)} />}
       {tut.introOpen && !snap.bankrupt && <Intro onClose={tut.closeIntro} />}
       {tut.listOn && !tut.introOpen && <Checklist done={tut.done} onDone={tut.markDone} onClose={tut.closeList} />}
       {/* Top-left: money, date, speed, counters */}
@@ -240,9 +271,13 @@ export function GameUI() {
           ))}
         </div>
         <div className="ui-bar__sep" />
-        <div className="ui-bar__stat" title="Ipari épületek">
-          🏭 {industries}
+        <div
+          className={'ui-bar__stat ui-bar__goal' + (city.population >= GOAL_POPULATION ? ' is-done' : '')}
+          title={`A teszt célja: ${GOAL_POPULATION.toLocaleString('hu-HU')} lakos a városban`}
+        >
+          🎯 {city.population.toLocaleString('hu-HU')} / {GOAL_POPULATION.toLocaleString('hu-HU')}
         </div>
+
         <div className="ui-bar__stat" title="Lerakott utak (cella)">
           🛣️ {roads}
         </div>
@@ -250,6 +285,11 @@ export function GameUI() {
 
       {/* Top-right: panel buttons + help */}
       <div className="ui-menu">
+        <button type="button" className={'ui-menu__btn' + (stats ? ' is-active' : '')} onClick={() => setStats((v) => !v)} title="Statisztika (K)">
+          <span aria-hidden>📊</span>
+          <span className="ui-menu__label">Statisztika</span>
+          <kbd>K</kbd>
+        </button>
         {PANEL_KEYS.map((k) => (
           <button
             key={k.panel}
@@ -283,6 +323,21 @@ export function GameUI() {
             {panel === 'dev' && <DevTab onEditorOn={() => game.setActiveTool('select')} />}
             {panel === 'economy' && <FinancePanel />}
             {panel === 'game' && <GamePanel />}
+          </div>
+        </div>
+      )}
+
+      {/* Industry panel: the picked industry's stops */}
+      {picked && !panel && (
+        <div className="ui-panel">
+          <div className="ui-panel__head">
+            <span>Épület</span>
+            <button type="button" className="ui-panel__close" onClick={() => selection.set(null)} title="Bezárás (Esc)">
+              ✕
+            </button>
+          </div>
+          <div className="ui-panel__body">
+            <IndustryPanel anchor={picked} />
           </div>
         </div>
       )}
@@ -390,6 +445,10 @@ export function GameUI() {
                   </div>
                 ))}
                 <div className="ui-help__row">
+                  <kbd>K</kbd>
+                  <span>📊 Statisztika</span>
+                </div>
+                <div className="ui-help__row">
                   <kbd>H</kbd>
                   <span>Ez a súgó</span>
                 </div>
@@ -427,6 +486,38 @@ function Bankrupt() {
         </p>
         <button type="button" onClick={() => save.newGame()}>
           Új játék
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The goal reached: the beta test's end (it goes on after). */
+function GoalReached({ onClose }: { onClose: () => void }) {
+  const snap = useGameSnapshot();
+  const { lines } = useTransportSnapshot();
+  const start = Date.UTC(1970, 0, 1);
+  const d = new Date(snap.goalAt ?? snap.dateMs);
+  const months = (d.getUTCFullYear() - new Date(start).getUTCFullYear()) * 12 + d.getUTCMonth();
+  const vehicles = lines.reduce((a, l) => a + l.vehicles, 0);
+  return (
+    <div className="ui-over">
+      <div className="ui-over__box ui-over__box--goal">
+        <div className="ui-over__title">🎉 Gratulálunk!</div>
+        <p>
+          A város elérte a <b>{GOAL_POPULATION.toLocaleString('hu-HU')} lakost</b> — ez volt a bétateszt vége. Köszönjük, hogy kipróbáltad!
+        </p>
+        <div className="ui-over__figs">
+          <span>📅 {formatDate(snap.goalAt ?? snap.dateMs)} ({Math.floor(months / 12)} év {months % 12} hónap)</span>
+          <span>💰 Összes bevétel: {money(snap.totalIncome)}</span>
+          <span>🏦 Egyenleg: {money(snap.money)}</span>
+          <span>
+            🚚 {lines.length} járat, {vehicles} jármű
+          </span>
+        </div>
+        <p className="ui-over__note">Írd meg, mi tetszett és mi nem! Ha szeretnéd, játszhatsz tovább.</p>
+        <button type="button" onClick={onClose}>
+          Tovább játszom
         </button>
       </div>
     </div>

@@ -23,7 +23,7 @@
  * Pure TypeScript.
  */
 
-import { stationOn, type Side, type Station } from './stations';
+import { stationOn, stopGivesOut, stopShare, type Side, type Station } from './stations';
 import { DEPOT_CAPACITY } from './depot';
 import { CellType, type TerrainMap } from './terrain';
 import {
@@ -155,6 +155,8 @@ export class ProductionSim {
   private taken = new Map<string, number>();
   /** Power plant (anchor key) → its output now (MW, smoothed). */
   private power = new Map<string, number>();
+  /** Output handed to each stop so far (for the shares between them). */
+  private outCount = new Map<number, number>();
   /** Stop id → its industry's key (for counting what is taken). */
   private stopIndustry = new Map<number, string>();
 
@@ -336,6 +338,7 @@ export class ProductionSim {
     }
     this.offered.clear();
     this.taken.clear();
+    this.outCount.clear();
     this.version++;
     for (const l of this.listeners) l();
   }
@@ -406,13 +409,24 @@ export class ProductionSim {
       // Output goes to the emptiest stop that has room.
       const item = p.makes ?? p.turns?.to;
       if (item && units > 0) this.offered.set(key, (this.offered.get(key) ?? 0) + units);
+      // Split between the stops that take output, by their shares (a stop
+      // with room, furthest behind its share, gets the next unit).
+      const outs = stops.filter(stopGivesOut);
+      const anyShare = outs.some((st) => stopShare(st) > 0);
       for (let i = 0; item && i < units; i++) {
         let best: Station | null = null;
-        for (const st of stops) {
-          const n = this.stationTotal(st.id);
-          if (n < STATION_CAPACITY && (!best || n < this.stationTotal(best.id))) best = st;
+        let bestScore = Infinity;
+        for (const st of outs) {
+          const w = anyShare ? stopShare(st) : 1;
+          if (w <= 0 || this.stationTotal(st.id) >= STATION_CAPACITY) continue;
+          const score = ((this.outCount.get(st.id) ?? 0) + 1) / w;
+          if (score < bestScore) {
+            bestScore = score;
+            best = st;
+          }
         }
         if (!best) break;
+        this.outCount.set(best.id, (this.outCount.get(best.id) ?? 0) + 1);
         const s = this.stock.get(best.id) ?? {};
         s[item] = (s[item] ?? 0) + 1;
         this.stock.set(best.id, s);

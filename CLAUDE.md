@@ -265,6 +265,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Transport). Alagút max. `MAX_TUNNEL` 40 cella (híd: `MAX_SPAN` 14). A bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
   Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
+- MEGÁLLÓ SZEREPE (`Station.role` 'both' | 'in' | 'out', `share` 0–100, alap 50; `stopTakesIn` /
+  `stopGivesOut` / `stopShare`, `TerrainStore.setStopRole`): a termék csak a 'in'-től különböző
+  megállókba kerül, a `share` arányában (`ProductionSim.outCount`, havonta nullázva); a 'out' megálló
+  nem vesz át szállítmányt (`serveStop` `takes`, `laterTakes`), az 'in' nem ad ki (`waitForLoad` sem vár
+  ott). UI: KIJELÖLÉS eszközzel épületre (vagy a megállójára) kattintva `selection` (sim/selection.ts) →
+  `IndustryPanel` a jobb oldali panel helyén (szint, termelés, megállók: Be / Ki / Mindkettő + csúszka).
+- STATISZTIKA (K, `StatsWindow.tsx`): `GameState.history` (`MonthRecord`, max. `HISTORY_MONTHS` 24, mentve),
+  a `FinanceDriver` tölti hónapzáráskor (könyvek, egyenleg, járatonként bevétel / költség / egység /
+  menetidő / állás, lakosság, áram, ellátottság). Fülek: Pénz (oszlop + vonal + táblázat), Járatok,
+  Város; SVG, a dataviz-referencia sötét kategória-színei (#3987e5, #d95926, #199e70), hover-sáv `<title>`
+  tooltippel. CÉL: `GOAL_POPULATION` elérésekor `game.reachGoal()` (`goalAt`, mentve) + `GoalReached`
+  ablak (GameUI), a felső sávban 🎯 lakos / 5000. A 3D `<Html>` feliratok `zIndexRange={[10, 0]}`-t
+  kapnak, különben az ablakok fölé kerülnek.
 - BEMUTATÓ (`src/ui/Tutorial.tsx`, `tutorial.css`): `Intro` (6 oldalas ablak a játék logikájáról,
   első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
   (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,
@@ -343,7 +356,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - BÉTATESZT-CSOMAG (a felhasználó jóváhagyta, ebben a sorrendben): 1) áram (szén → erőmű → város,
   automatikus) — kész (#97); 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
   szélén (mindkettő átugorható) — kész (#97); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
-  ablak (12 hónap), 5000 lakosnál „teszt vége” ablak.
+  ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

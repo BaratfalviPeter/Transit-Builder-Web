@@ -97,7 +97,7 @@ A jobb oldali **panel** három füle:
   | 5–8 | Elsőbbségadás / STOP / Lámpa / Körforgalom |
   | Szóköz / T | Szünet / gyorsítás |
   | N / U | Híd / Alagút |
-| J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
+  | J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
   | WASD, nyilak | Kamera mozgatása |
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
   ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az

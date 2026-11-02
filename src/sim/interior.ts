@@ -33,7 +33,7 @@ export type Item = 'ore' | 'crushed' | 'log' | 'plank' | 'oil' | 'goods';
 
 /** `value`: base delivery price per unit (see transport.ts). */
 export const ITEMS: Record<Item, { label: string; icon: string; color: string; value: number }> = {
-  ore: { label: 'Érc', icon: '🪨', color: '#4a90c2', value: 10 },
+  ore: { label: 'Szén', icon: '🪨', color: '#3b3b3f', value: 10 },
   crushed: { label: 'Zúzott érc', icon: '🧱', color: '#9cc2de', value: 16 },
   log: { label: 'Rönk', icon: '🪵', color: '#7a5233', value: 8 },
   plank: { label: 'Deszka', icon: '🟫', color: '#d6a868', value: 14 },

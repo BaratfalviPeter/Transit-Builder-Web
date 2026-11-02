@@ -43,6 +43,8 @@ import {
 export const BELT_SPEED = 1.5;
 /** Items a station on an industry side can hold (all kinds together). */
 export const STATION_CAPACITY = 100;
+/** Delivered items a stop can hold for its industry (a power plant's coal stock). */
+export const INBOUND_CAPACITY = 300;
 /** Machine input / output buffer sizes. */
 const IN_CAP = 4;
 const OUT_CAP = 3;
@@ -61,8 +63,19 @@ export const FIXED_PRODUCTION: Partial<
   [CellType.LumberMill]: { makes: 'plank', rate: 0.5 },
   [CellType.OilRig]: { makes: 'oil', rate: 0.4 },
   [CellType.Factory]: { turns: { from: 'plank', to: 'goods' }, rate: 1 },
-  [CellType.PowerPlant]: { burns: true, rate: 2 },
+  [CellType.PowerPlant]: { burns: true, rate: 4 },
 };
+
+/**
+ * POWER: a power plant makes MW_PER_FUEL MW from each unit of fuel (coal /
+ * oil) it burns a second, smoothed over POWER_TAU game seconds; the city
+ * gets all the plants' power automatically (no lines). See CityDevelopment
+ * (POWER_PER_POP) for what it needs.
+ */
+export const MW_PER_FUEL = 1000;
+const POWER_TAU = 20;
+/** A plant burns its stock over this many game seconds (a steady output). */
+const BURN_SPREAD = 30;
 
 /**
  * Industry LEVELS (fixed production): an industry's output is its base rate ×
@@ -94,6 +107,7 @@ export interface ProductionSave {
   /** When each kind of a depot's stock was first loaded (TransportSim clock; weighted mean). */
   since?: Record<string, Partial<Record<Item, number>>>;
   industries?: Record<string, IndustryState>;
+  power?: Record<string, number>;
 }
 
 export type MachineStatus = 'work' | 'wait' | 'blocked' | 'idle';
@@ -139,6 +153,8 @@ export class ProductionSim {
   /** This month, per industry: units offered (it would have made) / taken away from its stops. */
   private offered = new Map<string, number>();
   private taken = new Map<string, number>();
+  /** Power plant (anchor key) → its output now (MW, smoothed). */
+  private power = new Map<string, number>();
   /** Stop id → its industry's key (for counting what is taken). */
   private stopIndustry = new Map<number, string>();
 
@@ -151,6 +167,7 @@ export class ProductionSim {
       origins: obj(this.origins),
       carry: obj(this.carry),
       since: obj(this.since),
+      power: Object.fromEntries(this.power),
       industries: Object.fromEntries([...this.industries].map(([k, v]) => [k, { ...v }])),
     };
   }
@@ -163,6 +180,7 @@ export class ProductionSim {
     this.origins = num(s?.origins);
     this.carry = new Map(Object.entries(s?.carry ?? {}));
     this.since = num(s?.since);
+    this.power = new Map(Object.entries(s?.power ?? {}));
     this.industries = new Map(Object.entries(s?.industries ?? {}).map(([k, v]) => [k, { ...v }]));
     this.offered.clear();
     this.taken.clear();
@@ -232,7 +250,7 @@ export class ProductionSim {
     const s = this.inbound.get(id) ?? {};
     let total = 0;
     for (const v of Object.values(s)) total += v ?? 0;
-    const k = Math.max(0, Math.min(n, STATION_CAPACITY - total));
+    const k = Math.max(0, Math.min(n, INBOUND_CAPACITY - total));
     if (k > 0) {
       s[item] = (s[item] ?? 0) + k;
       this.inbound.set(id, s);
@@ -271,6 +289,18 @@ export class ProductionSim {
   /** When a depot's stock of `item` was loaded (weighted mean), or null. */
   sinceOf(id: number, item: Item): number | null {
     return this.since.get(id)?.[item] ?? null;
+  }
+
+  /** All the power plants' output now (MW): what the city gets. */
+  powerSupply(): number {
+    let mw = 0;
+    for (const v of this.power.values()) mw += v;
+    return mw;
+  }
+
+  /** One power plant's output now (MW). */
+  plantPower(anchor: readonly [number, number]): number {
+    return this.power.get(`${anchor[0]},${anchor[1]}`) ?? 0;
   }
 
   /** An industry's level / service (by its anchor). */
@@ -331,6 +361,8 @@ export class ProductionSim {
       if (list) list.push(st);
       else byIndustry.set(key, [st]);
     }
+    // A plant that lost its stops makes nothing.
+    for (const key of this.power.keys()) if (!byIndustry.has(key)) this.power.delete(key);
     for (const [key, stops] of byIndustry) {
       const [ax, az] = stops[0].anchor;
       const p = FIXED_PRODUCTION[map.cells[ax][az]];
@@ -341,7 +373,23 @@ export class ProductionSim {
       let units = Math.floor(budget);
       this.carry.set(key, budget - units);
       // Processors / consumers first use up what was delivered.
-      if (p.turns || p.burns) {
+      if (p.burns) {
+        // A power plant burns its fuel stock steadily (spread over
+        // BURN_SPREAD seconds, at most its rate): deliveries come in loads.
+        let total = 0;
+        for (const st of stops) for (const v of Object.values(this.inbound.get(st.id) ?? {})) total += v ?? 0;
+        const burn = Math.min(p.rate * LEVEL_RATE[level - 1] * dt, (total * dt) / BURN_SPREAD, total);
+        if (total > 0)
+          for (const st of stops) {
+            const inb = this.inbound.get(st.id);
+            if (inb) for (const item of Object.keys(inb) as Item[]) inb[item] = Math.max(0, (inb[item] ?? 0) - ((inb[item] ?? 0) / total) * burn);
+          }
+        const mw = (burn / dt) * MW_PER_FUEL;
+        const was = this.power.get(key) ?? 0;
+        this.power.set(key, was + (mw - was) * (1 - Math.exp(-dt / POWER_TAU)));
+        continue;
+      }
+      if (p.turns) {
         let used = 0;
         for (const st of stops) {
           const inb = this.inbound.get(st.id);
@@ -353,7 +401,6 @@ export class ProductionSim {
             used += k;
           }
         }
-        if (!p.turns) continue;
         units = used;
       }
       // Output goes to the emptiest stop that has room.

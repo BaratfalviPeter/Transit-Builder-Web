@@ -72,8 +72,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Ára: vasútállomás $500, kamionmegálló $300. Vasútállomás peronhossza: `Station.ext` (0–3
   cella mindkét végén → 6/8/10/12), `stationGeom(anchor, side, ext)`; az eszköznél Q váltja,
   +$100 / többletcella; `StationModel ext` nyújtja a peront.
-- **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya érc 0,5/s, fatelep
-  deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s, erőmű éget max. 2/s.
+- **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya SZÉN 0,5/s (az `ore` azonosító
+  maradt, csak a felirat „Szén”), fatelep deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s,
+  erőmű éget max. 4/s. ÁRAM (automatikus, nincs vezeték): az erőmű a készletét egyenletesen égeti
+  (`BURN_SPREAD` 30 s), 1 egység/s = `MW_PER_FUEL` 1000 MW, simítva (`POWER_TAU` 20 s) →
+  `powerSupply()` / `plantPower()`; a `CityDriver` átadja (`city.setPower`). A város igénye
+  `POWER_PER_POP` 0,5 MW/lakos; a havi átlagos ellátottság (`powerSat`) < `POWER_MIN` 0,8 → a 40-es
+  méret fölött nem nő ('nopower'). Egy 5. szintű bánya (1,5/s) kb. 3700 lakosig elég (a felhasználó
+  kérte, hogy 4–5000-hez ne legyen elég). Térképenként 3 bánya, 3 erőmű. A megálló bejövő készlete
+  `INBOUND_CAPACITY` 300. UI: városkártya ⚡ sor (`formatPower`), az erőmű ikonja fölött MW.
   Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
   IPARI SZINTEK: alap × `LEVEL_RATE` [0,5; 1; 1,5; 2; 3] (szint 1–5, kezdő `START_LEVEL` 2). Havonta
   (`ProductionSim.closeMonth`, a FinanceDriverből) a kínált (`offered`, akkor is, ha a megálló tele)
@@ -326,7 +333,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
 - Mergelve: #94 (a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella).
 - Mergelve: #95 (játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók).
-- Folyamatban: a város nem nőtt (dátumugrás-hiba), nagyobb városi kereslet, „csak tele induljon”.
+- Mergelve: #96 (a város nem nőtt — dátumugrás-hiba, nagyobb városi kereslet, „csak tele induljon”).
+- BÉTATESZT-CSOMAG (a felhasználó jóváhagyta, ebben a sorrendben): 1) áram (szén → erőmű → város,
+  automatikus) — folyamatban; 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
+  szélén (mindkettő átugorható); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
+  ablak (12 hónap), 5000 lakosnál „teszt vége” ablak.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

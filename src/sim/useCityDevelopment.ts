@@ -12,6 +12,7 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { CityDevelopment, type CitySnapshot } from './CityDevelopment';
 import { useGame } from './useGameState';
+import { useInteriorStore } from './useInterior';
 import { useTerrainMap, useTerrainStore } from './useTerrain';
 
 const Ctx = createContext<CityDevelopment | null>(null);
@@ -45,7 +46,10 @@ export function CityDriver(): null {
   const city = useCity();
   const game = useGame();
   const map = useTerrainMap();
+  const production = useInteriorStore().production;
   useEffect(() => city.reset(map), [city, map]);
+  // The power plants' output (automatic supply), ~2× a second.
+  useEffect(() => production.subscribe(() => city.setPower(production.powerSupply())), [city, production]);
   useEffect(() => {
     let last = game.getSnapshot().dateMs;
     return game.subscribe(() => {

@@ -28,6 +28,7 @@ import {
   type TerrainMap,
 } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
+import { formatPower } from './CityLabel';
 import './buildingIcons.css';
 
 /** Grass surface top, in cellSize units (icons float above the cell top). */
@@ -93,6 +94,11 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
               {ICON[type]}
             </span>
             {(FIXED_PRODUCTION[type]?.makes || FIXED_PRODUCTION[type]?.turns) && stopAt.has(`${x},${z}`) && <Level st={prod.industry([x, z])} />}
+            {FIXED_PRODUCTION[type]?.burns && stopAt.has(`${x},${z}`) && (
+              <span className="bicon__lvl" title="Az erőmű teljesítménye (a leszállított szénből); a várost automatikusan ellátja">
+                ⚡ {formatPower(prod.plantPower([x, z]))}
+              </span>
+            )}
           </div>
         </Html>
         );

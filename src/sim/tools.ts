@@ -12,6 +12,7 @@ import { CellType } from './terrain';
 import type { ControlKind } from './traffic';
 import { DEPOT_PRICE } from './depot';
 import { SIGNAL_PRICE } from './signals';
+import { STRUCTURE_PRICE } from './structures';
 
 export type ToolId =
   | 'select'
@@ -27,7 +28,9 @@ export type ToolId =
   | 'light'
   | 'roundabout'
   | 'yield'
-  | 'stop';
+  | 'stop'
+  | 'bridge'
+  | 'tunnel';
 
 export interface ToolDef {
   id: ToolId;
@@ -65,6 +68,9 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   roundabout: { id: 'roundabout', label: 'Körforgalom', cost: 1200, builds: null },
   yield: { id: 'yield', label: 'Elsőbbségadás', cost: 60, builds: null },
   stop: { id: 'stop', label: 'STOP tábla', cost: 60, builds: null },
+  // Bridge / tunnel (see structures.ts): per spanned cell; a road or rail goes on it after.
+  bridge: { id: 'bridge', label: 'Híd', cost: STRUCTURE_PRICE.bridge, builds: null },
+  tunnel: { id: 'tunnel', label: 'Alagút', cost: STRUCTURE_PRICE.tunnel, builds: null },
 };
 
 /** The traffic control a tool places, or null. */

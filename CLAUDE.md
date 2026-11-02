@@ -102,7 +102,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
-- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, Szóköz, T,
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
   J/P/M/0 panelek (M = Játék: mentés, új játék), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
@@ -189,6 +189,26 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   „Új játék”: `newGame` (új térkép, üres hálózat, kezdőtőke = `GameState.startingMoney`).
   A játékóra képkockánként max. 0,25 s-ot lép (`MAX_FRAME_S`), különben betöltés / háttérből
   visszatérés után napokat ugrana. Teszt: scratchpad `pw/save.mjs`.
+- HÍD / ALAGÚT (`structures.ts`, render: `Structures.tsx`, eszköz: N / U): MÁSODIK SZINT a cellák
+  fölött / alatt. `map.structures` (`Structure`: kind, a, b = a két hídfő / alagútszáj, egy
+  tengelyen; `level` = a hídfők talaja; `carries` road | rail | nincs). A belső cellák NEM
+  változnak (víz, alatta futó út / sín marad). Szabályok (`structureProblem`): hídfők síkok,
+  egyforma magasak; híd: minden belső cella víz vagy ≥ 1 szinttel (HILL_STEP) lejjebb; alagút: nem
+  mélyebb a szájánál, nem víz, és hegy (≥ 1 szint) VAGY út / sín alatt megy (aluljáró). Max.
+  `MAX_SPAN` 14; ár / cella: híd 250, alagút 400; fenntartás 6 / 10 $/cella/hó. Előbb a szerkezet
+  (húzás vagy két kattintás), utána Út / Sín eszközzel kattintva rá: `layOnStructure` (út: a
+  hídfők Road cellák; sín: egy él `structure: id` jelzéssel a két hídfő között). Út: a `roadRoute`
+  a két hídfőt közvetlenül köti (`roadLinkFrom`), a kamion útvonala UGRIK; `buildLane` egységnyi
+  irányokkal + `lane.deck` dobozok (`deckBoxes`), `TruckPose.deck` — a kereszteződés-, sorompó- és
+  kamion-ütközésvizsgálat a másik szinten lévőt kihagyja (`inBoxes`). A csomópont-fokszámba a
+  link is beszámít. Sín: a `railIndex` a belső cellákat kihagyja (nincs közös cella / sorompó
+  alatta), a `snapToNet` nem ad 'mid'-et rajta, a `splitAtPoint` / `cutAtCell` nem vágja. A földi út /
+  sín a szerkezet alatt csak KERESZTBEN mehet (`groundStepOk`, `validate`). Bontás: a belső cellán
+  (ha ott nincs földi út / sín / fa) a szerkezet a tartalmával együtt megy (`removeStructure`); a
+  szerkezet celláin nincs tereprendezés. Render: híd = beton pálya, pillérek, korlát (+ útburkolat);
+  sín a pálya magasságán (`sampleTrack` `level`, `deckRailHeight`); alagút = kőkapu a két végén, a
+  belső rész (sín, kamion, vonatkocsi) nem látszik. Teszt: scratchpad `bridge.ts`, `under.ts`
+  (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -249,6 +269,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (megállók a városközpont oldalain), bent organikusan nő; áru automatikusan (Mini Motorways),
   utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). Kint ezért a megállók a
   városközpont oldalain vannak (ezek lesznek a belső város kapui).
+- Folyamatban (#88): megállók a város szélén (piac helyett), mentés / betöltés, hidak és alagutak.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

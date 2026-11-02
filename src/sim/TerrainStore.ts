@@ -27,6 +27,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
+import { interiorAt, levelAt, structureAt, structureProblem, type Structure, type StructureKind } from './structures';
 import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
@@ -298,6 +299,61 @@ export class TerrainStore {
   }
 
   /** Remove a whole stop (platform + its track / road, or a depot's lot). */
+  /**
+   * Build an empty bridge / tunnel from abutment `a` to `b` (see
+   * structures.ts). Returns false if the rules forbid it.
+   */
+  buildStructure(kind: StructureKind, a: [number, number], b: [number, number]): boolean {
+    if (structureProblem(this.map, kind, a, b)) return false;
+    const list = this.map.structures ?? [];
+    const id = list.reduce((m, s) => Math.max(m, s.id), 0) + 1;
+    const s: Structure = { id, kind, a, b, level: levelAt(this.map, a) };
+    this.commit({ structures: list.concat(s) }, true);
+    this.emit();
+    return true;
+  }
+
+  /**
+   * Lay a road or a rail on the empty structure `id`: its abutments join the
+   * ground network (a road cell / the ends of one rail edge between them).
+   * Returns false if it already carries something or an abutment can't take it.
+   */
+  layOnStructure(id: number, what: 'road' | 'rail'): boolean {
+    const list = this.map.structures ?? [];
+    const s = list.find((q) => q.id === id);
+    if (!s || s.carries) return false;
+    const ends = [s.a, s.b];
+    const ok = what === 'road' ? [CellType.Empty, CellType.Hill, CellType.Road] : [CellType.Empty, CellType.Hill, CellType.Rail];
+    if (ends.some(([x, z]) => !ok.includes(this.map.cells[x][z]))) return false;
+    const structures = list.map((q) => (q === s ? { ...q, carries: what } : q));
+    if (what === 'road') {
+      const cells = this.map.cells.slice();
+      for (const [x, z] of ends) {
+        if (cells[x][z] === CellType.Road) continue;
+        if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+        cells[x][z] = CellType.Road;
+        this.roadCount++;
+      }
+      this.commit({ cells, structures }, true);
+      this.emit();
+    } else {
+      this.commit({ structures }, true);
+      this.setRailNet(addEdge(this.map.railNet ?? EMPTY_NET, [s.a[0], s.a[1], s.b[0], s.b[1]], s.id), null);
+    }
+    return true;
+  }
+
+  /** Remove structure `id` with what it carries (its abutment cells stay). */
+  removeStructure(id: number): boolean {
+    const list = this.map.structures ?? [];
+    if (!list.some((q) => q.id === id)) return false;
+    this.commit({ structures: list.filter((q) => q.id !== id) }, true);
+    const net = this.map.railNet ?? EMPTY_NET;
+    if (net.edges.some((e) => e.structure === id)) this.setRailNet({ edges: net.edges.filter((e) => e.structure !== id), nextId: net.nextId }, null);
+    else this.emit();
+    return true;
+  }
+
   private removeStation(id: number): void {
     const st = this.map.stations?.find((s) => s.id === id);
     if (!st) return;
@@ -359,6 +415,12 @@ export class TerrainStore {
       return true;
     }
 
+    // An interior cell with nothing on the ground: the bridge / tunnel over it goes.
+    const span = interiorAt(this.map, x, z);
+    if (span && current !== CellType.Road && current !== CellType.Rail && !(current === CellType.Forest || (canClearProps(current) && !cleared.has(key)))) {
+      return this.removeStructure(span.id);
+    }
+
     // Track (incl. a level crossing — the road stays): cut it out here.
     if ((current === CellType.Rail || current === CellType.Road) && hasRailAt(this.map, x, z)) {
       const net = cutAtCell(this.map.railNet ?? EMPTY_NET, x, z);
@@ -416,6 +478,7 @@ export class TerrainStore {
     if (!this.inBounds(x, z)) return false;
     const t = this.map.cells[x][z];
     return (
+      !structureAt(this.map, x, z) && // a bridge / tunnel's ends and span
       t !== CellType.CityCenter &&
       !SPECIAL_BUILDINGS.has(t) &&
       t !== CellType.IndustryLot && // big-industry (6×6) footprint
@@ -547,6 +610,7 @@ export class TerrainStore {
       cleared?: ReadonlySet<number>;
       railNet?: RailNet;
       stations?: TerrainMap['stations'];
+      structures?: TerrainMap['structures'];
     },
     typeChanged: boolean,
   ): void {

@@ -363,6 +363,8 @@ export interface TerrainMap {
   readonly controls?: ReadonlyMap<number, import('./traffic').ControlKind>;
   /** Rail signals (see signals.ts). */
   readonly signals?: readonly import('./signals').RailSignal[];
+  /** Bridges and tunnels (see structures.ts): a second level above / below the cells. */
+  readonly structures?: readonly import('./structures').Structure[];
   /**
    * Bumped on every runtime edit (type OR height). The terrain surface mesh
    * keys on this, since both height and water-type changes alter it.

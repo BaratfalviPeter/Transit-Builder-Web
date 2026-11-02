@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { activeControl, CellType, cellCornerHeights, hasRailAt, type TerrainMap } from '../sim';
+import { activeControl, CellType, cellCornerHeights, hasRailAt, roadLinkDir, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -141,7 +141,8 @@ function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number)
   const nx = x + dx;
   const nz = z + dz;
   if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) return false;
-  return map.cells[nx][nz] === CellType.Road;
+  // Over a bridge / into a tunnel: the road goes on.
+  return map.cells[nx][nz] === CellType.Road || roadLinkDir(map, x, z, dx, dz);
 }
 
 /**

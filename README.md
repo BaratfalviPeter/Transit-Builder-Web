@@ -96,7 +96,8 @@ A jobb oldali **panel** három füle:
   | 1–4 | Út / Sín / Vasútállomás / Kamionrakodó |
   | 5–8 | Elsőbbségadás / STOP / Lámpa / Körforgalom |
   | Szóköz / T | Szünet / gyorsítás |
-  | J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
+  | N / U | Híd / Alagút |
+| J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
   | WASD, nyilak | Kamera mozgatása |
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
   ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az
@@ -209,6 +210,12 @@ A jobb oldali **panel** három füle:
     közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
+- **Híd és alagút** (N / U; `src/sim/structures.ts`, `src/render/Structures.tsx`):
+  külön eszközzel húzod az egyik végétől a másikig (egyenesen), utána az Út vagy a Sín
+  eszközzel rákattintva kerül rá út vagy sín. A **híd** átível vízen, vagy egy szinttel
+  lejjebb lévő úton / sínen / völgyön (a hídfőket ehhez meg lehet emelni). Az **alagút**
+  hegyen megy át, vagy egy út / sín alatt (aluljáró). A hídon / alagútban futó forgalom
+  nem találkozik az alatta / fölötte futóval (nincs kereszteződés, nincs sorompó).
 - **Mentés** (M — Játék panel; `src/sim/save.ts`): a játék magától ment percenként és a
   lap bezárásakor a böngészőbe, és induláskor onnan folytatódik. Kézzel is menthető,
   és innen indítható **új játék** (új térkép). A járművek betöltés után a megállóikból

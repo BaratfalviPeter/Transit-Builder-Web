@@ -11,6 +11,8 @@ export interface Lane {
   /** Length up to each point. */
   cum: number[];
   length: number;
+  /** Boxes of the bridges / tunnels it runs on (structures.ts `deckBoxes`), if any. */
+  deck?: Array<[number, number, number, number]>;
 }
 
 /** A lane straight through world points (no lane offset: already placed). */

@@ -38,6 +38,7 @@ import { RailSignals, SignalPreview } from './Signals';
 import { LevelCrossings } from './LevelCrossings';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
 import { DepotPlacement } from './Stations';
+import { Structures, StructurePreview, type StructPlan } from './Structures';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
 import { CityLabel } from './CityLabel';
@@ -52,7 +53,12 @@ import {
   depotProblem,
   type DepotRot,
   industryAnchorOf,
+  interiorAt,
+  interiorOf,
   INTERIORS_ENABLED,
+  structurePrice,
+  structureProblem,
+  type StructureKind,
   MAX_PLATFORM_EXT,
   PLATFORM_CELL_PRICE,
   sideAt,
@@ -284,6 +290,11 @@ function stopToolKind(id: string): StopKind | null {
   return id === 'station' ? 'rail' : id === 'truckstop' ? 'truck' : null;
 }
 
+/** The structure a tool builds (null = not a bridge / tunnel tool). */
+function structKindOf(id: string): StructureKind | null {
+  return id === 'bridge' || id === 'tunnel' ? id : null;
+}
+
 /** Track type a tool plans with the two-click planner (null = not a track tool). */
 function trackOf(id: string): CellType.Road | CellType.Rail | null {
   return id === 'road' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
@@ -398,6 +409,32 @@ function Scene() {
     return () => window.removeEventListener('keydown', onKey);
   }, [activeTool, stationTarget]);
 
+  // ---- Bridge / tunnel tool: drag (or click) from one end to the other ----------
+  const [structPlan, setStructPlanState] = useState<StructPlan | null>(null);
+  const structRef = useRef<StructPlan | null>(null);
+  const setStructPlan = useCallback((p: StructPlan | null) => {
+    structRef.current = p;
+    setStructPlanState(p);
+  }, []);
+  /** The plan from `a` to the cell under (wx, wz), kept on a's row / column. */
+  const structTo = useCallback(
+    (kind: StructureKind, a: [number, number], wx: number, wz: number): StructPlan => {
+      const { x, z } = cellOf(wx, wz);
+      const b: [number, number] = Math.abs(x - a[0]) >= Math.abs(z - a[1]) ? [x, a[1]] : [a[0], z];
+      return { kind, a, b, problem: structureProblem(terrain.getMap(), kind, a, b), cost: structurePrice(kind, a, b) };
+    },
+    [terrain, cellOf],
+  );
+  const buildStructPlan = useCallback(() => {
+    const p = structRef.current;
+    setStructPlan(null);
+    if (!p || p.problem || !game.canAfford(p.cost)) return;
+    if (terrain.buildStructure(p.kind, p.a, p.b)) game.spend(p.cost);
+  }, [game, terrain, setStructPlan]);
+  useEffect(() => {
+    if (!structKindOf(activeTool)) setStructPlan(null);
+  }, [activeTool, setStructPlan]);
+
   // ---- Depot tool: hover a spot (the lot is centred on it), Q turns it ---------
   const [depotRot, setDepotRot] = useState<DepotRot>(0);
   const depotRotRef = useRef<DepotRot>(0);
@@ -495,9 +532,18 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || t === 'depot' || t === 'signal' || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || structKindOf(t) !== null || t === 'depot' || t === 'signal' || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
+        const sk = structKindOf(game.getActiveTool());
+        if (sk) {
+          const p = structRef.current;
+          if (p) {
+            const q = structTo(sk, p.a, wx, wz);
+            if (q.b[0] !== p.b[0] || q.b[1] !== p.b[1]) setStructPlan(q);
+          }
+          return;
+        }
         if (game.getActiveTool() === 'signal') {
           const g = gridOf(wx, wz);
           const h = signalSpot(terrain.getMap(), g.x, g.z);
@@ -534,15 +580,34 @@ function Scene() {
       },
       // Road / rail: dragging draws the track along the cursor (see PathPlan).
       dragStart: (wx: number, wz: number) => {
+        const sk = structKindOf(game.getActiveTool());
+        if (sk) {
+          const { x, z } = cellOf(wx, wz);
+          setStructPlan(structTo(sk, [x, z], wx, wz));
+          return true;
+        }
         const type = trackOf(game.getActiveTool());
         if (type === null || pathPlan.getSnapshot().pathbuildingState === 'selecting_end') return false;
+        // On an empty bridge / tunnel a click lays the road / rail (onClick).
+        const c = cellOf(wx, wz);
+        const span = interiorAt(terrain.getMap(), c.x, c.z);
+        if (span && !span.carries) return false;
         const g = gridOf(wx, wz);
         return pathPlan.drawBegin(terrain.getMap(), g, type);
       },
       dragMove: (wx: number, wz: number) => {
+        const p = structRef.current;
+        if (p) {
+          const q = structTo(p.kind, p.a, wx, wz);
+          if (q.b[0] !== p.b[0] || q.b[1] !== p.b[1]) setStructPlan(q);
+          return;
+        }
         pathPlan.drawTo(terrain.getMap(), gridOf(wx, wz));
       },
-      dragEnd: () => finishDrawing(),
+      dragEnd: () => {
+        if (structRef.current) buildStructPlan();
+        else finishDrawing();
+      },
       onClick: (wx: number, wz: number) => {
         const tool = TOOLS[game.getActiveTool()];
         if (tool.id === 'select') {
@@ -551,6 +616,18 @@ function Scene() {
           const m = terrain.getMap();
           const a = industryAnchorOf(m, x, z);
           if (a && INTERIORS_ENABLED) interiors.open(a, m.cells[a[0]][a[1]]);
+          return;
+        }
+        const sk = structKindOf(tool.id);
+        if (sk) {
+          const p = structRef.current;
+          if (!p) {
+            const { x, z } = cellOf(wx, wz);
+            setStructPlan(structTo(sk, [x, z], wx, wz));
+          } else {
+            setStructPlan(structTo(sk, p.a, wx, wz));
+            buildStructPlan();
+          }
           return;
         }
         if (tool.id === 'signal') {
@@ -594,6 +671,17 @@ function Scene() {
         const m = terrain.getMap();
         const snap = pathPlan.getSnapshot();
 
+        // A click on an empty bridge / tunnel lays the road / rail on it.
+        if (snap.pathbuildingState === 'idle') {
+          const c = cellOf(wx, wz);
+          const span = interiorAt(m, c.x, c.z);
+          if (span && !span.carries) {
+            const cost = interiorOf(span).length * tool.cost;
+            if (game.canAfford(cost) && terrain.layOnStructure(span.id, type === CellType.Rail ? 'rail' : 'road')) game.spend(cost);
+            return;
+          }
+        }
+
         if (snap.pathbuildingState === 'idle') {
           // Point A: must be a point the track can use.
           if (canStartRoute(m, g, type)) pathPlan.begin(m, g, type);
@@ -621,7 +709,7 @@ function Scene() {
         } else pathPlan.clear();
       },
     }),
-    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport, finishDrawing],
+    [game, terrain, pathPlan, gridOf, stationTarget, trafficTarget, depotTarget, cellOf, interiors, transport, finishDrawing, structTo, buildStructPlan, setStructPlan],
   );
 
   // Switching tool (or road <-> rail) drops an unfinished plan.
@@ -641,8 +729,9 @@ function Scene() {
     let rightDown: { x: number; y: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      // Esc cancels an unfinished route; with none, it drops the tool.
-      if (pathPlan.getSnapshot().pathbuildingState !== 'idle') pathPlan.clear();
+      // Esc cancels an unfinished route / bridge; with none, it drops the tool.
+      if (structRef.current) setStructPlan(null);
+      else if (pathPlan.getSnapshot().pathbuildingState !== 'idle') pathPlan.clear();
       else game.setActiveTool('select');
     };
     const onDown = (e: PointerEvent) => {
@@ -652,7 +741,10 @@ function Scene() {
       if (e.button !== 2 || !rightDown) return;
       const moved = Math.hypot(e.clientX - rightDown.x, e.clientY - rightDown.y);
       rightDown = null;
-      if (moved < 6) pathPlan.clear();
+      if (moved < 6) {
+        pathPlan.clear();
+        setStructPlan(null);
+      }
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointerdown', onDown, true);
@@ -662,7 +754,7 @@ function Scene() {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointerup', onUp, true);
     };
-  }, [pathPlan, game]);
+  }, [pathPlan, game, setStructPlan]);
 
   // Shared click + drag handlers, attached to the terrain surface so each hit
   // lands on the real geometry under the cursor.
@@ -744,6 +836,7 @@ function Scene() {
       </EditorPick>
       {/* Lights, signs, roundabout islands. */}
       <TrafficControls map={map} cellSize={cellSize} />
+      {structPlan && <StructurePreview map={map} cellSize={cellSize} plan={structPlan} canAfford={money >= structPlan.cost} />}
       {depotHover && activeTool === 'depot' && (
         <DepotPlacement
           map={map}
@@ -797,6 +890,7 @@ function Scene() {
       <RoadsM map={map} cellSize={cellSize} />
       {/* Rails: gravel bed + sleepers + metal rails, slope-aware. */}
       <RailsM map={map} cellSize={cellSize} />
+      <Structures map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />

@@ -27,6 +27,7 @@
  * Pure TypeScript.
  */
 
+import { axisOf, interiorAt } from './structures';
 import {
   canRailCell,
   crossesRoadOk,
@@ -660,6 +661,15 @@ export function validate(map: TerrainMap, pts: number[], start: NetSnap | null, 
       }
     }
     const cx = Math.round(x), cz = Math.round(z);
+    // Under a bridge / over a tunnel: only across it, never along.
+    const span = interiorAt(map, cx, cz);
+    if (span) {
+      const [ax, az] = axisOf(span);
+      if (Math.abs(tx * ax + tz * az) > Math.cos(45 * DEG)) {
+        reason = span.kind === 'bridge' ? 'Híd alatt csak keresztben vezethet sín' : 'Alagút fölött csak keresztben vezethet sín';
+        return;
+      }
+    }
     const h = map.heights[cx][cz];
     if (prevH !== null && Math.abs(h - prevH) > HILL_STEP + 1e-6) {
       reason = 'Túl meredek';

@@ -50,6 +50,8 @@ const ICON: Record<ToolId, string> = {
   stop: '🛑',
   light: '🚦',
   roundabout: '🔄',
+  bridge: '🌉',
+  tunnel: '🚇',
 };
 
 /** Tool shortcuts: KeyboardEvent.code → tool, and the label shown. */
@@ -68,6 +70,8 @@ const KEYS: Array<{ code: string; label: string; tool: ToolId }> = [
   { code: 'Digit8', label: '8', tool: 'roundabout' },
   { code: 'Digit9', label: '9', tool: 'depot' },
   { code: 'KeyG', label: 'G', tool: 'signal' },
+  { code: 'KeyN', label: 'N', tool: 'bridge' },
+  { code: 'KeyU', label: 'U', tool: 'tunnel' },
 ];
 /** Short names for the dock buttons (the full name is in the tooltip). */
 const SHORT: Partial<Record<ToolId, string>> = {
@@ -91,7 +95,7 @@ const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: stri
 const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
   { title: '', tools: ['select'] },
   { title: 'Terep', tools: ['raise', 'lower', 'bulldoze'] },
-  { title: 'Építés', tools: ['road', 'rail', 'signal', 'station', 'truckstop', 'depot'] },
+  { title: 'Építés', tools: ['road', 'rail', 'bridge', 'tunnel', 'signal', 'station', 'truckstop', 'depot'] },
   { title: 'Forgalom', tools: ['yield', 'stop', 'light', 'roundabout'] },
 ];
 
@@ -111,6 +115,8 @@ const HINT: Record<ToolId, string> = {
   stop: 'STOP — a kereszteződés előtti útcellára: itt mindig megállnak',
   light: 'Lámpa — kereszteződésre (3–4 irányú): a két irány felváltva kap zöldet',
   roundabout: 'Körforgalom — kereszteződésre: a kamionok a sziget körül mennek',
+  bridge: 'Híd — húzd az egyik hídfőtől a másikig (egyenesen) · a hídfők legyenek egy szinttel magasabban annál, ami alatta van (vagy víz) · utána Út / Sín eszközzel kattints rá · Esc: mégse',
+  tunnel: 'Alagút — húzd az egyik szájától a másikig (egyenesen) · hegyen át, vagy egy út / sín alatt · utána Út / Sín eszközzel kattints rá · Esc: mégse',
 };
 
 const SPEEDS: Array<{ speed: GameSpeed; glyph: string; title: string }> = [

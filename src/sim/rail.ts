@@ -20,6 +20,7 @@
  * Pure TypeScript.
  */
 
+import { spanUnder } from './structures';
 import { EMPTY_NET, LineWalker, railIndex, TRACK_HALF, type RailNet } from './railNet';
 import { CellType, type TerrainMap } from './terrain';
 import { stationGeom, stopKind, type Station } from './stations';
@@ -337,6 +338,8 @@ export function pathCells(map: TerrainMap, p: RailPath, from: number, to: number
     const f = (s - p.cum[i]) / L;
     const x = p.xs[i] + (p.xs[i + 1] - p.xs[i]) * f, z = p.zs[i] + (p.zs[i + 1] - p.zs[i]) * f;
     const tx = (p.xs[i + 1] - p.xs[i]) / L, tz = (p.zs[i + 1] - p.zs[i]) / L;
+    // Up on a bridge / down in a tunnel: nothing on the cells below is shared.
+    if (spanUnder(map, x, z, tx, tz, 'rail')) continue;
     for (const o of [-TRACK_HALF, 0, TRACK_HALF]) {
       const cx = Math.round(x - tz * o), cz = Math.round(z + tx * o);
       if (cx < 0 || cz < 0 || cx >= n || cz >= n) continue;

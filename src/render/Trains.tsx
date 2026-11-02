@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import {
   CAR_GAP,
   CAR_LEN,
+  interiorAt,
   laneAt,
   LOCO_LEN,
   pathAt,
@@ -22,7 +23,7 @@ import {
   type TerrainMap,
   type Train,
 } from '../sim';
-import { sampleTrack, type TrackSamples } from './railGeometry';
+import { deckRailHeight, sampleTrack, type TrackSamples } from './railGeometry';
 import { CAR_BOGIE, LOCO_BOGIE, LOCO_COLORS, Locomotive, Wagon, WAGON_FOR, type WagonKind } from './TrainModel';
 
 /** Rail top above the track's (smoothed) ground line — see Rails.tsx. */
@@ -40,13 +41,15 @@ function carsOf(wagons: number): Array<{ c: number; b: number }> {
 function useTrackHeights(map: TerrainMap) {
   return useMemo(() => {
     const cache = new Map<number, TrackSamples>();
-    const edges = new Map((map.railNet?.edges ?? []).map((e) => [e.id, e.pts]));
+    const edges = new Map((map.railNet?.edges ?? []).map((e) => [e.id, e]));
     return (edge: number, along: number): number => {
       let s = cache.get(edge);
       if (!s) {
-        const pts = edges.get(edge);
-        if (!pts) return 0;
-        cache.set(edge, (s = sampleTrack(map, pts)));
+        const e = edges.get(edge);
+        if (!e) return 0;
+        // On a bridge / in a tunnel: level at its height (as Rails.tsx draws it).
+        const st = e.structure !== undefined ? map.structures?.find((q) => q.id === e.structure) : undefined;
+        cache.set(edge, (s = sampleTrack(map, e.pts, undefined, st ? deckRailHeight(st.level) : undefined)));
       }
       const f = Math.min(s.n - 1, Math.max(0, along / s.step - 0.5));
       const i = Math.min(s.n - 2, Math.floor(f));
@@ -67,6 +70,7 @@ function wagonLoads(t: Train, last: WagonKind[]): Array<{ kind: WagonKind; loade
 }
 
 function TrainView({ id, color, stripe, map, height }: { id: number; color: string; stripe: string; map: TerrainMap; height: (edge: number, along: number) => number }) {
+  const edgeOn = (edge: number) => map.railNet?.edges.find((e) => e.id === edge)?.structure;
   const sim = useTransport();
   const root = useRef<THREE.Group>(null);
   const cars = useRef<Array<THREE.Group | null>>([]);
@@ -90,6 +94,10 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
     carsOf(t.wagons).forEach(({ c, b }, k) => {
       const car = cars.current[k];
       if (!car) return;
+      // Inside a tunnel: not seen.
+      const [mx, mz] = laneAt(p, front - c);
+      const tun = interiorAt(map, Math.round(mx), Math.round(mz));
+      car.visible = !(tun && tun.kind === 'tunnel' && tun.carries === 'rail' && edgeOn(pathAt(p, front - c).edge) === tun.id);
       const f = at(front - c + b), r = at(front - c - b);
       car.position.set((f[0] + r[0]) / 2 - half, (f[1] + r[1]) / 2, (f[2] + r[2]) / 2 - half);
       const dx = f[0] - r[0], dz = f[2] - r[2];

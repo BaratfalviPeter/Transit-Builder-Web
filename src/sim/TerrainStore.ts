@@ -27,7 +27,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
-import { axisOf, interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, trenchAt, type Structure, type StructureKind } from './structures';
+import { axisOf, interiorAt, interiorOf, isUnderpass, TUNNEL_COVER, levelAt, structureAt, structureProblem, structureStep, trenchAt, type Structure, type StructureKind } from './structures';
 import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
@@ -365,6 +365,30 @@ export class TerrainStore {
     const list = this.map.structures ?? [];
     const id = list.reduce((m, s) => Math.max(m, s.id), 0) + 1;
     const s: Structure = { id, kind, a, b, level: levelAt(this.map, a) };
+    // A hill tunnel's tube must stay covered: where the hill over it is lower,
+    // the ground is raised to TUNNEL_COVER steps above the portals (not at the
+    // cells next to the portals — their corners are the portals' too).
+    if (kind === 'tunnel' && !isUnderpass(this.map, s)) {
+      const top = s.level + TUNNEL_COVER * HILL_STEP;
+      const inner = interiorOf(s);
+      const heights = this.map.heights.map((col) => col.slice());
+      const cells = this.map.cells.map((col) => col.slice());
+      let raised = false;
+      for (let i = 1; i < inner.length - 1; i++) {
+        const [x, z] = inner[i];
+        const t = cells[x][z];
+        if (t !== CellType.Empty && t !== CellType.Hill && t !== CellType.Forest) continue;
+        if (heights[x][z] >= top - 1e-6) continue;
+        heights[x][z] = top;
+        if (t === CellType.Forest) cells[x][z] = CellType.Empty;
+        raised = true;
+      }
+      if (raised) {
+        this.commit({ structures: list.concat(s), heights, cells }, true);
+        this.emit();
+        return true;
+      }
+    }
     this.commit({ structures: list.concat(s) }, true);
     this.emit();
     return true;

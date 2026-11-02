@@ -46,6 +46,8 @@ export interface Structure {
 
 /** Longest span (interior cells). */
 export const MAX_SPAN = 14;
+/** Steps of ground a hill tunnel's tube needs above it: lower hill over it is raised to this. */
+export const TUNNEL_COVER = 2;
 /** Longest tunnel (cells spanned): through big hills. */
 export const MAX_TUNNEL = 40;
 /** Price per interior cell. */
@@ -136,7 +138,7 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
     level = h;
   }
   const L = level!;
-  let hill = 0, flat = 0, crossed = false, top = -Infinity;
+  let hill = 0, flat = 0, crossed = false;
   const inner = interiorOf({ a, b });
   for (const [x, z] of inner) {
     if (structureAt(map, x, z)) return 'Másik hidat / alagutat keresztezne';
@@ -148,7 +150,6 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
       if (!OVER_TUNNEL_OK.has(t)) return 'Az alagút nem vezethet itt át';
       if (minCorner(map, x, z) < L - EPS) return 'Az alagút nem mehet a szájánál mélyebbre (Emelés a szájaknál / Süllyesztés)';
       // Part of the hill (its slope or top), or flat ground at the portals' level.
-      top = Math.max(top, maxCorner(map, x, z));
       if (maxCorner(map, x, z) >= L + HILL_STEP - EPS) hill++;
       else flat++;
       if (t === CellType.Road || t === CellType.Rail || hasRailAt(map, x, z)) crossed = true;
@@ -157,8 +158,6 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
   if (kind === 'tunnel') {
     // Through a hill: from its foot to the other side — every cell is hill.
     if (hill > 0 && flat > 0) return 'Hegyi alagút csak a hegy lábától a túloldaláig vezethet';
-    // A real hill: at least two steps above the portals somewhere (the tube is that tall).
-    if (hill > 0 && top < L + 2 * HILL_STEP - EPS) return 'Ez a domb túl alacsony az alagúthoz (legalább 2 szint magas kell legyen)';
     // An underpass: short, and under a road / rail.
     if (hill === 0) {
       if (!crossed) return 'Az alagútnak hegy, út vagy sín alatt kell átmennie';

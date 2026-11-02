@@ -12,7 +12,7 @@
  * per browser (localStorage, read / written defensively).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   CellType,
   GOAL_POPULATION,
@@ -57,15 +57,29 @@ function store(s: TutorialState): void {
   }
 }
 
+// One shared state (GameUI's intro / checklist, the help's buttons, a new game).
+let current: TutorialState = load();
+const listeners = new Set<() => void>();
+function update(patch: Partial<TutorialState>): void {
+  current = { ...current, ...patch };
+  store(current);
+  for (const l of listeners) l();
+}
+
+/** A new game: the intro and the checklist start over. */
+export function resetTutorial(): void {
+  update({ introSeen: false, listOn: true, done: [] });
+}
+
 /** The tutorial's state, shared by GameUI (intro, checklist, the help's buttons). */
 export function useTutorial() {
-  const [st, setSt] = useState<TutorialState>(load);
-  const update = (patch: Partial<TutorialState>) =>
-    setSt((cur) => {
-      const next = { ...cur, ...patch };
-      store(next);
-      return next;
-    });
+  const st = useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => current,
+  );
   return {
     introOpen: !st.introSeen,
     listOn: st.listOn,
@@ -74,7 +88,7 @@ export function useTutorial() {
     openIntro: () => update({ introSeen: false }),
     openList: () => update({ listOn: true, done: [] }),
     closeList: () => update({ listOn: false }),
-    markDone: (ids: string[]) => update({ done: [...new Set([...st.done, ...ids])] }),
+    markDone: (ids: string[]) => update({ done: [...new Set([...current.done, ...ids])] }),
   };
 }
 
@@ -139,7 +153,7 @@ const PAGES: Page[] = [
           <li>⛏️ Bánya → 🪨 szén → ⚡ erőmű → áram → 🏙️ város (az áram magától eljut a városba)</li>
         </ul>
         <p>
-          Az iparágak <b>fejlődnek</b> (●●○○○): ha elviszed, amit termelnek, havonta nő a termelésük; ha nem, visszaesnek.
+          Az iparágak <b>fejlődnek</b> (●●○○○): ha (az utolsó hónapok átlagában) elviszed, amit termelnek, nő a termelésük; ha nem, visszaesnek. Szintváltás után 3 hónapig nem változnak.
         </p>
         <p>
           Tipp: a Járatok panelen a <b>„Csak tele induljon”</b> beállítással a jármű megvárja, amíg megtelik.

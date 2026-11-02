@@ -36,7 +36,7 @@ import { DevTab } from './DevTab';
 import { LinesPanel } from './LinesPanel';
 import { FinancePanel } from './FinancePanel';
 import { Feedback, GamePanel } from './GamePanel';
-import { Checklist, Intro, useTutorial } from './Tutorial';
+import { Checklist, Intro, resetTutorial, useTutorial } from './Tutorial';
 import { IndustryPanel } from './IndustryPanel';
 import { StatsWindow } from './StatsWindow';
 import './financePanel.css';
@@ -486,7 +486,13 @@ function Bankrupt() {
         <p>
           A cég {BANKRUPT_MONTHS} egymást követő hónap végén mínuszban volt, ezért csődbe ment. A játéknak vége.
         </p>
-        <button type="button" onClick={() => save.newGame()}>
+        <button
+          type="button"
+          onClick={() => {
+            save.newGame();
+            resetTutorial();
+          }}
+        >
           Új játék
         </button>
       </div>

@@ -9,6 +9,7 @@ import { useCitySnapshot, useGameSnapshot, useSave, useTransportSnapshot } from 
 import { QUALITY_LABEL, setQuality, useQuality, type QualityPreset } from '../render/quality';
 import { CAMERA_SENS_MAX, CAMERA_SENS_MIN, setCameraSens, setZoomToCursor, useCameraSens, useZoomToCursor } from '../render/cameraSettings';
 import { feedbackUrl } from './feedback';
+import { resetTutorial } from './Tutorial';
 
 const timeOf = (ms: number) =>
   new Date(ms).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -74,6 +75,7 @@ export function GamePanel() {
               type="button"
               onClick={() => {
                 newGame();
+                resetTutorial();
                 setConfirm(false);
               }}
             >

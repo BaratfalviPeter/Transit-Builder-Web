@@ -112,7 +112,7 @@ function Level({ st }: { st: { level: number; served: number | null; trend: numb
   return (
     <span
       className="bicon__lvl"
-      title="Termelési szint: nő, ha elszállítod, amit termel (≥ 70%), visszaesik, ha nem (< 30%)"
+      title="Termelési szint: nő, ha az utolsó hónapok átlagában elszállítod, amit termel (≥ 70%), visszaesik, ha nem (< 30%)"
     >
       {'●'.repeat(st.level)}
       <span className="bicon__lvl-off">{'●'.repeat(MAX_INDUSTRY_LEVEL - st.level)}</span>

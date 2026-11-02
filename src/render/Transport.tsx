@@ -19,8 +19,7 @@ import {
   laneAt,
   signalsOf,
   spanUnder,
-  alongUnderpass,
-  overpassLift,
+  floorOf,
   TRAILER_AXLE,
   TRUCK_HITCH,
   useTransport,
@@ -75,7 +74,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     if (span?.kind === 'tunnel') {
       // In a tunnel: a see-through stand-in instead of the truck.
       tr.visible = tl.visible = false;
-      g.position.set((p.x - half) * cellSize, (FLAT_TOP + span.level) * cellSize, (p.z - half) * cellSize);
+      g.position.set((p.x - half) * cellSize, (FLAT_TOP + floorOf(map, span)) * cellSize, (p.z - half) * cellSize);
       if (ghostMesh) {
         // Centred a little behind the hitch (over the trailer), along the heading.
         ghostMesh.position.set(-Math.cos(p.yaw) * 0.2, 0.12, Math.sin(p.yaw) * 0.2);
@@ -85,9 +84,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     }
     tr.visible = tl.visible = true;
     const deck = span ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : null;
-    // Driving along an underpass: on the ground under the little overpass, not up on it.
-    const low = alongUnderpass(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw)) !== null;
-    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP - (low ? overpassLift(map, x, z) : 0);
+    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.

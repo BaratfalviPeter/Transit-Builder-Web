@@ -27,7 +27,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
-import { interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, type Structure, type StructureKind } from './structures';
+import { axisOf, interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, type Structure, type StructureKind } from './structures';
 import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
@@ -145,6 +145,14 @@ export class TerrainStore {
       const has = (c: readonly [number, number]) => path.some((p) => p.x === c[0] && p.z === c[1]);
       if (!s.carries && has(s.a) && has(s.b) && this.layOnStructure(s.id, 'road')) placed += interiorOf(s).length;
     }
+    // An empty bridge / tunnel with a road built up to BOTH its ends (e.g. one
+    // side at a time): the road goes on it too.
+    for (const s of this.map.structures ?? []) {
+      if (s.carries) continue;
+      const touched = path.some((p) => (p.x === s.a[0] && p.z === s.a[1]) || (p.x === s.b[0] && p.z === s.b[1]));
+      const road = (c: readonly [number, number]) => this.map.cells[c[0]][c[1]] === CellType.Road;
+      if (touched && road(s.a) && road(s.b)) this.layOnStructure(s.id, 'road');
+    }
     return placed;
   }
 
@@ -177,6 +185,23 @@ export class TerrainStore {
     if (piece.length >= 4) net = addEdge(net, piece);
     this.setRailNet(net, null);
     for (const s of spans) this.layOnStructure(s.id, 'rail');
+    // An empty bridge / tunnel whose BOTH ends now have track ending there,
+    // heading along it (built one side at a time): the rail goes on it too.
+    const endsAt = (c: readonly [number, number], dir: [number, number]) =>
+      (this.map.railNet?.edges ?? []).some((e) => {
+        const q = e.pts, L = q.length;
+        for (const [x, z, px, pz] of [[q[0], q[1], q[2], q[3]], [q[L - 2], q[L - 1], q[L - 4], q[L - 3]]]) {
+          if (Math.abs(x - c[0]) > 1e-3 || Math.abs(z - c[1]) > 1e-3) continue;
+          const l = Math.hypot(x - px, z - pz) || 1;
+          if (((x - px) * dir[0] + (z - pz) * dir[1]) / l > 0.99) return true; // arrives heading into the span
+        }
+        return false;
+      });
+    for (const s of this.map.structures ?? []) {
+      if (s.carries) continue;
+      const [dx, dz] = axisOf(s);
+      if (endsAt(s.a, [dx, dz]) && endsAt(s.b, [-dx, -dz])) this.layOnStructure(s.id, 'rail');
+    }
     return Math.ceil(plan.length);
   }
 

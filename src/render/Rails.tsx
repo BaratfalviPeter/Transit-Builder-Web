@@ -22,7 +22,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { CellType, interiorAt, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
-import { deckRailHeight, groundAtGrid, sampleTrack, type TrackSamples } from './railGeometry';
+import { groundAtGrid, sampleTrack, structureSamples, type TrackSamples } from './railGeometry';
 
 export interface RailsProps {
   map: TerrainMap;
@@ -83,7 +83,7 @@ function build(map: TerrainMap, cellSize: number): Built {
     // On a bridge / in a tunnel: level at the structure's height, no bank;
     // over its span no ballast (bridge) or nothing at all (tunnel).
     const st = e.structure !== undefined ? map.structures?.find((q) => q.id === e.structure) : undefined;
-    const s = sampleTrack(map, e.pts, undefined, st ? deckRailHeight(st.level) : undefined);
+    const s = st ? structureSamples(map, e.pts, st) : sampleTrack(map, e.pts);
     if (!st) embankment(map, s, cs, half, out.embankment);
     for (let i = 0; i < s.n; i++) {
       const overSpan = !!st && interiorAt(map, Math.round(s.x[i]), Math.round(s.z[i])) === st;

@@ -327,16 +327,31 @@ function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
   if (isUnderpass(map, s)) return <Underpass map={map} cellSize={cellSize} s={s} />;
   const { pos, len, yaw } = frameOf(map, s, cellSize);
   const floor = FLAT_TOP + floorOf(map, s);
+  // The lining as a tube along the whole span (hidden in the hill, seen where it's low).
+  const tube = useMemo(() => {
+    const ring = archShape(MOUTH.w + 0.1, MOUTH.spring, MOUTH.rise + 0.05);
+    ring.holes.push(new THREE.Path(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise).getPoints()));
+    const g = new THREE.ExtrudeGeometry(ring, { depth: len, bevelEnabled: false });
+    g.rotateY(-Math.PI / 2);
+    g.translate(len / 2, 0, 0);
+    return g;
+  }, [len]);
   return (
     <group position={pos} rotation-y={yaw} scale={cellSize}>
+      <group position={[0, floor, 0]} scale={TUNNEL_SCALE}>
+        <mesh geometry={tube} material={M.stone} castShadow receiveShadow />
+      </group>
       {[-1, 1].map((sd) => (
-        <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
+        <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0} scale={TUNNEL_SCALE}>
           <Portal dark />
         </group>
       ))}
     </group>
   );
 }
+
+/** A hill tunnel's portal and tube, scaled up from the model so a train fits (x: along, y: up, z: across). */
+const TUNNEL_SCALE: V3 = [1, 1.75, 1.45];
 
 const SLAB_T = 0.12;
 const WALL_T = 0.1;

@@ -93,7 +93,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   gyűrű (`NetJams`). UI: `LinesPanel` `LineStatsRow` (bevétel / költség / nyereség, 📦, ⏱, 🚦).
   CSŐD (`GameState`): ha a hónap végén mínuszban → `negMonths`++ (különben 0); `BANKRUPT_MONTHS` 6
   után `bankrupt` (az óra megáll, `setSpeed` nem indítja), `Bankrupt` ablak a GameUI-ban (Új játék);
-  figyelmeztetés a felső sávban (`ui-bar__warn`). Hálózati nézet metrótérkép-stílusban
+  figyelmeztetés a felső sávban (`ui-bar__warn`). CSAK TELE INDUL (`Line.fullLoad`, `setFullLoad`,
+  Járatok panel jelölőnégyzet): `waitForLoad` — a felrakodó megállóban (az ipar terméke egy későbbi
+  megállónak kell; raktárban / lerakodó megállóban nem) a kamion (`state 'stop'`) / vonat
+  (`departTrain` → 'load') áll, amíg tele nem lesz; az itt felrakott rakomány ideje az indulástól számít. Hálózati nézet metrótérkép-stílusban
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
   megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
   fölött látszanak), világegységben 0,38 cella szélesen.
@@ -173,8 +176,11 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   építi, különben azon vezetne át).
 - VÁROS (`CityDevelopment.ts`, `useCityDevelopment.ts`: `CityProvider` + `CityDriver`): a
   játékórával lép (egész napok, sebesség/szünet szerint), CSAK új térképnél (más seed) indul újra
-  (`reset`) — előtte minden építésnél elölről nőtt, mert új map-objektum jött. Méret = szintek
-  összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 5 + 0,25/szint, deszka 3 + 0,15/szint;
+  (`reset`) — előtte minden építésnél elölről nőtt, mert új map-objektum jött. A `CityDriver` és a
+  `FinanceDriver` dátumUGRÁSNÁL (betöltés, új játék; > 5 nap / nem a következő hónap) csak átáll,
+  nem számol (különben visszaugráskor a város megállt, betöltéskor plusz hónapot vont le). Méret = szintek
+  összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 40 + 2/szint, deszka 20 + 1/szint (előtte 5 / 3 volt, a
+  szállított mennyiséghez képest elhanyagolható);
   a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
   az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
   ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). A VÁROS KAPUI (a felhasználónak
@@ -319,7 +325,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #92 (aluljáró mint nyitott betonárok, 2 cellás rámpa, átlátszó cső nélkül).
 - Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
 - Mergelve: #94 (a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella).
-- Folyamatban: játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók.
+- Mergelve: #95 (játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók).
+- Folyamatban: a város nem nőtt (dátumugrás-hiba), nagyobb városi kereslet, „csak tele induljon”.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

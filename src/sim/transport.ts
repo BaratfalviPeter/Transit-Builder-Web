@@ -72,7 +72,7 @@ import {
   isDepot,
   type DepotDir,
 } from './depot';
-import type { ProductionSim } from './production';
+import { FIXED_PRODUCTION, type ProductionSim } from './production';
 
 /** Pays a delivery (to the game's money), booked to the line that made it. */
 export type Earn = (amount: number, lineId: number) => void;
@@ -116,6 +116,8 @@ export interface Line {
   readonly vehicles: number;
   /** Rail lines: wagons per train. */
   readonly wagons?: number;
+  /** Full load: at a stop that has cargo for it, a vehicle waits until it is full. */
+  readonly fullLoad?: boolean;
 }
 
 /** Truck lines run on the roads, rail lines (trains) on the tracks. */
@@ -749,6 +751,10 @@ export class TransportSim {
     this.set({ lines: this.snap.lines.map((l) => (l.id === id ? { ...l, wagons: w } : l)) });
   }
 
+  setFullLoad(id: number, on: boolean): void {
+    this.set({ lines: this.snap.lines.map((l) => (l.id === id ? { ...l, fullLoad: on } : l)) });
+  }
+
   setVehicles(id: number, n: number): void {
     this.set({ lines: this.snap.lines.map((l) => (l.id === id ? { ...l, vehicles: Math.max(0, n) } : l)) });
   }
@@ -865,6 +871,10 @@ export class TransportSim {
       if (t.state === 'stop') {
         t.timer -= dt;
         if (t.timer > 0) continue;
+        if (this.waitForLoad(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn)) {
+          t.timer = 1; // waiting to fill up
+          continue;
+        }
         const next = (t.target + 1) % line.stops.length;
         // Pulling out (or out of the depot) gives way to the traffic.
         const r = this.route(map, here, byId.get(line.stops[next]) ?? null);
@@ -1580,6 +1590,42 @@ export class TransportSim {
     this.updatePose(t, poses);
   }
 
+  /**
+   * Full load (`line.fullLoad`): serve the stop now, and say whether to wait
+   * for more — not full yet, and this stop's industry makes something a later
+   * stop takes (a depot or a pure drop-off never holds it). Cargo loaded here
+   * counts its time from leaving (waiting to fill up doesn't cut the pay).
+   */
+  private waitForLoad(
+    t: Pick<Truck, 'cargo' | 'origin' | 'since'>,
+    cap: number,
+    line: Line,
+    here: Station,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    prod: ProductionSim,
+    earn: Earn,
+  ): boolean {
+    if (!line.fullLoad || isDepot(here)) return false;
+    const p = FIXED_PRODUCTION[map.cells[here.anchor[0]][here.anchor[1]]];
+    const makes = p?.makes ?? p?.turns?.to;
+    if (!makes) return false;
+    let later = false;
+    for (const id of line.stops) {
+      if (id === here.id) continue;
+      const st = byId.get(id);
+      if (st && (isDepot(st) || (ACCEPTS[map.cells[st.anchor[0]][st.anchor[1]]] ?? []).includes(makes))) later = true;
+    }
+    if (!later) return false;
+    this.serveStop(t, cap, line, here, byId, map, prod, earn);
+    const [hx, hz] = stopCenter(here);
+    const o = t.origin[makes];
+    if (o && o[0] === hx && o[1] === hz) t.since[makes] = this.clock;
+    let load = 0;
+    for (const v of Object.values(t.cargo)) load += v ?? 0;
+    return load < cap;
+  }
+
   /** Unload what this stop takes (and get paid), then load (up to `cap`) for later stops. */
   private serveStop(
     t: Pick<Truck, 'cargo' | 'origin' | 'since'>,
@@ -1714,6 +1760,9 @@ export class TransportSim {
           t.state = 'noroute';
           t.timer = 1;
           noRoute.add(line.id);
+        } else if (r === 'load') {
+          t.state = 'stop'; // filling up (full load)
+          t.timer = 1;
         } else if (r === 'wait') {
           t.state = 'stop';
           t.timer = 0.5;
@@ -1834,13 +1883,14 @@ export class TransportSim {
     map: TerrainMap,
     prod: ProductionSim,
     earn: Earn,
-  ): 'go' | 'wait' | 'noroute' {
+  ): 'go' | 'wait' | 'load' | 'noroute' {
     const net = netOf(map);
     const path = t.path!;
     const here = byId.get(line.stops[t.target]);
     const nextI = (t.target + 1) % line.stops.length;
     const to = byId.get(line.stops[nextI]);
     if (!here || !to) return 'noroute';
+    if (this.waitForLoad(t, t.wagons * WAGON_CAPACITY, line, here, byId, map, prod, earn)) return 'load';
     // Take on the line's train length here — a longer train only if the
     // track behind is there and free for its extra wagons.
     const want = line.wagons ?? DEFAULT_WAGONS;

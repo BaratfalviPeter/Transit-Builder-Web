@@ -171,6 +171,13 @@ export function LinesPanel() {
               🗑
             </button>
           </div>
+          <label
+            className="lines__check"
+            title="A jármű a felrakodó megállóban (ahol a gyár / bánya terméke vár) addig áll, amíg meg nem telik. Raktárban és lerakodó megállóban nem vár."
+          >
+            <input type="checkbox" checked={!!l.fullLoad} onChange={(e) => sim.setFullLoad(l.id, e.target.checked)} />
+            ⏳ Csak tele induljon
+          </label>
           {l.kind === 'rail' && (
             <div className="lines__row" title="Vonathossz: kocsik száma vonatonként (a vonatok a következő megállójukban veszik fel / adják le)">
               <span>

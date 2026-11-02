@@ -37,6 +37,8 @@ export function useCitySnapshot(): CitySnapshot {
 }
 
 const DAY_MS = 86_400_000;
+/** More days than this at once is a jump (load / new game), not the clock running. */
+const MAX_STEP_DAYS = 5;
 
 /** Steps the city day by day with the game clock; a new map restarts it. */
 export function CityDriver(): null {
@@ -48,7 +50,14 @@ export function CityDriver(): null {
     let last = game.getSnapshot().dateMs;
     return game.subscribe(() => {
       const now = game.getSnapshot().dateMs;
+      // The date jumped (a new game, a save loaded): count from there — going
+      // back it would stand still until the clock caught up again, going far
+      // ahead it would grow years at once.
       const days = Math.round((now - last) / DAY_MS);
+      if (now < last || days > MAX_STEP_DAYS) {
+        last = now;
+        return;
+      }
       if (days <= 0) return;
       last = now;
       city.advance(days, now);

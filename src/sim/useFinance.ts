@@ -27,7 +27,11 @@ export function FinanceDriver(): null {
     return game.subscribe(() => {
       const m = monthOf(game.getSnapshot().dateMs);
       if (m === month) return;
+      // Only the clock running into the next month closes one — a jump
+      // (a save loaded, a new game) just starts counting from there.
+      const next = m === month + 1;
       month = m;
+      if (!next) return;
       const upkeep = upkeepOf(terrain.getMap()).reduce((a, i) => a + i.cost, 0);
       const lineCost: Record<number, number> = {};
       let running = 0;

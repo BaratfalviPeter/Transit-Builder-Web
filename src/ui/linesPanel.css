@@ -118,3 +118,15 @@
 .lines__stats .is-plus {
   color: #86efac;
 }
+
+.lines__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.lines__check input {
+  margin: 0;
+  accent-color: #60a5fa;
+}

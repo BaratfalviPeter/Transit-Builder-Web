@@ -434,3 +434,8 @@
   line-height: 1.45;
   opacity: 0.7;
 }
+
+/* Balance below zero (monthly costs): red. */
+.ui-bar__money.is-minus {
+  color: var(--ui-minus);
+}

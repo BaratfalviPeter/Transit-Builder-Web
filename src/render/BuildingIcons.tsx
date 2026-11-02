@@ -41,6 +41,7 @@ const ICON: Partial<Record<CellType, string>> = {
   [CellType.LumberMill]: '🪓',
   [CellType.Factory]: '⚙️',
   [CellType.OilRig]: '🛢️',
+  // The market shows the city card instead (CityLabel.tsx).
 };
 
 /** Extra CSS size modifier per type (factories get a larger badge). */

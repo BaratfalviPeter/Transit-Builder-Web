@@ -45,6 +45,8 @@ export const ITEMS: Record<Item, { label: string; icon: string; color: string; v
 export const ACCEPTS: Partial<Record<CellType, Item[]>> = {
   [CellType.Factory]: ['plank'],
   [CellType.PowerPlant]: ['ore', 'crushed', 'oil'],
+  // The city: paid by its demand (city.ts), not stocked.
+  [CellType.Market]: ['goods', 'plank'],
 };
 
 /** Industry icon (stop labels, line lists). */
@@ -54,6 +56,7 @@ export const INDUSTRY_ICON: Partial<Record<CellType, string>> = {
   [CellType.OilRig]: '🛢️',
   [CellType.Factory]: '⚙️',
   [CellType.PowerPlant]: '⚡',
+  [CellType.Market]: '🏪',
 };
 
 /**
@@ -120,6 +123,7 @@ export const INDUSTRY_NAME: Partial<Record<CellType, string>> = {
   [CellType.OilRig]: 'Olajfúró',
   [CellType.Factory]: 'Gyár',
   [CellType.PowerPlant]: 'Erőmű',
+  [CellType.Market]: 'Piac',
 };
 
 /** Rotation: 0 = output towards +X (E), 1 = +Z (S), 2 = −X (W), 3 = −Z (N). */

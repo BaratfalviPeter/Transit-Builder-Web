@@ -49,31 +49,31 @@ export function LinesPanel() {
   const kind = snap.draftKind;
   const finish = () => {
     if (!game.canAfford(PRICE[kind])) return;
-    if (sim.finishDraft()) game.spend(PRICE[kind]);
+    if (sim.finishDraft()) game.spend(PRICE[kind], 'vehicles');
   };
   const addVehicle = (l: Line) => {
-    if (game.spend(priceOf(l))) sim.setVehicles(l.id, l.vehicles + 1);
+    if (game.spend(priceOf(l), 'vehicles')) sim.setVehicles(l.id, l.vehicles + 1);
   };
   const removeVehicle = (l: Line) => {
     if (l.vehicles <= 0) return;
     sim.setVehicles(l.id, l.vehicles - 1);
-    game.refund(Math.floor(priceOf(l) / 2));
+    game.refund(Math.floor(priceOf(l) / 2), 'vehicles');
   };
   const removeLine = (l: Line) => {
-    game.refund(Math.floor((priceOf(l) * l.vehicles) / 2));
+    game.refund(Math.floor((priceOf(l) * l.vehicles) / 2), 'vehicles');
     sim.removeLine(l.id);
   };
   // Train length: every train of the line gets (or sells) a wagon.
   const addWagon = (l: Line) => {
     const w = l.wagons ?? DEFAULT_WAGONS;
-    if (w >= MAX_WAGONS || !game.spend(WAGON_PRICE * l.vehicles)) return;
+    if (w >= MAX_WAGONS || !game.spend(WAGON_PRICE * l.vehicles, 'vehicles')) return;
     sim.setWagons(l.id, w + 1);
   };
   const removeWagon = (l: Line) => {
     const w = l.wagons ?? DEFAULT_WAGONS;
     if (w <= MIN_WAGONS) return;
     sim.setWagons(l.id, w - 1);
-    game.refund(Math.floor((WAGON_PRICE * l.vehicles) / 2));
+    game.refund(Math.floor((WAGON_PRICE * l.vehicles) / 2), 'vehicles');
   };
 
   const newButton = (k: LineKind, enough: boolean, why: string) => (

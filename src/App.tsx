@@ -11,6 +11,8 @@ import { VisualTuner } from './ui/VisualTuner';
 import { InteriorProvider, ProductionDriver } from './sim/useInterior';
 import { TransportDriver, TransportProvider } from './sim/useTransport';
 import { InteriorView } from './interior/InteriorView';
+import { CityDriver, CityProvider } from './sim/useCityDevelopment';
+import { FinanceDriver } from './sim/useFinance';
 
 /**
  * App root. Providers own the single simulation instances, shared between the
@@ -25,6 +27,8 @@ import { InteriorView } from './interior/InteriorView';
  *     shown by <InteriorView>.
  *   - TransportProvider: lines and trucks (network view in the side panel's
  *     "Járatok" tab).
+ *   - CityProvider: the city — growing buildings + its demand at the market
+ *     (CityDriver steps it with the game clock).
  * The canvas fills the viewport; the GameUI (bars, tool dock, panels) and the
  * confirm panels overlay it.
  */
@@ -36,6 +40,9 @@ export default function App() {
           <PathPlanProvider>
             <InteriorProvider>
             <TransportProvider>
+            <CityProvider>
+            <CityDriver />
+            <FinanceDriver />
             <ProductionDriver />
             <TransportDriver />
             <GameCanvas />
@@ -45,6 +52,7 @@ export default function App() {
             <VisualTuner />
             {/* Micro view: an industry's interior (opened by clicking it). */}
             <InteriorView />
+            </CityProvider>
             </TransportProvider>
             </InteriorProvider>
           </PathPlanProvider>

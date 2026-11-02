@@ -72,6 +72,14 @@ import {
   type DepotDir,
 } from './depot';
 import type { ProductionSim } from './production';
+
+/** Pays a delivery (to the game's money), booked to the line that made it. */
+export type Earn = (amount: number, lineId: number) => void;
+
+/** The city's market (CityDevelopment): takes deliveries, says how many units to pay for. */
+export interface MarketSink {
+  deliver(item: Item, n: number): number;
+}
 import { brakeCapOn, laneAt, nearestS, polyLane, type Lane } from './lane';
 
 export { laneAt, nearestS, polyLane, type Lane };
@@ -556,6 +564,8 @@ export class TransportSim {
   private junctionVersion = -1;
   private routeVersion = -1;
   readonly payments: Payment[] = [];
+  /** The city behind the market (set every tick). */
+  private market: MarketSink | null = null;
   private readonly listeners = new Set<Listener>();
 
   getSnapshot(): TransportSnapshot {
@@ -690,7 +700,8 @@ export class TransportSim {
    * Advance the trucks by `dt` game seconds. `earn` is paid for deliveries
    * (amount and where, for the floating "+$").
    */
-  tick(dt: number, map: TerrainMap, prod: ProductionSim, earn: (amount: number) => void): void {
+  tick(dt: number, map: TerrainMap, prod: ProductionSim, earn: Earn, market?: MarketSink): void {
+    this.market = market ?? null;
     for (let i = this.payments.length - 1; i >= 0; i--) {
       this.payments[i].age += dt;
       if (this.payments[i].age > 3) this.payments.splice(i, 1);
@@ -1310,7 +1321,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
     poses: Map<number, TruckPose>,
   ): void {
     const v = t.depot;
@@ -1432,7 +1443,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
   ): void {
     const [hx, hz] = stopCenter(here);
     // What the line's OTHER stops take: industries their ACCEPTS, a depot
@@ -1447,6 +1458,8 @@ export class TransportSim {
       else for (const it of ACCEPTS[map.cells[s.anchor[0]][s.anchor[1]]] ?? []) laterTakes.add(it);
     }
     const depot = isDepot(here);
+    // The market: the city takes all it accepts and pays by its demand.
+    const city = !depot && map.cells[here.anchor[0]][here.anchor[1]] === CellType.Market ? this.market : null;
 
     // Unload. An industry takes (and pays for) what it accepts; a depot
     // stores what this line can't deliver itself.
@@ -1462,16 +1475,18 @@ export class TransportSim {
         t.cargo[item] = n - k;
       } else {
         if (!takes!.includes(item)) continue;
-        const k = prod.deliver(here.id, item, n);
+        const k = city ? n : prod.deliver(here.id, item, n);
         t.cargo[item] = n - k;
-        // Paid for the whole way from where the cargo came from.
+        // Paid for the whole way from where the cargo came from (the city:
+        // only what it still wants this month in full).
+        const units = city ? city.deliver(item, k) : k;
         const dist = Math.hypot(origin[0] - hx, origin[1] - hz);
-        pay += Math.round(k * ITEMS[item].value * (1 + dist / DISTANCE_SCALE));
+        pay += Math.round(units * ITEMS[item].value * (1 + dist / DISTANCE_SCALE));
       }
       if (!t.cargo[item]) delete t.origin[item];
     }
     if (pay > 0) {
-      earn(pay);
+      earn(pay, line.id);
       this.payments.push({ amount: pay, x: hx, z: hz, age: 0 });
     }
 
@@ -1503,7 +1518,7 @@ export class TransportSim {
     map: TerrainMap,
     byId: Map<number, Station>,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
     noRoute: Set<number>,
     stalled: Set<number>,
     poses: Map<number, TruckPose>,
@@ -1660,7 +1675,7 @@ export class TransportSim {
     byId: Map<number, Station>,
     map: TerrainMap,
     prod: ProductionSim,
-    earn: (amount: number) => void,
+    earn: Earn,
   ): 'go' | 'wait' | 'noroute' {
     const net = netOf(map);
     const path = t.path!;

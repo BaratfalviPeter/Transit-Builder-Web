@@ -28,6 +28,7 @@ import { FactoryModel } from './FactoryModel';
 import { StaticBatch } from './StaticBatch';
 import { useDev } from '../dev/modelEditorStore';
 import { OilRigModel } from './OilRigModel';
+import { MarketModel } from './MarketModel';
 import { WATER_LEVEL } from './TerrainSurface';
 
 export interface IndustriesProps {
@@ -122,6 +123,8 @@ export function Industries({ map, cellSize }: IndustriesProps) {
                 phase={(x * 0.43 + z * 0.19) % 5}
               />
             );
+          case CellType.Market:
+            return <MarketModel key={key} position={[wx, wy, wz]} scale={ms} rotationY={(((x * 3 + z * 5) % 4) * Math.PI) / 2} />;
           default:
             return null;
         }

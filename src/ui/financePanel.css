@@ -1,0 +1,81 @@
+/* Pénzügyek tab (FinancePanel.tsx). */
+.fin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fin__warn {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(230, 90, 70, 0.16);
+  border: 1px solid rgba(230, 90, 70, 0.45);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.fin__loanrow {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+.fin__loanrow button {
+  flex: 1;
+}
+
+.fin__head {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-dim);
+}
+
+.fin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.fin__table th,
+.fin__table td {
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--ui-line);
+}
+.fin__table th {
+  text-align: left;
+  font-weight: 500;
+}
+.fin__table thead th {
+  color: var(--ui-dim);
+  font-weight: 600;
+  text-align: right;
+}
+.fin__table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fin__table .is-plus {
+  color: var(--ui-plus);
+}
+.fin__table .is-minus {
+  color: var(--ui-minus);
+}
+.fin__table .fin__na {
+  color: var(--ui-dim);
+}
+.fin__sum th,
+.fin__sum td {
+  font-weight: 700;
+}
+.fin__dim {
+  color: var(--ui-dim);
+}
+.fin__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+}

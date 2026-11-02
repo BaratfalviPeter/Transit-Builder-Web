@@ -155,6 +155,28 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   betolatási zónát. Átrakás / forrás: `serveStop`, `ProductionSim.store/originOf`.
   Tesztek: scratchpad `depot.ts` (hub-szimuláció; a teszt utakat a behajtó zárásával
   építi, különben azon vezetne át).
+- VÁROS (`CityDevelopment.ts`, `useCityDevelopment.ts`: `CityProvider` + `CityDriver`): a
+  játékórával lép (egész napok, sebesség/szünet szerint), CSAK új térképnél (más seed) indul újra
+  (`reset`) — előtte minden építésnél elölről nőtt, mert új map-objektum jött. Méret = szintek
+  összege, lakos = ×40. Havi kereslet (`DEMAND`): áru 5 + 0,25/szint, deszka 3 + 0,15/szint;
+  a keresletig teljes ár, fölötte ×0,25 (`OVERSUPPLY_PRICE`). Ellátottság = szállított/kereslet,
+  az előző hónappal átlagolva. Növekedés: 40-es méretig magától (0,4 lépés/nap), fölötte csak
+  ellátással (0,6 × átlagos ellátottság), különben megáll ('stalled'). PIAC (`CellType.Market`,
+  6×6, a generátor a város mellé rakja: `placeMarket`, 1 cella hely az útnak; az oldal `seed % 4`,
+  NEM az rng — különben az egész térkép (erdők, iparágak) megváltozna, és a tesztek mást mérnének): ACCEPTS áru +
+  deszka; a `serveStop` mindent átvesz és `MarketSink.deliver` szerint fizet (a TransportSim
+  `tick` 5. paramétere a város). Modell: `MarketModel.tsx` (`?model=MarketModel`), kártya a piac
+  fölött: `CityLabel.tsx`. Teszt: scratchpad `market.ts` (30/30 térképen van piac; ellátatlan
+  város 40-nél megáll; fatelep → gyár → piac kamionjárat).
+- GAZDASÁG: `GameState` könyvel (`FinCat`: income / build / vehicles / upkeep / running /
+  interest; `month` + `lastMonth` (`MonthBooks`, járatonként `lineIncome` / `lineCost`)). `spend(cost,
+  cat)` (alap 'build'; járművek: 'vehicles'), `earn(amount, lineId)` — a TransportSim `Earn`
+  típusa a járat id-t is adja. `FinanceDriver` (`useFinance.ts`) hónapváltáskor `closeMonth`:
+  fenntartás (`economy.ts` `upkeepOf(map)`: út 1, sín 2 / cella, állomás 50, rakodó 25, raktár 300,
+  jelző 8, lámpa/körforg. 15, tábla 3 $/hó) + üzemeltetés (`runningOf(line)`: kamion 100,
+  mozdony 400, kocsi 40 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
+  mínuszba vihetik az egyenleget; akkor a `spend` nem enged építeni / vásárolni. UI:
+  `FinancePanel.tsx` (P). Teszt: scratchpad `market.ts` (MONTH sorok).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -185,7 +207,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
-- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
+- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, MarketModel, OilRig,
   StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
@@ -208,11 +230,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #83 (Factorio-szerű, legfeljebb 5 mezős sín-tervező, láncolva).
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
 - Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
-- Folyamatban: párhuzamos sínek bekötése (S-ív, csúszó becsatlakozás, irány a kurzor szerint).
+- Mergelve: #86 (párhuzamos sínek bekötése: S-ív, csúszó becsatlakozás, irány a kurzor szerint).
+- Folyamatban (#87): a város mint fogyasztó (piac, kereslet, ellátottság, növekedés) + gazdasági
+  nyomás (fenntartás, járműköltség, Pénzügyek panel, hitel). Feltételes ötlet: lerakható iparágak
+  fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- A város mint fogyasztó (keresletet támaszt az árukra)
+- A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
+- Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

@@ -47,3 +47,18 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
 - A város növekedése függjön az áruellátástól (áru, utasok).
 - Hidak a folyók fölött.
 - Új járműtípusok az évek múlásával (a játék 1970-ben indul).
+
+## Feltételes ötlet: lerakható iparágak, fix lelőhelyekkel
+
+> A felhasználó jónak tartja, de **még csak ötlet** — a város és a gazdasági
+> nyomás után döntünk róla.
+
+- A gyárakat, bányákat, erőműveket a **játékos rakja le** (ár + fenntartás),
+  nem a térképgenerátor.
+- Fixek csak a **lelőhelyek** maradnak: ércmező, olajmező, erdő (látható jelöléssel).
+  Kitermelő (bánya, olajkút, fatelep) csak lelőhelyre kerülhet, feldolgozó
+  (gyár, erőmű, raktár) bárhová — így a távolság és a szállítás kihívás marad.
+- Opcionálisan: a lelőhely kimerülhet / lassulhat.
+- A városok fixek maradnak (ők a fogyasztók).
+- Jól illik a mikro nézethez és a „lyukból induló bánya” B tervhez: a saját
+  gyáradat rendezed be belülről.

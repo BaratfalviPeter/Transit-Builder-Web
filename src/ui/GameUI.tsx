@@ -28,6 +28,7 @@ import {
 import { getDev } from '../dev/modelEditorStore';
 import { DevTab } from './DevTab';
 import { LinesPanel } from './LinesPanel';
+import { FinancePanel } from './FinancePanel';
 import './gameUI.css';
 
 type Panel = 'lines' | 'economy' | 'dev';
@@ -123,7 +124,7 @@ function formatDate(ms: number): string {
   return `${y}. ${m}. ${day}.`;
 }
 
-const money = (n: number) => `$${n.toLocaleString('hu-HU')}`;
+const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('hu-HU')}`;
 
 export function GameUI() {
   const game = useGame();
@@ -196,7 +197,7 @@ export function GameUI() {
     <div className="ui">
       {/* Top-left: money, date, speed, counters */}
       <div className="ui-bar">
-        <div className="ui-bar__money" title="Egyenleg">
+        <div className={'ui-bar__money' + (snap.money < 0 ? ' is-minus' : '')} title={snap.loan > 0 ? `Egyenleg (hitel: ${money(snap.loan)})` : 'Egyenleg'}>
           {money(snap.money)}
         </div>
         <div className="ui-bar__sep" />
@@ -256,25 +257,7 @@ export function GameUI() {
           <div className="ui-panel__body">
             {panel === 'lines' && <LinesPanel />}
             {panel === 'dev' && <DevTab onEditorOn={() => game.setActiveTool('select')} />}
-            {panel === 'economy' && (
-              <>
-                <div className="ui-stat ui-stat--big">
-                  <span>Egyenleg</span>
-                  <b>{money(snap.money)}</b>
-                </div>
-                <div className="ui-stat">
-                  <span>Összes bevétel</span>
-                  <b className="is-plus">+{money(snap.totalIncome)}</b>
-                </div>
-                <div className="ui-stat">
-                  <span>Összes kiadás</span>
-                  <b className="is-minus">−{money(snap.totalSpent)}</b>
-                </div>
-                <div className="ui-note">
-                  Bevétel: a járatok leszállított rakománya (Járatok). Kiadás: építés, tereprendezés, járművek (kamion, vonat).
-                </div>
-              </>
-            )}
+            {panel === 'economy' && <FinancePanel />}
           </div>
         </div>
       )}

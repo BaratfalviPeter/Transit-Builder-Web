@@ -21,7 +21,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
-import { CellType, HILL_STEP, cornerHeightAt, cutAt, industryAnchorOf, type TerrainMap } from '../sim';
+import { CellType, HILL_STEP, approachOf, cornerHeightAt, industryAnchorOf, interiorOf, trenchAt, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import {
   getVisual,
@@ -353,9 +353,9 @@ function writeCell(
   // Mine lots are cut OUT of the terrain (top collapsed to the floor): the
   // MineModel supplies its own deck + a quarry pit that reaches below ground,
   // and the neighbours' side walls line the hole.
-  // So are an underpass's cuttings (its abutment cells): Structures.tsx draws
-  // the ramp and the retaining walls into the hole.
-  const hole = isMineLot(map, x, z) || cutAt(map, x, z) !== null;
+  // So is an underpass's trench (its ramps and span): Structures.tsx draws
+  // the ramps, the floor, the retaining walls and the slabs into the hole.
+  const hole = isMineLot(map, x, z) || trenchAt(map, x, z) !== null;
   const y = (cx: number, cz: number) =>
     hole
       ? floorY
@@ -514,7 +514,7 @@ function patchChangedCells(
   if (prev.structures !== next.structures)
     for (const list of [prev.structures, next.structures])
       for (const s of list ?? [])
-        for (const [x, z] of [s.a, s.b]) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) mark(x + dx, z + dz);
+        for (const [x, z] of [s.a, s.b, ...interiorOf(s), ...approachOf(s)]) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) mark(x + dx, z + dz);
   if (affected.size === 0) return;
 
   for (const idx of affected) {

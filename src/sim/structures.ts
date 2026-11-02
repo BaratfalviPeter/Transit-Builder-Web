@@ -157,6 +157,11 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
     if (hill === 0) {
       if (!crossed) return 'Az alagútnak hegy, út vagy sín alatt kell átmennie';
       if (inner.length > UNDERPASS_MAX) return `Az aluljáró legfeljebb ${UNDERPASS_MAX} cella hosszú lehet`;
+      // Its ramps start a cell before each end: those cells must be free and flat too.
+      for (const [x, z] of approachOf({ a, b })) {
+        if (!inside([x, z]) || structureAt(map, x, z) || !ABUTMENT_OK.has(map.cells[x][z]) || flatAt(map, x, z) === null || Math.abs(flatAt(map, x, z)! - L) > EPS)
+          return 'Az aluljáró rámpájához mindkét vége előtt kell még egy szabad, sík cella';
+      }
     }
   }
   return null;
@@ -176,12 +181,15 @@ export function structurePrice(kind: StructureKind, a: readonly [number, number]
 
 /**
  * An underpass (a tunnel on flat ground, under a road / rail) is CUT INTO the
- * ground: its abutment cells are a cutting, ramping down from their outer edge
- * to UNDERPASS_DEPTH at the portal; the span runs that deep under what crosses
- * it (which stays on the ground). At most UNDERPASS_MAX cells long.
+ * ground, open along its whole length (a concrete-walled trench): two-cell
+ * ramps (the cell before each end + the end itself) lead down to
+ * UNDERPASS_DEPTH; over the span what crosses it stays at ground level, on a
+ * slab. At most UNDERPASS_MAX cells long.
  */
-export const UNDERPASS_DEPTH = HILL_STEP;
+export const UNDERPASS_DEPTH = 0.8;
 export const UNDERPASS_MAX = 3;
+/** Cells a ramp takes (the approach + the end). */
+export const RAMP_CELLS = 2;
 
 const underCache = new WeakMap<Structure, boolean>();
 /** Is this tunnel an underpass (its whole span flat at the portals' level)? */
@@ -195,23 +203,66 @@ export function isUnderpass(map: TerrainMap, s: Structure): boolean {
   return u;
 }
 
-/** The underpass whose cutting (an abutment cell) is cell (x, z), or null. */
+/** The cells just before each end of a span (an underpass's ramps start there): [before a, after b]. */
+export function approachOf(s: Pick<Structure, 'a' | 'b'>): Array<[number, number]> {
+  const [dx, dz] = axisOf(s);
+  return [
+    [s.a[0] - dx, s.a[1] - dz],
+    [s.b[0] + dx, s.b[1] + dz],
+  ];
+}
+
+export type TrenchRole = 'approach' | 'abutment' | 'interior';
+interface TrenchCell {
+  s: Structure;
+  role: TrenchRole;
+  /** The end (a or b) this ramp cell belongs to. */
+  atA: boolean;
+}
+const trenchCache = new WeakMap<readonly Structure[], Map<number, TrenchCell>>();
+function trenchIndex(map: TerrainMap): Map<number, TrenchCell> {
+  const list = map.structures!;
+  let m = trenchCache.get(list);
+  if (!m) {
+    m = new Map();
+    for (const s of list) {
+      if (!isUnderpass(map, s)) continue;
+      const [pa, pb] = approachOf(s);
+      m.set(pa[0] * map.size + pa[1], { s, role: 'approach', atA: true });
+      m.set(pb[0] * map.size + pb[1], { s, role: 'approach', atA: false });
+      m.set(s.a[0] * map.size + s.a[1], { s, role: 'abutment', atA: true });
+      m.set(s.b[0] * map.size + s.b[1], { s, role: 'abutment', atA: false });
+      for (const [x, z] of interiorOf(s)) m.set(x * map.size + z, { s, role: 'interior', atA: true });
+    }
+    trenchCache.set(list, m);
+  }
+  return m;
+}
+
+/** Cell (x, z) of an underpass's trench (its ramps and its span), or null. */
+export function trenchAt(map: TerrainMap, x: number, z: number): TrenchCell | null {
+  if (!map.structures?.length || x < 0 || z < 0 || x >= map.size || z >= map.size) return null;
+  return trenchIndex(map).get(x * map.size + z) ?? null;
+}
+
+/** The underpass whose RAMP (an approach or end cell) is cell (x, z), or null. */
 export function cutAt(map: TerrainMap, x: number, z: number): Structure | null {
-  const r = structureAt(map, x, z);
-  return r && r.role === 'abutment' && isUnderpass(map, r.s) ? r.s : null;
+  const t = trenchAt(map, x, z);
+  return t && t.role !== 'interior' ? t.s : null;
 }
 
 /** How deep the ground at world point (x, z) is cut away (an underpass ramp), 0 elsewhere. */
 export function cutDepth(map: TerrainMap, x: number, z: number): number {
   if (!map.structures?.length) return 0;
   const cx = Math.round(x), cz = Math.round(z);
-  const s = cutAt(map, cx, cz);
-  if (!s) return 0;
+  const t = trenchAt(map, cx, cz);
+  if (!t || t.role === 'interior') return 0;
+  const s = t.s;
   const [dx, dz] = axisOf(s);
-  const atA = s.a[0] === cx && s.a[1] === cz;
-  // −0.5 at the cell's outer edge … +0.5 at the portal.
-  const t = ((x - cx) * dx + (z - cz) * dz) * (atA ? 1 : -1);
-  return UNDERPASS_DEPTH * Math.max(0, Math.min(1, t + 0.5));
+  // The portal's plane: half a cell past the end, towards the span.
+  const end = t.atA ? s.a : s.b, sg = t.atA ? 1 : -1;
+  const u = ((end[0] + 0.5 * dx * sg - x) * dx + (end[1] + 0.5 * dz * sg - z) * dz) * sg; // 0 at the portal … RAMP_CELLS outside
+  return UNDERPASS_DEPTH * Math.max(0, Math.min(1, 1 - u / RAMP_CELLS));
 }
 
 /** Floor of a structure's track / road (cell units, without FLAT_TOP): an underpass runs deeper. */

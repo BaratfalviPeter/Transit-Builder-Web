@@ -204,12 +204,16 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   szerkezet celláit kihagyja és a végig bejárt szerkezetre ráteszi az utat. Sín: a `latticeAStar`
   ugrólépése hídfőtől hídfőig, a `compOf` is átköt rajta, a `traceLine` megtartja a két pontot, a
   `validate` a szerkezeten futó mintákat kihagyja, a `buildRail` az ugrást a szerkezetre teszi.
-  ALULJÁRÓ = BEVÁGÁS (a felhasználó kérte; a felüljárós változatot elvetette): a két hídfő cellája
-  ki van vágva a terepből (`cutAt`, TerrainSurface `hole`, mint a bányánál; a patch a structures
-  változására is újraírja), a `groundAtGrid` levonja a `cutDepth`-et (rámpa: a cella külső szélén 0,
-  a kapunál UNDERPASS_DEPTH 0,45), a szerkezet padlója `floorOf` = level − 0,45; a keresztező út a
-  saját szintjén marad. Render: `Cutting` (rámpa-test, aszfalt, támfalak), lapított kapu
-  (`Portal low`). A `Roads.tsx` a bevágás celláit kihagyja. A sín szerkezeti éle:
+  ALULJÁRÓ = NYITOTT BETONÁROK (a felhasználó kérte; a felüljárós és a „röntgen” csöves változatot
+  elvetette): a teljes árok ki van vágva a terepből (`trenchAt`: approach + hídfő + belső cellák,
+  TerrainSurface `hole`; a patch a structures változására újraírja). Rámpa 2 cellás (`RAMP_CELLS`:
+  a vég ELŐTTI cella (`approachOf`, lerakáskor szabad és sík kell legyen, nem tereprendezhető) + a
+  hídfő), `cutAt` = rámpacella, a `groundAtGrid` levonja a `cutDepth`-et; mélység UNDERPASS_DEPTH
+  0,8 (a vonat is befér), padló `floorOf` = level − 0,8. A keresztező út / sín a saját szintjén,
+  betonlemezen (`Underpass` render: padló, rámpák, végig támfal, lemez + szegélygerenda). A
+  járművek az aluljáróban LÁTSZANAK (nincs szellemdoboz), a kamion a padlón (`floorOf`). A
+  `Roads.tsx` a rámpacellákat kihagyja. Hegyi alagútnál nincs átlátszó cső, csak a járművek sárga
+  szellemdoboza. A sín szerkezeti éle:
   `structureSamples` (a fesztávon a padló, a hídfőkön a talaj). Ha egy üres szerkezet MINDKÉT
   végéhez út ér (vagy sín, a tengely irányában), magától ráépül (`buildPath` / `buildRail` vége).
   A `roadRoute` (és a `groundStepOk`) a hídfőből a fesztávba hosszában földi lépést nem enged. Út: a `roadRoute`
@@ -224,9 +228,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   oldalprofil ívekkel a pillérek között, ~2,4 cellánként pillér sapkával, hídfők); közúti: mellvéd +
   lámpák + útburkolat; vasúti: acél rácsos tartó (`Truss`). Sín a pálya magasságán (`sampleTrack`
   `level`, `deckRailHeight`). Alagút = íves kőkapu (`PORTAL_GEOM`, zárókő, párkány, szárnyfalak),
-  és a domb alatt ÁTLÁTSZÓ „röntgen” cső (`GHOST.tube`, mélységteszt nélkül — a felhasználó kérte,
-  hogy át lehessen rajta látni); a bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz
-  (`GHOST.vehicle`, Trains.tsx / Transport.tsx). Teszt: scratchpad `bridge.ts`, `under.ts`
+  a bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
+  Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
@@ -264,7 +267,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.
 
-## Állapot (2026-10-26)
+## Állapot (2026-11-02)
 - Mergelve: #65–#71 (dev fül és modellszerkesztő, modellnéző, olajfúró, állomások,
   belső nézet + termelés, kijelölő eszköz, kamionmegálló + járatok).
 - Mergelve: #72 (teljesítmény + grafikai fokozatok + CLAUDE.md).
@@ -291,7 +294,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #88 (megállók a város szélén, mentés / betöltés, hidak és alagutak).
 - Mergelve: #89 (szebb híd- és alagútmodell, átlátszó alagút).
 - Mergelve: #90 (út / sín húzása a hídon / alagúton át, hegyi alagút csak a hegyen át).
-- Folyamatban: aluljáró bevágással, automatikus ráépítés, híd: magasabb rácsos tartó, korlát / lámpa nem lóg az útba.
+- Mergelve: #91 (aluljáró bevágással, automatikus ráépítés, magasabb rácsos híd).
+- Folyamatban: aluljáró mint nyitott betonárok (2 cellás rámpa, mélyebb, lemez a keresztező alatt),
+  átlátszó alagútcső nélkül.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

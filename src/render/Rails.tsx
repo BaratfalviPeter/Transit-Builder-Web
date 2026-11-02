@@ -19,7 +19,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CellType, interiorAt, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
+import { CellType, interiorAt, isUnderpass, LineWalker, TRAIN_SCALE, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 import { groundAtGrid, sampleTrack, structureSamples, type TrackSamples } from './railGeometry';
@@ -84,9 +84,11 @@ function build(map: TerrainMap, cellSize: number): Built {
     // over its span no ballast (bridge) or nothing at all (tunnel).
     const st = e.structure !== undefined ? map.structures?.find((q) => q.id === e.structure) : undefined;
     const s = st ? structureSamples(map, e.pts, st) : sampleTrack(map, e.pts);
+    const under = !!st && isUnderpass(map, st);
     if (!st) embankment(map, s, cs, half, out.embankment);
     for (let i = 0; i < s.n; i++) {
-      const overSpan = !!st && interiorAt(map, Math.round(s.x[i]), Math.round(s.z[i])) === st;
+      // An underpass is an open cutting: its track is a plain one on the floor.
+      const overSpan = !!st && !under && interiorAt(map, Math.round(s.x[i]), Math.round(s.z[i])) === st;
       if (overSpan && st!.kind === 'tunnel') continue;
       const a = Math.max(0, i - 1), b = Math.min(s.n - 1, i + 1);
       const grade = b > a ? (s.h[b] - s.h[a]) / ((b - a) * s.step) : 0;

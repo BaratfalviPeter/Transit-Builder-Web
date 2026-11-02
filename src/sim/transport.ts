@@ -607,6 +607,28 @@ export class TransportSim {
     this.set({ draft: d.concat(id) });
   }
 
+  /**
+   * Start over with `lines` (a loaded game, or none for a new one): every
+   * vehicle and reservation goes; the lines' vehicles start again from their
+   * stops on the next ticks.
+   */
+  reset(lines: readonly Line[] = []): void {
+    this.trucks = [];
+    this.trains = [];
+    this.railHeld.clear();
+    this.routeCache.clear();
+    this.routeVersion = -1;
+    this.zones = [];
+    this.yard.clear();
+    this.bays.clear();
+    this.reserved.clear();
+    this.junctions = null;
+    this.junctionVersion = -1;
+    this.payments.length = 0;
+    this.nextLine = lines.reduce((m, l) => Math.max(m, l.id), 0) + 1;
+    this.set({ lines: lines.slice(), view: false, draft: null, noRoute: [], stalled: [], fleet: this.snap.fleet + 1 });
+  }
+
   /** Turn the draft into a line (with one truck). Returns it, or null. */
   finishDraft(): Line | null {
     const d = this.snap.draft;

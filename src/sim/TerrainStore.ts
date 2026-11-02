@@ -493,6 +493,14 @@ export class TerrainStore {
     this.emit();
   }
 
+  /** Replace the whole map with a saved one (see save.ts); every overlay rebuilds. */
+  load(map: TerrainMap): void {
+    this.map = { ...map, version: this.map.version + 1, cellsVersion: this.map.cellsVersion + 1 };
+    this.roadCount = this.countType(CellType.Road);
+    this.industryCount = this.countSpecialBuildings();
+    this.emit();
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

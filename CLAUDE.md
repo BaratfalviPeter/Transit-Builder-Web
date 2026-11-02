@@ -103,7 +103,7 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, Szóköz, T,
-  J/P/0 panelek, H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
+  J/P/M/0 panelek (M = Játék: mentés, új játék), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
@@ -179,6 +179,16 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   mozdony 400, kocsi 40 $/hó) + kamat (hitel `LOAN_STEP` 10 000, `MAX_LOAN` 200 000, 6%/év). Ezek
   mínuszba vihetik az egyenleget; akkor a `spend` nem enged építeni / vásárolni. UI:
   `FinancePanel.tsx` (P). Teszt: scratchpad `market.ts` (MONTH sorok).
+- MENTÉS (`save.ts` + `useSave.ts` `SaveProvider`, UI: `GamePanel.tsx`, M): localStorage
+  (`SAVE_KEY`, `SAVE_VERSION` — formátumváltásnál emeld, a régi mentés akkor figyelmen kívül marad).
+  Mentődik: a térkép mindennel (cleared Set / controls Map tömbként), a járatok, a `GameState`
+  (`exportState`/`importState`), a város (`CityDevelopment.exportState`), a megállók készlete
+  (`ProductionSim.exportState`). NEM mentődik: a járművek helyzete — betöltéskor
+  `TransportSim.reset(lines)`, és a járművek a megállókból indulnak újra. Induláskor betölt
+  (hibás mentésnél új játék), automatikus mentés percenként + `visibilitychange`/`pagehide`.
+  „Új játék”: `newGame` (új térkép, üres hálózat, kezdőtőke = `GameState.startingMoney`).
+  A játékóra képkockánként max. 0,25 s-ot lép (`MAX_FRAME_S`), különben betöltés / háttérből
+  visszatérés után napokat ugrana. Teszt: scratchpad `pw/save.mjs`.
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -244,7 +254,6 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- Mentés / betöltés (most nincs: frissítéskor minden elvész), utána hidak
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
 - Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként

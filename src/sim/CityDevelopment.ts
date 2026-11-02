@@ -64,6 +64,16 @@ export interface CitySnapshot {
   growth: 'free' | 'supplied' | 'stalled';
 }
 
+/** The saved part of the city. */
+export interface CitySave {
+  seed: number;
+  buildings: Building[];
+  delivered: Partial<Record<Item, number>>;
+  satisfaction: Partial<Record<Item, number>> | null;
+  month: number | null;
+  growthCarry: number;
+}
+
 type Listener = () => void;
 
 function key(x: number, z: number): string {
@@ -116,6 +126,31 @@ export class CityDevelopment {
     this.satisfaction = null;
     this.month = null;
     this.growthCarry = 0;
+    this.emit();
+  }
+
+  /** What a save keeps (see save.ts). */
+  exportState(): CitySave {
+    return {
+      seed: this.seed ?? 0,
+      buildings: Array.from(this.byCell.values()).map((b) => ({ ...b })),
+      delivered: { ...this.delivered },
+      satisfaction: this.satisfaction && { ...this.satisfaction },
+      month: this.month,
+      growthCarry: this.growthCarry,
+    };
+  }
+
+  /** Continue a saved city on `map` (its map; the city cells come from it). */
+  importState(s: CitySave, map: TerrainMap): void {
+    this.seed = null;
+    this.reset(map); // city cells + a clean slate, seed = map.seed
+    for (const b of s.buildings) this.byCell.set(key(b.x, b.z), { x: b.x, z: b.z, level: b.level });
+    this.size = s.buildings.reduce((a, b) => a + b.level, 0);
+    this.delivered = { ...s.delivered };
+    this.satisfaction = s.satisfaction && { ...s.satisfaction };
+    this.month = s.month;
+    this.growthCarry = s.growthCarry;
     this.emit();
   }
 

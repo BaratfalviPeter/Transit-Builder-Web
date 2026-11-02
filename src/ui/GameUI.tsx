@@ -29,9 +29,11 @@ import { getDev } from '../dev/modelEditorStore';
 import { DevTab } from './DevTab';
 import { LinesPanel } from './LinesPanel';
 import { FinancePanel } from './FinancePanel';
+import { GamePanel } from './GamePanel';
+import './financePanel.css';
 import './gameUI.css';
 
-type Panel = 'lines' | 'economy' | 'dev';
+type Panel = 'lines' | 'economy' | 'game' | 'dev';
 
 const ICON: Record<ToolId, string> = {
   select: '🖱️',
@@ -82,6 +84,7 @@ const KEY_OF = Object.fromEntries(KEYS.map((k) => [k.tool, k.label])) as Record<
 const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: string; icon: string }> = [
   { code: 'KeyJ', label: 'J', panel: 'lines', title: 'Járatok', icon: '🗺️' },
   { code: 'KeyP', label: 'P', panel: 'economy', title: 'Pénzügyek', icon: '💰' },
+  { code: 'KeyM', label: 'M', panel: 'game', title: 'Játék', icon: '💾' },
   { code: 'Digit0', label: '0', panel: 'dev', title: 'Dev', icon: '🛠️' },
 ];
 
@@ -258,6 +261,7 @@ export function GameUI() {
             {panel === 'lines' && <LinesPanel />}
             {panel === 'dev' && <DevTab onEditorOn={() => game.setActiveTool('select')} />}
             {panel === 'economy' && <FinancePanel />}
+            {panel === 'game' && <GamePanel />}
           </div>
         </div>
       )}

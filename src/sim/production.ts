@@ -64,6 +64,14 @@ export const FIXED_PRODUCTION: Partial<
   [CellType.PowerPlant]: { burns: true, rate: 2 },
 };
 
+/** The saved stop stocks (station id → items). */
+export interface ProductionSave {
+  stock: Record<string, Partial<Record<Item, number>>>;
+  inbound: Record<string, Partial<Record<Item, number>>>;
+  origins: Record<string, Partial<Record<Item, [number, number]>>>;
+  carry: Record<string, number>;
+}
+
 export type MachineStatus = 'work' | 'wait' | 'blocked' | 'idle';
 
 interface MachineRt {
@@ -100,6 +108,25 @@ export class ProductionSim {
   private origins = new Map<number, Partial<Record<Item, [number, number]>>>();
   /** Fractional fixed production carried between ticks, per industry. */
   private carry = new Map<string, number>();
+
+  /** Stop stocks (what a save keeps; see save.ts). Machines / belts are not saved. */
+  exportState(): ProductionSave {
+    const obj = <T>(m: Map<number | string, T>) => Object.fromEntries(m) as Record<string, T>;
+    return { stock: obj(this.stock), inbound: obj(this.inbound), origins: obj(this.origins), carry: obj(this.carry) };
+  }
+
+  /** Continue saved stocks, or (null) start empty. */
+  importState(s: ProductionSave | null): void {
+    const num = <T>(o: Record<string, T> | undefined) => new Map(Object.entries(o ?? {}).map(([k, v]) => [Number(k), v]));
+    this.stock = num(s?.stock);
+    this.inbound = num(s?.inbound);
+    this.origins = num(s?.origins);
+    this.carry = new Map(Object.entries(s?.carry ?? {}));
+    this.machines.clear();
+    this.belts.clear();
+    this.version++;
+    for (const l of this.listeners) l();
+  }
 
   /** Advance every interior by `dt` game seconds. */
   tick(dt: number, interiors: Iterable<Interior>, map: TerrainMap): void {

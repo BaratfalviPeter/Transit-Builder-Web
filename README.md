@@ -96,7 +96,7 @@ A jobb oldali **panel** három füle:
   | 1–4 | Út / Sín / Vasútállomás / Kamionrakodó |
   | 5–8 | Elsőbbségadás / STOP / Lámpa / Körforgalom |
   | Szóköz / T | Szünet / gyorsítás |
-  | J / P / 0 | Járatok / Pénzügyek / Dev panel |
+  | J / P / M / 0 | Járatok / Pénzügyek / Játék (mentés) / Dev panel |
   | WASD, nyilak | Kamera mozgatása |
 - **Földmunka (Terraforming):** **Emelés** ($50) hegyet épít, **Süllyesztés**
   ($50) árkot ás, **Bontás** (bulldózer, ingyen) utat/sínt/fát töröl. Az
@@ -209,6 +209,10 @@ A jobb oldali **panel** három füle:
     közeledő vonatnál előbb villog, majd leereszkedik, utána felemelkedik.
   - Ha menet közben átépíted a vágányt (pl. váltót teszel bele), a vonat az
     új hálózaton megy tovább.
+- **Mentés** (M — Játék panel; `src/sim/save.ts`): a játék magától ment percenként és a
+  lap bezárásakor a böngészőbe, és induláskor onnan folytatódik. Kézzel is menthető,
+  és innen indítható **új játék** (új térkép). A járművek betöltés után a megállóikból
+  indulnak újra.
 - **Pénzügyek** (P; `src/sim/economy.ts`, `src/ui/FinancePanel.tsx`): havonta
   **fenntartás** (út $1, sín $2 / cella; állomás $50, rakodó $25, raktár $300, jelző,
   lámpa, tábla) és **üzemeltetés** (kamion $100, mozdony $400, kocsi $40 / hó) vonódik le,

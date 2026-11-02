@@ -33,6 +33,17 @@ const emptyBooks = (): MonthBooks => ({
   lineCost: {},
 });
 
+/** The saved part of the game state. */
+export interface GameSave {
+  money: number;
+  totalIncome: number;
+  totalSpent: number;
+  dateMs: number;
+  month: MonthBooks;
+  lastMonth: MonthBooks | null;
+  loan: number;
+}
+
 /** Loan: borrowed / paid back in LOAN_STEP steps, up to MAX_LOAN, LOAN_RATE a year. */
 export const LOAN_STEP = 10_000;
 export const MAX_LOAN = 200_000;
@@ -61,6 +72,8 @@ export interface GameSnapshot {
 const START_DATE_MS = Date.UTC(1970, 0, 1);
 /** Real seconds per in-game day at normal (1×) speed. */
 const SECONDS_PER_DAY = 1;
+/** Longest real time one clock tick may advance (s). */
+const MAX_FRAME_S = 0.25;
 
 export class GameState {
   private activeTool: ToolId = 'select';
@@ -79,7 +92,11 @@ export class GameState {
   private readonly listeners = new Set<Listener>();
   private snapshot: GameSnapshot;
 
+  /** Money a new game starts with. */
+  readonly startingMoney: number;
+
   constructor(startingMoney = 1000) {
+    this.startingMoney = startingMoney;
     this.money = startingMoney;
     this.snapshot = this.buildSnapshot();
   }
@@ -161,6 +178,32 @@ export class GameState {
     this.publish();
   }
 
+  /** What a save keeps (see save.ts). */
+  exportState(): GameSave {
+    return {
+      money: this.money,
+      totalIncome: this.totalIncome,
+      totalSpent: this.totalSpent,
+      dateMs: this.dateMs,
+      month: this.month,
+      lastMonth: this.lastMonth,
+      loan: this.loan,
+    };
+  }
+
+  /** Continue a saved game, or (null) start a new one. */
+  importState(s: GameSave | null): void {
+    this.money = s ? s.money : this.startingMoney;
+    this.totalIncome = s?.totalIncome ?? 0;
+    this.totalSpent = s?.totalSpent ?? 0;
+    this.dateMs = s?.dateMs ?? START_DATE_MS;
+    this.dayAccumulator = 0;
+    this.month = s ? { cat: { ...emptyBooks().cat, ...s.month.cat }, lineIncome: { ...s.month.lineIncome }, lineCost: { ...s.month.lineCost } } : emptyBooks();
+    this.lastMonth = s?.lastMonth ?? null;
+    this.loan = s?.loan ?? 0;
+    this.publish();
+  }
+
   /** Take LOAN_STEP more loan (up to MAX_LOAN). */
   borrow(): boolean {
     if (this.loan + LOAN_STEP > MAX_LOAN) return false;
@@ -204,7 +247,9 @@ export class GameState {
    */
   tickClock(deltaSeconds: number): void {
     if (this.speed === 0) return;
-    this.dayAccumulator += (deltaSeconds * this.speed) / SECONDS_PER_DAY;
+    // At most MAX_FRAME_S per call: the first frame after loading, or after
+    // the tab was in the background, must not jump days (and month costs).
+    this.dayAccumulator += (Math.min(deltaSeconds, MAX_FRAME_S) * this.speed) / SECONDS_PER_DAY;
     if (this.dayAccumulator < 1) return;
     const wholeDays = Math.floor(this.dayAccumulator);
     this.dayAccumulator -= wholeDays;

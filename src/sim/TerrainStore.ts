@@ -27,7 +27,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
-import { axisOf, interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, type Structure, type StructureKind } from './structures';
+import { axisOf, interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, trenchAt, type Structure, type StructureKind } from './structures';
 import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
@@ -536,6 +536,7 @@ export class TerrainStore {
     const t = this.map.cells[x][z];
     return (
       !structureAt(this.map, x, z) && // a bridge / tunnel's ends and span
+      !trenchAt(this.map, x, z) && // an underpass's ramps
       t !== CellType.CityCenter &&
       !SPECIAL_BUILDINGS.has(t) &&
       t !== CellType.IndustryLot && // big-industry (6×6) footprint

@@ -20,6 +20,7 @@ import {
   signalsOf,
   spanUnder,
   floorOf,
+  isUnderpass,
   TRAILER_AXLE,
   TRUCK_HITCH,
   useTransport,
@@ -70,8 +71,10 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     // Up on a bridge: the deck's height; inside a tunnel: not seen.
     const span = spanUnder(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw), 'road');
     const ghostMesh = ghost.current;
-    if (ghostMesh) ghostMesh.visible = span?.kind === 'tunnel';
-    if (span?.kind === 'tunnel') {
+    // An underpass is an open cutting: the truck is seen, down on its floor.
+    const hidden = span?.kind === 'tunnel' && !isUnderpass(map, span);
+    if (ghostMesh) ghostMesh.visible = hidden;
+    if (span && hidden) {
       // In a tunnel: a see-through stand-in instead of the truck.
       tr.visible = tl.visible = false;
       g.position.set((p.x - half) * cellSize, (FLAT_TOP + floorOf(map, span)) * cellSize, (p.z - half) * cellSize);
@@ -83,7 +86,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
       return;
     }
     tr.visible = tl.visible = true;
-    const deck = span ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : null;
+    const deck = span ? (span.kind === 'bridge' ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : FLAT_TOP + floorOf(map, span) + ROAD_TOP) : null;
     const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;

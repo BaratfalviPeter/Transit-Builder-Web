@@ -12,6 +12,7 @@ import {
   CAR_GAP,
   CAR_LEN,
   interiorAt,
+  isUnderpass,
   laneAt,
   LOCO_LEN,
   pathAt,
@@ -99,10 +100,10 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
     carsOf(t.wagons).forEach(({ c, b }, k) => {
       const car = cars.current[k];
       if (!car) return;
-      // Inside a tunnel: not seen.
+      // Inside a hill tunnel: not seen (an underpass is an open cutting).
       const [mx, mz] = laneAt(p, front - c);
       const tun = interiorAt(map, Math.round(mx), Math.round(mz));
-      car.visible = !(tun && tun.kind === 'tunnel' && tun.carries === 'rail' && edgeOn(pathAt(p, front - c).edge) === tun.id);
+      car.visible = !(tun && tun.kind === 'tunnel' && tun.carries === 'rail' && !isUnderpass(map, tun) && edgeOn(pathAt(p, front - c).edge) === tun.id);
       const f = at(front - c + b), r = at(front - c - b);
       car.position.set((f[0] + r[0]) / 2 - half, (f[1] + r[1]) / 2, (f[2] + r[2]) / 2 - half);
       const dx = f[0] - r[0], dz = f[2] - r[2];

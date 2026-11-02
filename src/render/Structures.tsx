@@ -16,7 +16,7 @@
 import { Html } from '@react-three/drei';
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { axisOf, CellType, floorOf, interiorOf, isUnderpass, type Structure, type StructureKind, type TerrainMap } from '../sim';
+import { axisOf, CellType, floorOf, hasRailAt, interiorOf, isUnderpass, RAMP_CELLS, type Structure, type StructureKind, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchCloudShadows } from './cloudShadows';
 import { groundAtGrid } from './railGeometry';
@@ -49,13 +49,8 @@ const M = {
   lamp: new THREE.MeshBasicMaterial({ color: '#ffe3a1', toneMapped: false }),
 };
 
-/**
- * See-through ("x-ray") materials: the tunnel tube and the vehicles inside it
- * show through the hill (no depth test, drawn last).
- */
+/** See-through stand-in for the vehicles inside a hill tunnel (no depth test, drawn last). */
 export const GHOST = {
-  tube: new THREE.MeshBasicMaterial({ color: '#bcd8ff', transparent: true, opacity: 0.16, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
-  lines: new THREE.LineBasicMaterial({ color: '#dcebff', transparent: true, opacity: 0.55, depthTest: false, depthWrite: false }),
   vehicle: new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.7, depthTest: false, depthWrite: false }),
 };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -299,7 +294,8 @@ function wedgeGeometry(x0: number, x1: number, z0: number, z1: number, y0: numbe
     [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1],
     [x0, top[0], z0], [x1, top[1], z0], [x1, top[2], z1], [x0, top[3], z1],
   ];
-  const f = [4, 7, 6, 4, 6, 5, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
+  // top (up) + four sides (outwards)
+  const f = [4, 7, 6, 4, 6, 5, 0, 5, 1, 0, 4, 5, 1, 6, 2, 1, 5, 6, 2, 7, 3, 2, 6, 7, 3, 4, 0, 3, 7, 4];
   const pos: number[] = [];
   for (const i of f) pos.push(...v[i]);
   const g = new THREE.BufferGeometry();
@@ -308,17 +304,8 @@ function wedgeGeometry(x0: number, x1: number, z0: number, z1: number, y0: numbe
   return g;
 }
 
-/** A tunnel portal; `low`: an underpass — squashed to the cutting's depth, flush with the ground (nothing on the road above). */
-function Portal({ dark, low }: { dark: boolean; low?: number }) {
-  if (low !== undefined) {
-    return (
-      <group scale={[1, low / 0.56, 1]}>
-        <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
-        <mesh geometry={VOUSSOIR_GEOM} material={M.stoneDark} castShadow />
-        <mesh geometry={LINING_GEOM} material={M.stoneDark} receiveShadow />
-      </group>
-    );
-  }
+/** A tunnel portal (faces −x, the mouth on the floor at the origin). */
+function Portal({ dark }: { dark: boolean }) {
   return (
     <group>
       <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
@@ -337,57 +324,80 @@ function Portal({ dark, low }: { dark: boolean; low?: number }) {
 }
 
 function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
+  if (isUnderpass(map, s)) return <Underpass map={map} cellSize={cellSize} s={s} />;
   const { pos, len, yaw } = frameOf(map, s, cellSize);
-  const under = isUnderpass(map, s);
-  // An underpass runs UNDERPASS_DEPTH below the ground, its abutments are cuttings down to it.
   const floor = FLAT_TOP + floorOf(map, s);
-  const ground = FLAT_TOP + s.level;
-  const tube = useMemo(() => {
-    // The see-through tube: the arch section along the whole span.
-    const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: len, bevelEnabled: false });
-    g.rotateY(-Math.PI / 2);
-    g.translate(len / 2, 0, 0);
-    return { g, edges: new THREE.EdgesGeometry(g, 30) };
-  }, [len]);
   return (
     <group position={pos} rotation-y={yaw} scale={cellSize}>
-      {/* the tunnel seen through the hill / the road above (x-ray) */}
-      <group position={[0, floor, 0]}>
-        <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
-        <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
-      </group>
       {[-1, 1].map((sd) => (
         <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
-          <Portal dark={!under} low={under ? ground - floor : undefined} />
-          {under && <Cutting floor={floor} ground={ground} road={s.carries === 'road'} />}
+          <Portal dark />
         </group>
       ))}
     </group>
   );
 }
 
+const SLAB_T = 0.12;
+const WALL_T = 0.1;
+const COPING = 0.05;
+
 /**
- * An underpass's cutting in its abutment cell (local: the portal at x = 0,
- * the cell runs to x = −1): a ramp from the ground down to the floor, a
- * retaining wall either side, a road surface when it carries a road.
+ * An underpass: an open trench cut into the ground (TerrainSurface leaves a
+ * hole) — a two-cell ramp down at either end, a flat floor along the span,
+ * concrete retaining walls all along, and a concrete slab under each crossing
+ * road / rail (which stays at ground level). Local frame: x along the span
+ * (portals at ±len/2), the floor at y = 0.
  */
-function Cutting({ floor, ground, road }: { floor: number; ground: number; road: boolean }) {
+function Underpass({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
+  const { pos, len, yaw } = frameOf(map, s, cellSize);
+  const floor = FLAT_TOP + floorOf(map, s);
+  const d = s.level - floorOf(map, s); // depth
+  const road = s.carries === 'road';
   const geo = useMemo(() => {
-    const d = ground - floor; // depth at the portal (y measured from the floor: 0)
-    // Ramp solid: from the cell's outer edge (x = −1, top at d) to the portal (x = 0, top at 0).
-    const ramp = wedgeGeometry(-1, 0, -0.5, 0.5, -1.2, [d, 0, 0, d]);
-    const asphalt = wedgeGeometry(-1, 0, -0.42, 0.42, -0.02, [d + 0.012, 0.012, 0.012, d + 0.012]);
-    // Retaining walls: their top flush with the ground, their foot on the ramp.
-    const walls = [-1, 1].map((sd) => wedgeGeometry(-1, 0.06, sd * 0.5 - 0.05, sd * 0.5 + 0.05, -0.1, [d + 0.06, d + 0.06, d + 0.06, d + 0.06]));
-    return { ramp, asphalt, walls };
-  }, [floor, ground]);
+    const L = len / 2, R = RAMP_CELLS;
+    const slab = interiorOf(s).map(([x, z]) => map.cells[x][z] === CellType.Road || map.cells[x][z] === CellType.Rail || hasRailAt(map, x, z));
+    const parts: { g: THREE.BufferGeometry; m: THREE.Material; shadow?: boolean }[] = [];
+    const flat4 = (h: number): [number, number, number, number] => [h, h, h, h];
+    // Floor along the span, ramps at both ends (top: [x0z0, x1z0, x1z1, x0z1]).
+    parts.push({ g: wedgeGeometry(-L, L, -0.5, 0.5, -1.2, flat4(0)), m: M.bank });
+    parts.push({ g: wedgeGeometry(-L - R, -L, -0.5, 0.5, -1.2, [d, 0, 0, d]), m: M.bank });
+    parts.push({ g: wedgeGeometry(L, L + R, -0.5, 0.5, -1.2, [0, d, d, 0]), m: M.bank });
+    if (road) {
+      const a = 0.012, w = 0.42;
+      parts.push({ g: wedgeGeometry(-L, L, -w, w, -0.02, flat4(a)), m: M.ramp });
+      parts.push({ g: wedgeGeometry(-L - R, -L, -w, w, -0.02, [d + a, a, a, d + a]), m: M.ramp });
+      parts.push({ g: wedgeGeometry(L, L + R, -w, w, -0.02, [a, d + a, d + a, a]), m: M.ramp });
+    }
+    // Retaining walls: along the ramps and the open cells, a coping just above
+    // the ground; under a slab only up to its underside.
+    for (const sd of [-1, 1]) {
+      const z0 = sd * 0.5 - WALL_T / 2, z1 = sd * 0.5 + WALL_T / 2;
+      const wall = (x0: number, x1: number, h: number) => parts.push({ g: wedgeGeometry(x0, x1, z0, z1, -0.1, flat4(h)), m: M.concrete, shadow: true });
+      wall(-L - R, -L, d + COPING);
+      wall(L, L + R, d + COPING);
+      slab.forEach((on, i) => wall(-L + i, -L + i + 1, on ? d - SLAB_T : d + COPING));
+    }
+    // Slabs under what crosses, with an edge beam over the open trench.
+    slab.forEach((on, i) => {
+      if (!on) return;
+      const x0 = -L + i, x1 = x0 + 1;
+      parts.push({ g: wedgeGeometry(x0, x1, -0.5 - WALL_T, 0.5 + WALL_T, d - SLAB_T, flat4(d - 0.004)), m: M.concrete, shadow: true });
+      for (const [e, open] of [[x0, i === 0 || !slab[i - 1]], [x1, i === slab.length - 1 || !slab[i + 1]]] as const) {
+        if (!open) continue;
+        const o = e === x0 ? 0 : -0.06;
+        parts.push({ g: wedgeGeometry(e + o, e + o + 0.06, -0.5 - WALL_T, 0.5 + WALL_T, d - SLAB_T - 0.05, flat4(d + 0.07)), m: M.concrete, shadow: true });
+      }
+    });
+    return parts;
+  }, [map, s, len, d, road]);
   return (
-    <group>
-      <mesh geometry={geo.ramp} material={M.bank} receiveShadow />
-      {road && <mesh geometry={geo.asphalt} material={M.ramp} receiveShadow />}
-      {geo.walls.map((g, i) => (
-        <mesh key={i} geometry={g} material={M.concrete} castShadow receiveShadow />
-      ))}
+    <group position={pos} rotation-y={yaw} scale={cellSize}>
+      <group position={[0, floor, 0]}>
+        {geo.map((p, i) => (
+          <mesh key={i} geometry={p.g} material={p.m} castShadow={p.shadow} receiveShadow />
+        ))}
+      </group>
     </group>
   );
 }

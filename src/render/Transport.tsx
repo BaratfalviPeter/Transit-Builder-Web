@@ -19,6 +19,8 @@ import {
   laneAt,
   signalsOf,
   spanUnder,
+  alongUnderpass,
+  overpassLift,
   TRAILER_AXLE,
   TRUCK_HITCH,
   useTransport,
@@ -83,7 +85,9 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     }
     tr.visible = tl.visible = true;
     const deck = span ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : null;
-    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
+    // Driving along an underpass: on the ground under the little overpass, not up on it.
+    const low = alongUnderpass(map, p.x, p.z, Math.cos(p.yaw), -Math.sin(p.yaw)) !== null;
+    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP - (low ? overpassLift(map, x, z) : 0);
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.

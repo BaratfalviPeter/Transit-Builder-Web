@@ -133,8 +133,9 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
     level = h;
   }
   const L = level!;
-  let under = false;
-  for (const [x, z] of interiorOf({ a, b })) {
+  let hill = 0, flat = 0, crossed = false;
+  const inner = interiorOf({ a, b });
+  for (const [x, z] of inner) {
     if (structureAt(map, x, z)) return 'Másik hidat / alagutat keresztezne';
     const t = map.cells[x][z];
     if (kind === 'bridge') {
@@ -143,10 +144,21 @@ export function structureProblem(map: TerrainMap, kind: StructureKind, a: readon
     } else {
       if (!OVER_TUNNEL_OK.has(t)) return 'Az alagút nem vezethet itt át';
       if (minCorner(map, x, z) < L - EPS) return 'Az alagút nem mehet a szájánál mélyebbre (Emelés a szájaknál / Süllyesztés)';
-      if (minCorner(map, x, z) >= L + HILL_STEP - EPS || t === CellType.Road || t === CellType.Rail || hasRailAt(map, x, z)) under = true;
+      // Part of the hill (its slope or top), or flat ground at the portals' level.
+      if (maxCorner(map, x, z) >= L + HILL_STEP - EPS) hill++;
+      else flat++;
+      if (t === CellType.Road || t === CellType.Rail || hasRailAt(map, x, z)) crossed = true;
     }
   }
-  if (kind === 'tunnel' && !under) return 'Az alagútnak hegy, út vagy sín alatt kell átmennie';
+  if (kind === 'tunnel') {
+    // Through a hill: from its foot to the other side — every cell is hill.
+    if (hill > 0 && flat > 0) return 'Hegyi alagút csak a hegy lábától a túloldaláig vezethet';
+    // An underpass: short, and under a road / rail.
+    if (hill === 0) {
+      if (!crossed) return 'Az alagútnak hegy, út vagy sín alatt kell átmennie';
+      if (inner.length > UNDERPASS_MAX) return `Az aluljáró legfeljebb ${UNDERPASS_MAX} cella hosszú lehet`;
+    }
+  }
   return null;
 }
 
@@ -158,6 +170,56 @@ export function levelAt(map: TerrainMap, a: readonly [number, number]): number {
 /** Price of a span from `a` to `b`. */
 export function structurePrice(kind: StructureKind, a: readonly [number, number], b: readonly [number, number]): number {
   return Math.max(0, Math.abs(b[0] - a[0]) + Math.abs(b[1] - a[1]) - 1) * STRUCTURE_PRICE[kind];
+}
+
+// ------------------------------------------------------------- underpasses
+
+/** An underpass (a tunnel on flat ground, under a road / rail): the road over it rises this high … */
+export const UNDERPASS_LIFT = 0.6;
+/** … over this many cells either side of it, and the underpass is at most this long. */
+export const UNDERPASS_RAMP = 1.5;
+export const UNDERPASS_MAX = 3;
+
+const underCache = new WeakMap<Structure, boolean>();
+/** Is this tunnel an underpass (its whole span flat at the portals' level)? */
+export function isUnderpass(map: TerrainMap, s: Structure): boolean {
+  if (s.kind !== 'tunnel') return false;
+  let u = underCache.get(s);
+  if (u === undefined) {
+    u = interiorOf(s).every(([x, z]) => maxCorner(map, x, z) < s.level + HILL_STEP - EPS);
+    underCache.set(s, u);
+  }
+  return u;
+}
+
+/**
+ * How much the ground at world point (x, z) is lifted over an underpass: the
+ * cells over its span carry what crosses it UNDERPASS_LIFT high, with a ramp
+ * UNDERPASS_RAMP cells long on either side (a little overpass). 0 elsewhere.
+ */
+export function overpassLift(map: TerrainMap, x: number, z: number): number {
+  const list = map.structures;
+  if (!list?.length) return 0;
+  let best = 0;
+  for (const s of list) {
+    if (s.kind !== 'tunnel' || !isUnderpass(map, s)) continue;
+    const [dx, dz] = axisOf(s);
+    const along = (x - s.a[0]) * dx + (z - s.a[1]) * dz;
+    const span = Math.abs(s.b[0] - s.a[0]) + Math.abs(s.b[1] - s.a[1]);
+    if (along < 0.5 - EPS || along > span - 0.5 + EPS) continue;
+    const perp = Math.abs((x - s.a[0]) * -dz + (z - s.a[1]) * dx);
+    const f = 1 - (perp - 0.5) / UNDERPASS_RAMP;
+    if (f > 0) best = Math.max(best, UNDERPASS_LIFT * Math.min(1, f));
+  }
+  return best;
+}
+
+/** An underpass a vehicle at (x, z) heading (hx, hz) drives along (its abutments or span), or null. */
+export function alongUnderpass(map: TerrainMap, x: number, z: number, hx: number, hz: number): Structure | null {
+  const r = structureAt(map, Math.round(x), Math.round(z));
+  if (!r || !isUnderpass(map, r.s)) return null;
+  const [dx, dz] = axisOf(r.s);
+  return Math.abs(hx * dx + hz * dz) > 0.7 ? r.s : null;
 }
 
 // ------------------------------------------------------------- road links
@@ -176,6 +238,23 @@ export function roadLinkDir(map: TerrainMap, x: number, z: number, dx: number, d
   const l = roadLinkFrom(map, x, z);
   if (!l) return false;
   return Math.sign(l.to[0] - x) === dx && Math.sign(l.to[1] - z) === dz;
+}
+
+/**
+ * Is p → q (neighbouring cells) a step ALONG a bridge / tunnel that can take
+ * `what` (empty, or already carrying it)? — from an abutment into its span,
+ * through it, or out onto the other abutment. Such a step goes on the
+ * structure, whatever the cells below are.
+ */
+export function structureStep(map: TerrainMap, p: { x: number; z: number }, q: { x: number; z: number }, what: 'road' | 'rail'): Structure | null {
+  const rp = structureAt(map, p.x, p.z), rq = structureAt(map, q.x, q.z);
+  if (!rp || !rq || rp.s !== rq.s) return null;
+  if (rp.role !== 'interior' && rq.role !== 'interior') return null;
+  const s = rp.s;
+  if (s.carries && s.carries !== what) return null;
+  const [dx, dz] = axisOf(s);
+  const sx = q.x - p.x, sz = q.z - p.z;
+  return Math.abs(sx) === Math.abs(dx) && Math.abs(sz) === Math.abs(dz) ? s : null;
 }
 
 /** May a ground road / rail step from cell p to the neighbouring cell q? (Not along under / over a span.) */

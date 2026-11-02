@@ -19,7 +19,7 @@
  * `blocked: true`, so the UI can show it red.
  */
 
-import { groundStepOk } from './structures';
+import { groundStepOk, structureStep } from './structures';
 import {
   canBuildRailAt,
   canBuildRoadAt,
@@ -237,18 +237,20 @@ export function findTrackPath(
       const nx = x + DX[nd];
       const nz = z + DZ[nd];
       if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
-      if (!passable(nx, nz)) continue;
-      if (!groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // not along under a bridge
+      // Along a bridge / through a tunnel: on the structure, whatever is below.
+      const onSpan = structureStep(map, { x, z }, { x: nx, z: nz }, type === CellType.Rail ? 'rail' : 'road') !== null;
+      if (!onSpan && !passable(nx, nz)) continue;
+      if (!onSpan && !groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // not along under a bridge
       // Level crossings: the road runs straight across the rail.
-      if (type === CellType.Road) {
+      if (!onSpan && type === CellType.Road) {
         const axis = isXDir(nd) ? 'x' : 'z';
         const here = roadThroughAxis(map, x, z);
         const there = roadThroughAxis(map, nx, nz);
         if ((here && here !== axis) || (there && there !== axis)) continue;
       }
       // Must leave this cell and enter the next along their ramp axes.
-      if (!axisOk(kindOf(x, z), nd) || !axisOk(kindOf(nx, nz), nd)) continue;
-      const dh = Math.abs(map.heights[nx][nz] - hHere);
+      if (!onSpan && (!axisOk(kindOf(x, z), nd) || !axisOk(kindOf(nx, nz), nd))) continue;
+      const dh = onSpan ? 0 : Math.abs(map.heights[nx][nz] - hHere);
       if (dh > HILL_STEP + 1e-6) continue; // max one level per step
 
       let cost = map.cells[nx][nz] === type ? REUSE_COST : STEP_COST;
@@ -284,7 +286,10 @@ export function findTrackPath(
  */
 export function trackStepOk(map: TerrainMap, a: GridCell, b: GridCell, type: TrackType): boolean {
   const ddx = b.x - a.x, ddz = b.z - a.z;
-  if (Math.abs(ddx) + Math.abs(ddz) !== 1 || !isTrackPassable(map, b.x, b.z, type)) return false;
+  if (Math.abs(ddx) + Math.abs(ddz) !== 1) return false;
+  // Along a bridge / through a tunnel: on the structure, whatever is below.
+  if (structureStep(map, a, b, type === CellType.Rail ? 'rail' : 'road')) return true;
+  if (!isTrackPassable(map, b.x, b.z, type)) return false;
   if (!groundStepOk(map, a, b)) return false; // not along under a bridge / over a tunnel
   const nd = ddx === 1 ? 0 : ddx === -1 ? 1 : ddz === 1 ? 2 : 3;
   if (type === CellType.Road) {

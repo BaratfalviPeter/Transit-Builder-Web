@@ -27,7 +27,7 @@
  * Pure TypeScript.
  */
 
-import { axisOf, interiorAt } from './structures';
+import { axisOf, interiorAt, structureAt } from './structures';
 import {
   canRailCell,
   crossesRoadOk,
@@ -370,6 +370,16 @@ function compOf(map: TerrainMap): Int32Array {
         comp[k] = id;
         q.push(k);
       }
+      // Over a bridge / through a tunnel that can take a rail: the far abutment.
+      const r = structureAt(map, x, z);
+      if (r && r.role === 'abutment' && (!r.s.carries || r.s.carries === 'rail')) {
+        const far = r.s.a[0] === x && r.s.a[1] === z ? r.s.b : r.s.a;
+        const k = far[0] * n + far[1];
+        if (pass[k] && comp[k] < 0) {
+          comp[k] = id;
+          q.push(k);
+        }
+      }
     }
     id++;
   }
@@ -597,6 +607,27 @@ function latticeAStar(
         push(ns, ng + H_WEIGHT * oct(nx, nz));
       }
     }
+    // On a bridge / into a tunnel: from its abutment straight on to the far one.
+    const r = structureAt(map, x, z);
+    if (r && r.role === 'abutment' && (!r.s.carries || r.s.carries === 'rail')) {
+      const s = r.s;
+      const atA = s.a[0] === x && s.a[1] === z;
+      const far = atA ? s.b : s.a;
+      const [ax, az] = axisOf(s);
+      if (headingOf(atA ? ax : -ax, atA ? az : -az) === d) {
+        const ns = (far[0] * n + far[1]) * 8 + d;
+        const len = Math.abs(far[0] - x) + Math.abs(far[1] - z);
+        if (!closed[ns]) {
+          const ng = g[st] + len, nl = gl[st] + len;
+          if (nl + oct(far[0], far[1]) <= maxCost && ng < g[ns]) {
+            g[ns] = ng;
+            gl[ns] = nl;
+            from[ns] = st;
+            push(ns, ng + H_WEIGHT * oct(far[0], far[1]));
+          }
+        }
+      }
+    }
   }
   const states: number[] = [];
   for (let c = best; c >= 0; c = from[c]) states.push(c);
@@ -607,6 +638,7 @@ function latticeAStar(
 /** Turn a chain of (cell, heading) states back into a centre-line. */
 function traceLine(n: number, states: number[]): number[] {
   const line: number[] = [];
+  const keep = new Set<string>();
   for (let i = 0; i < states.length; i++) {
     const node = states[i] >> 3;
     const x = (node / n) | 0, z = node - x * n;
@@ -617,14 +649,21 @@ function traceLine(n: number, states: number[]): number[] {
     const prev = states[i - 1];
     const pn = prev >> 3;
     const px = (pn / n) | 0, pz = pn - px * n;
-    const m = MOVES[prev & 7].find((q) => q.dx === x - px && q.dz === z - pz && q.dEnd === (states[i] & 7))!;
+    const m = MOVES[prev & 7].find((q) => q.dx === x - px && q.dz === z - pz && q.dEnd === (states[i] & 7));
+    if (!m) {
+      // A jump over a bridge / through a tunnel: abutment to abutment, kept
+      // as its own points (buildRail lays that piece on the structure).
+      keep.add(`${px},${pz}`).add(`${x},${z}`);
+      line.push(x, z);
+      continue;
+    }
     for (let k = 2; k < m.pts.length; k += 2) line.push(px + m.pts[k], pz + m.pts[k + 1]);
   }
   // Merge collinear runs (a straight = just its two ends).
   const out: number[] = [line[0], line[1]];
   for (let i = 2; i < line.length; i += 2) {
     const L = out.length;
-    if (L >= 4) {
+    if (L >= 4 && !keep.has(`${out[L - 2]},${out[L - 1]}`)) {
       const ax = out[L - 4], az = out[L - 3], bx = out[L - 2], bz = out[L - 1];
       const ux = bx - ax, uz = bz - az, vx = line[i] - bx, vz = line[i + 1] - bz;
       if (Math.abs(ux * vz - uz * vx) < 1e-9 && ux * vx + uz * vz > 0) {
@@ -649,6 +688,15 @@ export function validate(map: TerrainMap, pts: number[], start: NetSnap | null, 
   let prevH: number | null = null;
   forEachSample(pts, 0.15, (x, z, tx, tz, s) => {
     if (reason) return;
+    // Along a bridge / through a tunnel that can take a rail: on the structure.
+    const up = interiorAt(map, Math.round(x), Math.round(z));
+    if (up && (!up.carries || up.carries === 'rail')) {
+      const [ux, uz] = axisOf(up);
+      if (Math.abs(tx * ux + tz * uz) > 0.99) {
+        prevH = null;
+        return;
+      }
+    }
     for (const o of [-TRACK_HALF, 0, TRACK_HALF]) {
       const cx = Math.round(x - tz * o), cz = Math.round(z + tx * o);
       if (cx < 0 || cz < 0 || cx >= n || cz >= n || !pass[cx * n + cz]) {

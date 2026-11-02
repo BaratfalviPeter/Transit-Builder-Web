@@ -27,7 +27,7 @@ import {
 } from './terrain';
 import { addEdge, cutAtCell, EMPTY_NET, hasRailAt, railIndex, roadCrossingAxis, splitAtPoint, type RailNet } from './railNet';
 import type { RailPlan } from './railRoute';
-import { interiorAt, levelAt, structureAt, structureProblem, type Structure, type StructureKind } from './structures';
+import { interiorAt, interiorOf, levelAt, structureAt, structureProblem, structureStep, type Structure, type StructureKind } from './structures';
 import { stationAt, stationGeom, stationProblem, stopKind, type Side, type Station, type StopKind } from './stations';
 
 type Listener = () => void;
@@ -108,8 +108,19 @@ export class TerrainStore {
     let cells: CellType[][] | null = null;
     const touched = new Set<number>();
     let placed = 0;
+    // Bridges / tunnels the route runs along: their span isn't road cells —
+    // the road is laid ON them (once the route reaches both abutments).
+    const spans = new Set<Structure>();
+    const onSpan = new Set<number>();
+    for (let i = 1; i < path.length; i++) {
+      const s = structureStep(this.map, path[i - 1], path[i], 'road');
+      if (!s) continue;
+      spans.add(s);
+      for (const p of [path[i - 1], path[i]]) if (interiorAt(this.map, p.x, p.z) === s) onSpan.add(p.x * this.map.size + p.z);
+    }
     for (const { x, z } of path) {
       if (!this.inBounds(x, z)) continue;
+      if (onSpan.has(x * this.map.size + z)) continue;
       const cur = (cells ?? this.map.cells)[x][z];
       if (cur === CellType.Road) continue;
       // Rules see the cells placed so far (slope-connectivity checks).
@@ -124,10 +135,16 @@ export class TerrainStore {
       cells[x][z] = CellType.Road;
       placed++;
     }
-    if (!cells || placed === 0) return 0;
-    this.roadCount += placed;
-    this.commit({ cells }, true);
-    this.emit();
+    if (cells && placed > 0) {
+      this.roadCount += placed;
+      this.commit({ cells }, true);
+      this.emit();
+    }
+    // The spans the route crossed end to end: the road goes on them.
+    for (const s of spans) {
+      const has = (c: readonly [number, number]) => path.some((p) => p.x === c[0] && p.z === c[1]);
+      if (!s.carries && has(s.a) && has(s.b) && this.layOnStructure(s.id, 'road')) placed += interiorOf(s).length;
+    }
     return placed;
   }
 
@@ -143,8 +160,23 @@ export class TerrainStore {
     const p = plan.pts;
     if (plan.start?.kind === 'mid') net = splitAtPoint(net, p[0], p[1]);
     if (plan.end?.kind === 'mid') net = splitAtPoint(net, p[p.length - 2], p[p.length - 1]);
-    net = addEdge(net, plan.pts.slice());
+    // Cut out the jumps over bridges / through tunnels (abutment → abutment):
+    // those pieces go on the structures, the rest are ordinary edges.
+    const spans: Structure[] = [];
+    let piece: number[] = [p[0], p[1]];
+    for (let i = 2; i < p.length; i += 2) {
+      const ra = structureAt(this.map, Math.round(p[i - 2]), Math.round(p[i - 1]));
+      const rb = structureAt(this.map, Math.round(p[i]), Math.round(p[i + 1]));
+      const jump = ra && rb && ra.s === rb.s && ra.role === 'abutment' && rb.role === 'abutment' && Math.abs(p[i] - p[i - 2]) + Math.abs(p[i + 1] - p[i - 1]) > 1.5;
+      if (jump) {
+        if (piece.length >= 4) net = addEdge(net, piece);
+        if (!ra.s.carries) spans.push(ra.s);
+        piece = [p[i], p[i + 1]];
+      } else piece.push(p[i], p[i + 1]);
+    }
+    if (piece.length >= 4) net = addEdge(net, piece);
     this.setRailNet(net, null);
+    for (const s of spans) this.layOnStructure(s.id, 'rail');
     return Math.ceil(plan.length);
   }
 

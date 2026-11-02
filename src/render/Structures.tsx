@@ -16,7 +16,8 @@
 import { Html } from '@react-three/drei';
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { axisOf, CellType, interiorOf, type Structure, type StructureKind, type TerrainMap } from '../sim';
+import { axisOf, CellType, cornerHeightAt, interiorAt, interiorOf, isUnderpass, UNDERPASS_LIFT, UNDERPASS_RAMP, type Structure, type StructureKind, type TerrainMap } from '../sim';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CELL_STYLE } from './terrainStyle';
 import { patchCloudShadows } from './cloudShadows';
 import { groundAtGrid } from './railGeometry';
@@ -43,6 +44,9 @@ const M = {
   stoneDark: std('#6f6a61'),
   hole: new THREE.MeshBasicMaterial({ color: '#141518', side: THREE.DoubleSide }),
   steel: std('#4f5d63', { roughness: 0.55, metalness: 0.35 }),
+  // Two-sided: the ramp solids are built by hand (winding not guaranteed).
+  bank: std('#9a9488', { side: THREE.DoubleSide }),
+  ramp: std('#3a3d42', { roughness: 1, side: THREE.DoubleSide }),
   lamp: new THREE.MeshBasicMaterial({ color: '#ffe3a1', toneMapped: false }),
 };
 
@@ -263,16 +267,69 @@ const PORTAL_GEOM = (() => {
   return g;
 })();
 /** The dark inside of the mouth (a short arched tube into the hill). */
-const MOUTH_GEOM = (() => {
-  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.12, bevelEnabled: false });
+/** The stone lining just inside the mouth (an arched ring, 0.3 deep), so the arch has walls. */
+const LINING_GEOM = (() => {
+  const ring = archShape(MOUTH.w + 0.1, MOUTH.spring, MOUTH.rise + 0.05);
+  ring.holes.push(new THREE.Path(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise).getPoints()));
+  const g = new THREE.ExtrudeGeometry(ring, { depth: 0.3, bevelEnabled: false });
   g.rotateY(-Math.PI / 2);
-  g.translate(0.24, 0, 0);
+  g.translate(0.42, 0, 0);
   return g;
 })();
+/** The voussoir ring round the opening, standing a little proud of the facade. */
+const VOUSSOIR_GEOM = (() => {
+  const ring = archShape(MOUTH.w + 0.16, MOUTH.spring, MOUTH.rise + 0.08);
+  ring.holes.push(new THREE.Path(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise).getPoints()));
+  const g = new THREE.ExtrudeGeometry(ring, { depth: 0.03, bevelEnabled: false });
+  g.rotateY(-Math.PI / 2);
+  return g;
+})();
+/** The dark inside of a hill tunnel, past the lining. */
+const MOUTH_GEOM = (() => {
+  const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: 0.1, bevelEnabled: false });
+  g.rotateY(-Math.PI / 2);
+  g.translate(0.52, 0, 0);
+  return g;
+})();
+
+/** A solid with a flat bottom at y0 and its top corners at the given heights (x0..x1 × z0..z1). */
+function wedgeGeometry(x0: number, x1: number, z0: number, z1: number, y0: number, top: [number, number, number, number]): THREE.BufferGeometry {
+  // top: [x0z0, x1z0, x1z1, x0z1]
+  const v = [
+    [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1],
+    [x0, top[0], z0], [x1, top[1], z0], [x1, top[2], z1], [x0, top[3], z1],
+  ];
+  const f = [4, 7, 6, 4, 6, 5, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
+  const pos: number[] = [];
+  for (const i of f) pos.push(...v[i]);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+function Portal({ dark }: { dark: boolean }) {
+  return (
+    <group>
+      <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
+      <mesh geometry={VOUSSOIR_GEOM} material={M.stoneDark} castShadow />
+      <mesh geometry={LINING_GEOM} material={M.stoneDark} receiveShadow />
+      {dark && <mesh geometry={MOUTH_GEOM} material={M.hole} />}
+      {/* keystone + cornice */}
+      <Box p={[-0.02, MOUTH.spring + MOUTH.rise + 0.06, 0]} s={[0.06, 0.12, 0.11]} m={M.stoneDark} />
+      <Box p={[0.05, 0.585, 0]} s={[0.18, 0.05, 1.12]} m={M.stoneDark} />
+      {/* wing walls, splayed out along the cutting */}
+      {[-1, 1].map((w) => (
+        <mesh key={w} geometry={BOX} material={M.stone} position={[-0.14, 0.13, w * 0.6]} rotation-y={w * 0.4} scale={[0.32, 0.26, 0.07]} castShadow receiveShadow />
+      ))}
+    </group>
+  );
+}
 
 function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
   const { pos, len, yaw } = frameOf(map, s, cellSize);
   const floor = FLAT_TOP + s.level;
+  const under = isUnderpass(map, s);
   const tube = useMemo(() => {
     // The see-through tube: the arch section along the whole span.
     const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: len, bevelEnabled: false });
@@ -281,34 +338,73 @@ function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
     return { g, edges: new THREE.EdgesGeometry(g, 30) };
   }, [len]);
   return (
-    <group position={pos} rotation-y={yaw} scale={cellSize}>
-      {/* the tunnel seen through the hill (x-ray) */}
-      <group position={[0, floor, 0]}>
-        <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
-        <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
-      </group>
-      {[-1, 1].map((sd) => (
-        <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
-          <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
-          <mesh geometry={MOUTH_GEOM} material={M.hole} />
-          {/* keystone + cornice */}
-          <Box p={[-0.01, MOUTH.spring + MOUTH.rise + 0.03, 0]} s={[0.05, 0.1, 0.1]} m={M.stoneDark} />
-          <Box p={[0.05, 0.585, 0]} s={[0.18, 0.05, 1.12]} m={M.stoneDark} />
-          {/* wing walls, splayed out along the cutting */}
-          {[-1, 1].map((w) => (
-            <mesh
-              key={w}
-              geometry={BOX}
-              material={M.stone}
-              position={[-0.14, 0.13, w * 0.6]}
-              rotation-y={w * 0.4}
-              scale={[0.32, 0.26, 0.07]}
-              castShadow
-              receiveShadow
-            />
-          ))}
+    <group>
+      <group position={pos} rotation-y={yaw} scale={cellSize}>
+        {/* the tunnel seen through the hill / the road above (x-ray) */}
+        <group position={[0, floor, 0]}>
+          <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
+          <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
         </group>
+        {under && <UnderpassBox len={len} floor={floor} />}
+        {[-1, 1].map((sd) => (
+          <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
+            <Portal dark={!under} />
+            {/* an underpass: the wall goes on up to the deck above */}
+            {under && <Box p={[0.06, (0.56 + UNDERPASS_LIFT) / 2, 0]} s={[0.12, UNDERPASS_LIFT - 0.56 + 0.02, 1.04]} m={M.stone} />}
+          </group>
+        ))}
+      </group>
+      {under && <OverpassRoads map={map} cellSize={cellSize} s={s} />}
+    </group>
+  );
+}
+
+/** An underpass: the concrete box over the span (side walls + the deck the crossing road runs on). */
+function UnderpassBox({ len, floor }: { len: number; floor: number }) {
+  const top = floor + UNDERPASS_LIFT;
+  return (
+    <group>
+      <Box p={[0, top - 0.05, 0]} s={[len + 0.24, 0.1, 1.06]} m={M.concrete} />
+      {[-1, 1].map((sd) => (
+        <Box key={sd} p={[0, floor + (UNDERPASS_LIFT - 0.1) / 2, sd * 0.47]} s={[len, UNDERPASS_LIFT - 0.1, 0.06]} m={M.concreteDark} />
       ))}
+    </group>
+  );
+}
+
+/** The road cells lifted over an underpass: a ramped surface on an earth bank, with the centre line. */
+function OverpassRoads({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
+  const geo = useMemo(() => {
+    const half = (map.size - 1) / 2;
+    const surf: THREE.BufferGeometry[] = [];
+    const bank: THREE.BufferGeometry[] = [];
+    // Road cells near the span whose ground is lifted.
+    const [dx, dz] = axisOf(s);
+    const R = Math.ceil(UNDERPASS_RAMP) + 1;
+    const seen = new Set<string>();
+    for (const [ix, iz] of interiorOf(s)) {
+      for (let k = -R; k <= R; k++) {
+        const x = ix - dz * k, z = iz + dx * k; // across the span
+        const key = `${x},${z}`;
+        if (seen.has(key) || x < 0 || z < 0 || x >= map.size || z >= map.size) continue;
+        seen.add(key);
+        if (map.cells[x][z] !== CellType.Road) continue;
+        const h = (px: number, pz: number) => groundAtGrid(map, px, pz) + 0.02;
+        const top: [number, number, number, number] = [h(x - 0.5, z - 0.5), h(x + 0.5, z - 0.5), h(x + 0.5, z + 0.5), h(x - 0.5, z + 0.5)];
+        if (Math.max(...top) - (FLAT_TOP + 0.02 + cornerHeightAt(map, x, z)) < 1e-4) continue;
+        const wx = x - half, wz = z - half;
+        // Over the span itself the deck carries it (the tunnel runs below): no bank there.
+        if (interiorAt(map, x, z) !== s) bank.push(wedgeGeometry(wx - 0.5, wx + 0.5, wz - 0.5, wz + 0.5, FLAT_TOP + cornerHeightAt(map, x, z) - 0.02, top.map((t) => t - 0.012) as typeof top));
+        surf.push(wedgeGeometry(wx - 0.5, wx + 0.5, wz - 0.5, wz + 0.5, Math.min(...top) - 0.02, top));
+      }
+    }
+    const merge = (list: THREE.BufferGeometry[]) => (list.length ? mergeGeometries(list) : null);
+    return { surf: merge(surf), bank: merge(bank) };
+  }, [map, s]);
+  return (
+    <group scale={cellSize}>
+      {geo.bank && <mesh geometry={geo.bank} material={M.bank} castShadow receiveShadow />}
+      {geo.surf && <mesh geometry={geo.surf} material={M.ramp} receiveShadow />}
     </group>
   );
 }

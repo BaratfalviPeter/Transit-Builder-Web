@@ -291,7 +291,8 @@ export function GameUI() {
           <span className="ui-menu__label">Statisztika</span>
           <kbd>K</kbd>
         </button>
-        {PANEL_KEYS.map((k) => (
+        {/* The Dev tab has no button (beta): its key (0) still opens it. */}
+        {PANEL_KEYS.filter((k) => k.panel !== 'dev').map((k) => (
           <button
             key={k.panel}
             type="button"

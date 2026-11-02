@@ -287,6 +287,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   zoomol” (`cameraSettings.ts` `setZoomToCursor`, localStorage `tb.zoomToCursor`, a `CameraRig` `zoomToCursor`).
   Visszajelzés (`src/ui/feedback.ts` `feedbackUrl`): GitHub issue (issues/new) előre kitöltve a játék
   állapotával és a böngészővel — gomb a jobb felső menüben (`Feedback compact`) és a Játék panelen.
+- NAPSZAKVÁLTÁS alapból KI (`visualSettings.ts` `dayCycle: false`; a már elmentett beállításoknál
+  egyszer kikapcsolja: `tb.visual.dayCycleOff`), a Látvány panelen (Dev → Látvány beállítás) bekapcsolható.
+  A Dev fülnek nincs gombja a menüben (bétateszt), a 0 billentyű nyitja.
 - BEMUTATÓ (`src/ui/Tutorial.tsx`, `tutorial.css`): `Intro` (6 oldalas ablak a játék logikájáról,
   első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
   (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,

@@ -16,8 +16,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  BANKRUPT_MONTHS,
   TOOLS,
   useGame,
+  useSave,
   useGameSnapshot,
   useIndustryCount,
   useRoadCount,
@@ -204,11 +206,20 @@ export function GameUI() {
 
   return (
     <div className="ui">
+      {snap.bankrupt && <Bankrupt />}
       {/* Top-left: money, date, speed, counters */}
       <div className="ui-bar">
         <div className={'ui-bar__money' + (snap.money < 0 ? ' is-minus' : '')} title={snap.loan > 0 ? `Egyenleg (hitel: ${money(snap.loan)})` : 'Egyenleg'}>
           {money(snap.money)}
         </div>
+        {(snap.money < 0 || snap.negMonths > 0) && !snap.bankrupt && (
+          <div
+            className="ui-bar__warn"
+            title={`Ha ${BANKRUPT_MONTHS} egymást követő hónap végén mínuszban vagy, csődbe mész. Vegyél fel hitelt (Pénzügyek, P), vagy csökkentsd a költségeket.`}
+          >
+            ⚠ mínusz {snap.negMonths}/{BANKRUPT_MONTHS} hó
+          </div>
+        )}
         <div className="ui-bar__sep" />
         <div className="ui-bar__date">{formatDate(snap.dateMs)}</div>
         <div className="ui-speed">
@@ -376,6 +387,24 @@ export function GameUI() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Game over: bankrupt (BANKRUPT_MONTHS month-ends in a row below zero). */
+function Bankrupt() {
+  const save = useSave();
+  return (
+    <div className="ui-over">
+      <div className="ui-over__box">
+        <div className="ui-over__title">💸 Csőd</div>
+        <p>
+          A cég {BANKRUPT_MONTHS} egymást követő hónap végén mínuszban volt, ezért csődbe ment. A játéknak vége.
+        </p>
+        <button type="button" onClick={() => save.newGame()}>
+          Új játék
+        </button>
+      </div>
     </div>
   );
 }

@@ -64,12 +64,36 @@ export const FIXED_PRODUCTION: Partial<
   [CellType.PowerPlant]: { burns: true, rate: 2 },
 };
 
-/** The saved stop stocks (station id → items). */
+/**
+ * Industry LEVELS (fixed production): an industry's output is its base rate ×
+ * LEVEL_RATE[level − 1]. Every month it is judged by how much of what it
+ * offered was taken away (`served`, smoothed with the month before): well
+ * served (≥ LEVEL_UP) it grows a level, neglected (< LEVEL_DOWN) it shrinks.
+ */
+export const LEVEL_RATE = [0.5, 1, 1.5, 2, 3];
+export const MAX_INDUSTRY_LEVEL = LEVEL_RATE.length;
+export const START_LEVEL = 2;
+const LEVEL_UP = 0.7;
+const LEVEL_DOWN = 0.3;
+
+/** An industry's level and how well it is served (for the UI). */
+export interface IndustryState {
+  level: number;
+  /** Share of its output taken away, smoothed (null before its first judged month). */
+  served: number | null;
+  /** Last change: +1 grew / −1 shrank / 0 (at the last month's end). */
+  trend: number;
+}
+
+/** The saved stop stocks (station id → items) and the industries' levels. */
 export interface ProductionSave {
   stock: Record<string, Partial<Record<Item, number>>>;
   inbound: Record<string, Partial<Record<Item, number>>>;
   origins: Record<string, Partial<Record<Item, [number, number]>>>;
   carry: Record<string, number>;
+  /** When each kind of a depot's stock was first loaded (TransportSim clock; weighted mean). */
+  since?: Record<string, Partial<Record<Item, number>>>;
+  industries?: Record<string, IndustryState>;
 }
 
 export type MachineStatus = 'work' | 'wait' | 'blocked' | 'idle';
@@ -108,11 +132,27 @@ export class ProductionSim {
   private origins = new Map<number, Partial<Record<Item, [number, number]>>>();
   /** Fractional fixed production carried between ticks, per industry. */
   private carry = new Map<string, number>();
+  /** Depot stock load times (see `store`). */
+  private since = new Map<number, Partial<Record<Item, number>>>();
+  /** Industry (anchor key) → level / service. */
+  private industries = new Map<string, IndustryState>();
+  /** This month, per industry: units offered (it would have made) / taken away from its stops. */
+  private offered = new Map<string, number>();
+  private taken = new Map<string, number>();
+  /** Stop id → its industry's key (for counting what is taken). */
+  private stopIndustry = new Map<number, string>();
 
   /** Stop stocks (what a save keeps; see save.ts). Machines / belts are not saved. */
   exportState(): ProductionSave {
     const obj = <T>(m: Map<number | string, T>) => Object.fromEntries(m) as Record<string, T>;
-    return { stock: obj(this.stock), inbound: obj(this.inbound), origins: obj(this.origins), carry: obj(this.carry) };
+    return {
+      stock: obj(this.stock),
+      inbound: obj(this.inbound),
+      origins: obj(this.origins),
+      carry: obj(this.carry),
+      since: obj(this.since),
+      industries: Object.fromEntries([...this.industries].map(([k, v]) => [k, { ...v }])),
+    };
   }
 
   /** Continue saved stocks, or (null) start empty. */
@@ -122,6 +162,10 @@ export class ProductionSim {
     this.inbound = num(s?.inbound);
     this.origins = num(s?.origins);
     this.carry = new Map(Object.entries(s?.carry ?? {}));
+    this.since = num(s?.since);
+    this.industries = new Map(Object.entries(s?.industries ?? {}).map(([k, v]) => [k, { ...v }]));
+    this.offered.clear();
+    this.taken.clear();
     this.machines.clear();
     this.belts.clear();
     this.version++;
@@ -170,7 +214,11 @@ export class ProductionSim {
   take(id: number, item: Item, n: number): number {
     const s = this.stock.get(id);
     const k = Math.min(n, s?.[item] ?? 0);
-    if (s && k > 0) s[item] = (s[item] ?? 0) - k;
+    if (s && k > 0) {
+      s[item] = (s[item] ?? 0) - k;
+      const key = this.stopIndustry.get(id);
+      if (key) this.taken.set(key, (this.taken.get(key) ?? 0) + k);
+    }
     return k;
   }
 
@@ -197,7 +245,7 @@ export class ProductionSim {
    * where it came from — the stock keeps the weighted mean per kind, so it
    * is paid for the whole way when delivered. Returns how many fit.
    */
-  store(id: number, item: Item, n: number, origin: [number, number]): number {
+  store(id: number, item: Item, n: number, origin: [number, number], since = 0): number {
     const k = Math.max(0, Math.min(n, DEPOT_CAPACITY - this.stationTotal(id)));
     if (k <= 0) return 0;
     const s = this.stock.get(id) ?? {};
@@ -206,6 +254,10 @@ export class ProductionSim {
     const prev = o[item];
     o[item] = prev && had > 0 ? [(prev[0] * had + origin[0] * k) / (had + k), (prev[1] * had + origin[1] * k) / (had + k)] : origin;
     this.origins.set(id, o);
+    const t = this.since.get(id) ?? {};
+    const pt = t[item];
+    t[item] = pt !== undefined && had > 0 ? (pt * had + since * k) / (had + k) : since;
+    this.since.set(id, t);
     s[item] = had + k;
     this.stock.set(id, s);
     return k;
@@ -214,6 +266,48 @@ export class ProductionSim {
   /** Where a depot's stock of `item` came from (weighted mean), or null. */
   originOf(id: number, item: Item): [number, number] | null {
     return this.origins.get(id)?.[item] ?? null;
+  }
+
+  /** When a depot's stock of `item` was loaded (weighted mean), or null. */
+  sinceOf(id: number, item: Item): number | null {
+    return this.since.get(id)?.[item] ?? null;
+  }
+
+  /** An industry's level / service (by its anchor). */
+  industry(anchor: readonly [number, number]): IndustryState {
+    return this.industries.get(`${anchor[0]},${anchor[1]}`) ?? { level: START_LEVEL, served: null, trend: 0 };
+  }
+
+  /**
+   * A month is over: judge every industry that offered something by the share
+   * of it taken away, and move its level up / down.
+   */
+  closeMonth(): void {
+    for (const [key, off] of this.offered) {
+      if (off < 1) continue;
+      const st = this.industries.get(key) ?? { level: START_LEVEL, served: null, trend: 0 };
+      const share = Math.min(1, (this.taken.get(key) ?? 0) / off);
+      const first = st.served === null;
+      st.served = first ? share : (st.served! + share) / 2;
+      st.trend = 0;
+      // Its first judged month (a new stop, a new line) doesn't count yet.
+      if (first) {
+        this.industries.set(key, st);
+        continue;
+      }
+      if (st.served >= LEVEL_UP && st.level < MAX_INDUSTRY_LEVEL) {
+        st.level++;
+        st.trend = 1;
+      } else if (st.served < LEVEL_DOWN && st.level > 1) {
+        st.level--;
+        st.trend = -1;
+      }
+      this.industries.set(key, st);
+    }
+    this.offered.clear();
+    this.taken.clear();
+    this.version++;
+    for (const l of this.listeners) l();
   }
 
   /** Bumped on every throttled publish (for useSyncExternalStore). */
@@ -241,7 +335,9 @@ export class ProductionSim {
       const [ax, az] = stops[0].anchor;
       const p = FIXED_PRODUCTION[map.cells[ax][az]];
       if (!p) continue;
-      const budget = (this.carry.get(key) ?? 0) + p.rate * dt;
+      for (const st of stops) this.stopIndustry.set(st.id, key);
+      const level = this.industries.get(key)?.level ?? START_LEVEL;
+      const budget = (this.carry.get(key) ?? 0) + p.rate * LEVEL_RATE[level - 1] * dt;
       let units = Math.floor(budget);
       this.carry.set(key, budget - units);
       // Processors / consumers first use up what was delivered.
@@ -262,6 +358,7 @@ export class ProductionSim {
       }
       // Output goes to the emptiest stop that has room.
       const item = p.makes ?? p.turns?.to;
+      if (item && units > 0) this.offered.set(key, (this.offered.get(key) ?? 0) + units);
       for (let i = 0; item && i < units; i++) {
         let best: Station | null = null;
         for (const st of stops) {

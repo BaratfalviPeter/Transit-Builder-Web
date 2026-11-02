@@ -17,6 +17,10 @@ import { useMemo } from 'react';
 import {
   CellType,
   cornerHeightAt,
+  FIXED_PRODUCTION,
+  MAX_INDUSTRY_LEVEL,
+  useInteriorStore,
+  useProductionVersion,
   INDUSTRY_CENTER_OFFSET,
   INDUSTRY_MODEL_SCALE,
   LARGE_INDUSTRY,
@@ -50,6 +54,10 @@ const SIZE_CLASS: Partial<Record<CellType, string>> = {
 
 export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
   const half = (map.size - 1) / 2;
+  // Industry levels (production.ts): re-read on the production's publishes.
+  const prod = useInteriorStore().production;
+  useProductionVersion();
+  const stopAt = useMemo(() => new Set((map.stations ?? []).map((s) => `${s.anchor[0]},${s.anchor[1]}`)), [map]);
 
   const items = useMemo(() => {
     const out: Array<{ x: number; z: number; type: CellType }> = [];
@@ -84,10 +92,27 @@ export function BuildingIcons({ map, cellSize }: BuildingIconsProps) {
             <span className="bicon__glyph" role="img" aria-label={type}>
               {ICON[type]}
             </span>
+            {(FIXED_PRODUCTION[type]?.makes || FIXED_PRODUCTION[type]?.turns) && stopAt.has(`${x},${z}`) && <Level st={prod.industry([x, z])} />}
           </div>
         </Html>
         );
       })}
     </group>
+  );
+}
+
+/** An industry's level (dots), its last change and how much of its output is taken away. */
+function Level({ st }: { st: { level: number; served: number | null; trend: number } }) {
+  return (
+    <span
+      className="bicon__lvl"
+      title="Termelési szint: nő, ha elszállítod, amit termel (≥ 70%), visszaesik, ha nem (< 30%)"
+    >
+      {'●'.repeat(st.level)}
+      <span className="bicon__lvl-off">{'●'.repeat(MAX_INDUSTRY_LEVEL - st.level)}</span>
+      {st.trend > 0 && <span className="bicon__up"> ▲</span>}
+      {st.trend < 0 && <span className="bicon__down"> ▼</span>}
+      {st.served !== null && <span className="bicon__served"> {Math.round(st.served * 100)}%</span>}
+    </span>
   );
 }

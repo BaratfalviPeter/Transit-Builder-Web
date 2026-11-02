@@ -42,7 +42,11 @@ export interface GameSave {
   month: MonthBooks;
   lastMonth: MonthBooks | null;
   loan: number;
+  negMonths?: number;
 }
+
+/** Months in a row ending below zero after which the company goes bankrupt. */
+export const BANKRUPT_MONTHS = 6;
 
 /** Loan: borrowed / paid back in LOAN_STEP steps, up to MAX_LOAN, LOAN_RATE a year. */
 export const LOAN_STEP = 10_000;
@@ -66,6 +70,10 @@ export interface GameSnapshot {
   month: MonthBooks;
   lastMonth: MonthBooks | null;
   loan: number;
+  /** Months in a row that ended below zero (BANKRUPT_MONTHS: bankrupt). */
+  negMonths: number;
+  /** Bankrupt: the game is over (stopped; only a new game / load goes on). */
+  bankrupt: boolean;
 }
 
 /** Game starts on 1 January 1970. */
@@ -83,6 +91,7 @@ export class GameState {
   private month = emptyBooks();
   private lastMonth: MonthBooks | null = null;
   private loan = 0;
+  private negMonths = 0;
 
   // Clock
   private dateMs = START_DATE_MS;
@@ -173,6 +182,9 @@ export class GameState {
     charge(costs.running, 'running');
     charge(interest, 'interest');
     for (const [id, c] of Object.entries(costs.lineCost)) this.month.lineCost[Number(id)] = (this.month.lineCost[Number(id)] ?? 0) + c;
+    // Below zero at the month's end: one step closer to bankruptcy (it stops the clock).
+    this.negMonths = this.money < 0 ? this.negMonths + 1 : 0;
+    if (this.isBankrupt()) this.speed = 0;
     this.lastMonth = this.month;
     this.month = emptyBooks();
     this.publish();
@@ -188,7 +200,12 @@ export class GameState {
       month: this.month,
       lastMonth: this.lastMonth,
       loan: this.loan,
+      negMonths: this.negMonths,
     };
+  }
+
+  isBankrupt(): boolean {
+    return this.negMonths >= BANKRUPT_MONTHS;
   }
 
   /** Continue a saved game, or (null) start a new one. */
@@ -201,6 +218,9 @@ export class GameState {
     this.month = s ? { cat: { ...emptyBooks().cat, ...s.month.cat }, lineIncome: { ...s.month.lineIncome }, lineCost: { ...s.month.lineCost } } : emptyBooks();
     this.lastMonth = s?.lastMonth ?? null;
     this.loan = s?.loan ?? 0;
+    this.negMonths = s?.negMonths ?? 0;
+    if (this.isBankrupt()) this.speed = 0;
+    else if (this.speed === 0 && !s) this.speed = 1;
     this.publish();
   }
 
@@ -235,7 +255,7 @@ export class GameState {
   }
 
   setSpeed(speed: GameSpeed): void {
-    if (this.speed === speed) return;
+    if (this.speed === speed || (speed > 0 && this.isBankrupt())) return;
     this.speed = speed;
     this.publish();
   }
@@ -274,6 +294,8 @@ export class GameState {
       month: { cat: { ...this.month.cat }, lineIncome: { ...this.month.lineIncome }, lineCost: { ...this.month.lineCost } },
       lastMonth: this.lastMonth,
       loan: this.loan,
+      negMonths: this.negMonths,
+      bankrupt: this.isBankrupt(),
     };
   }
 

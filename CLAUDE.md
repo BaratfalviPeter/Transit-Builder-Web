@@ -75,11 +75,25 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya érc 0,5/s, fatelep
   deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s, erőmű éget max. 2/s.
   Csak megállóval rendelkező ipar termel, a legüresebb megállóba (kapacitás 100).
+  IPARI SZINTEK: alap × `LEVEL_RATE` [0,5; 1; 1,5; 2; 3] (szint 1–5, kezdő `START_LEVEL` 2). Havonta
+  (`ProductionSim.closeMonth`, a FinanceDriverből) a kínált (`offered`, akkor is, ha a megálló tele)
+  és elvitt (`taken`, a `take`-ben) mennyiség aránya, az előző hónappal átlagolva (`served`): ≥ 0,7 →
+  +1 szint, < 0,3 → −1; az első értékelt hónap nem számít. UI: pöttyök az ipari ikon fölött
+  (`BuildingIcons` `Level`). Mentve: `ProductionSave.industries`.
 - **Belső (mikro) nézet kikapcsolva** (`INTERIORS_ENABLED = false`, `interior.ts`): a
   felhasználó kérésére, előbb a szállítás legyen jó. A kód megvan (12×12 rács, gépek,
   szalag 1,5 mező/s), később visszajön.
 - Járatok (`transport.ts`): teherautó $1500, 20 egység, sebesség 3. Fizetés:
-  egység × érték × (1 + táv/25). Hálózati nézet metrótérkép-stílusban
+  egység × érték × (1 + táv/25) × `timeFactor` (MENETIDŐ: várt idő = táv / PAY_SPEED 1,2 + 12 s;
+  lassabbnál arányosan kevesebb, min. 0,4). A rakomány betöltési ideje `since` (TransportSim `clock`,
+  súlyozott átlag; a raktár is tárolja: `ProductionSim.since/sinceOf`, a raktárban állás is számít).
+  JÁRAT-STATISZTIKA: `lineStats(id)` (`LineFigures`: leszállított egység, időszorzó, jármű-idő /
+  állás — ahol a `blocked` nőtt a tickben), havonta görgetve (`TransportSim.closeMonth`); dugók:
+  `heldCells` → `hotspots()` (≥ HOTSPOT_MIN 20 s/cella/hó), a hálózati nézetben piros lüktető
+  gyűrű (`NetJams`). UI: `LinesPanel` `LineStatsRow` (bevétel / költség / nyereség, 📦, ⏱, 🚦).
+  CSŐD (`GameState`): ha a hónap végén mínuszban → `negMonths`++ (különben 0); `BANKRUPT_MONTHS` 6
+  után `bankrupt` (az óra megáll, `setSpeed` nem indítja), `Bankrupt` ablak a GameUI-ban (Új játék);
+  figyelmeztetés a felső sávban (`ui-bar__warn`). Hálózati nézet metrótérkép-stílusban
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
   megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
   fölött látszanak), világegységben 0,38 cella szélesen.
@@ -304,13 +318,16 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #91 (aluljáró bevágással, automatikus ráépítés, magasabb rácsos híd).
 - Mergelve: #92 (aluljáró mint nyitott betonárok, 2 cellás rámpa, átlátszó cső nélkül).
 - Mergelve: #93 (nagyobb hegyi alagút, végig érő béléscső).
-- Folyamatban: a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella.
+- Mergelve: #94 (a terep megemelése a cső fölött, fekete kapu, alagút max. 40 cella).
+- Folyamatban: játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók.
+- Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
-- A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
+- A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem, PAY_SPEED, LEVEL_RATE)
+- Jelzők / vonatok finomítása (a felhasználó jóváhagyta; konkrétumok tőle)
 - Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

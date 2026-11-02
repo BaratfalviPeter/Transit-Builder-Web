@@ -231,13 +231,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #84 (tágabb sínívek + visszafordító, sín-töltés domboldalon).
 - Mergelve: #85 (Voxel Tycoon-szerű, végtelen hosszú sín-tervező kerülő-korláttal, Shift = egyenes).
 - Mergelve: #86 (párhuzamos sínek bekötése: S-ív, csúszó becsatlakozás, irány a kurzor szerint).
-- Folyamatban (#87): a város mint fogyasztó (piac, kereslet, ellátottság, növekedés) + gazdasági
-  nyomás (fenntartás, járműköltség, Pénzügyek panel, hitel). Feltételes ötlet: lerakható iparágak
-  fix lelőhelyekkel (`ötletek.md`).
+- Mergelve: #87 (a város mint fogyasztó: piac, kereslet, ellátottság, növekedés + gazdasági nyomás:
+  fenntartás, járműköltség, Pénzügyek panel, hitel).
+- TERV (`ötletek.md`, a felhasználó jóváhagyta): a városnak belső nézete lesz — kint csak a kapuk
+  (megállók a városközpont oldalain), bent organikusan nő; áru automatikusan (Mini Motorways),
+  utasok egyszerű vonalhúzással (Mini Metro: busz → villamos → metró). A piac ezért cserére vár:
+  a felhasználónak nem tetszik a „letett” piac; javasolt (A): megálló a városközpont oldalaira.
+- Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.
 
 ## Következő lépések
+- Piac helyett megállók a városközpont oldalain (A változat, a belső nézet kapui)
+- Mentés / betöltés (most nincs: frissítéskor minden elvész), utána hidak
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem); csőd / játék vége?
 - Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként

@@ -374,8 +374,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
 - Mergelve: #97 (bétateszt-csomag), #98 (egyensúly, beállítások, visszajelzés gomb, Dev elrejtve,
   nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
-- Folyamatban: ipari szintek simított mérése. Utána javasolt: városkártya ne takarja a menüt (közelről
-  óriásira nő), mentés letöltése / betöltése fájlként, automatikus grafikai fokozat.
+- Folyamatban: ipari szintek simított mérése (#99).
+- Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
+  letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**

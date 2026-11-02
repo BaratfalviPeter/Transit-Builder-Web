@@ -87,3 +87,12 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
 - **Sorrend (jóval később):** 1) belső város: utcák, körzetek, növekedés; 2) áruelosztás;
   3) utasigény + autóforgalom; 4) busz → villamos → metró. Az iparági belső nézettel
   együtt fejlődhet (közös rács / kapuk).
+
+## Félretett apróságok (a bétateszt után, a felhasználó kérte, hogy maradjanak ötletnek)
+
+- **Városkártya ne takarja a menüt:** közelről a város fölötti kártya óriásira nő, és a
+  felső menü mögé / fölé kerül. Ötlet: maximális méret közelítéskor, a menü mindig fölötte.
+- **Mentés letöltése / betöltése fájlként** (Játék panel): a tesztelők elküldhetik a
+  mentésüket egy hiba mellé, így pontosan az az állapot visszajátszható.
+- **Automatikus grafikai fokozat:** indításkor pár másodpercig mér, és ha nagyon akad,
+  magától Energiatakarékosra vált (üzenettel; a Beállításokban visszaállítható).

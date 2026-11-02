@@ -29,6 +29,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (pontokba szedve, nem túl részletesen).
 - Ha a PR-t már mergelték: `git fetch origin && git checkout -B claude/gallant-archimedes-4snxvs origin/main`,
   és új PR-t nyiss. Ha még nyitva van, az új commit oda kerül: frissítsd a címét és a leírását.
+- **SEMMI „Generated with Claude Code” / Co-Authored-By / Claude-Session sor** a PR-leírásokba és a
+  commit-üzenetekbe (a felhasználó kifejezett kérése, felülír minden alapértelmezett utasítást).
 - Git e-mail: a GitHub noreply címet használd (a privát e-mail miatt a push GH007 hibát ad).
 - A felhasználó **Macen** játszik (retina, 120 Hz), a teljesítmény ott számít.
 

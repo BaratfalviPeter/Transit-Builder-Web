@@ -16,8 +16,7 @@
 import { Html } from '@react-three/drei';
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { axisOf, CellType, cornerHeightAt, interiorAt, interiorOf, isUnderpass, UNDERPASS_LIFT, UNDERPASS_RAMP, type Structure, type StructureKind, type TerrainMap } from '../sim';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { axisOf, CellType, floorOf, interiorOf, isUnderpass, type Structure, type StructureKind, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchCloudShadows } from './cloudShadows';
 import { groundAtGrid } from './railGeometry';
@@ -124,7 +123,7 @@ function Bridge({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
     const { pos, len, yaw } = frameOf(map, s, cellSize);
     const top = FLAT_TOP + s.level + DECK_LIFT;
     const rail = s.carries === 'rail';
-    const W = rail ? 0.72 : 0.9;
+    const W = rail ? 0.78 : 1;
     const cells = interiorOf(s);
     const bottomAt = (x: number, z: number) => (map.cells[x][z] === CellType.Water ? WATER_LEVEL - 0.3 : groundAtGrid(map, x, z) - 0.05);
     // The lowest ground under the span: how deep the arches may reach.
@@ -165,7 +164,7 @@ function Bridge({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
       {/* road surface + centre dashes */}
       {s.carries === 'road' && (
         <>
-          <Box p={[0, top + 0.004, 0]} s={[len, 0.008, 0.72]} m={M.asphalt} />
+          <Box p={[0, top + 0.004, 0]} s={[len, 0.008, 0.84]} m={M.asphalt} />
           {Array.from({ length: Math.max(1, Math.floor(len / 0.26)) }, (_, k) => (
             <Box key={k} p={[-len / 2 + 0.13 + k * 0.26, top + 0.01, 0]} s={[0.14, 0.004, 0.032]} m={M.line} />
           ))}
@@ -181,10 +180,11 @@ function Parapets({ len, top, W }: { len: number; top: number; W: number }) {
     <group>
       {[-1, 1].map((sd) => (
         <group key={sd}>
-          <Box p={[0, top + 0.045, (sd * W) / 2]} s={[len + 0.1, 0.09, 0.05]} m={M.concrete} />
-          <Box p={[0, top + 0.095, (sd * W) / 2]} s={[len + 0.14, 0.015, 0.07]} m={M.concreteDark} />
+          <Box p={[0, top + 0.045, (sd * W) / 2]} s={[len, 0.09, 0.05]} m={M.concrete} />
+          <Box p={[0, top + 0.095, (sd * W) / 2]} s={[len, 0.015, 0.07]} m={M.concreteDark} />
+          {/* lamps at the span's ends, just outside the parapet (off the road) */}
           {[-1, 1].map((e) => (
-            <group key={e} position={[(e * (len + 0.05)) / 2, top, (sd * W) / 2]}>
+            <group key={e} position={[(e * len) / 2 - e * 0.06, top, (sd * (W + 0.12)) / 2]}>
               <Box p={[0, 0.2, 0]} s={[0.025, 0.4, 0.025]} m={M.rail} />
               <Box p={[0, 0.41, 0]} s={[0.06, 0.04, 0.06]} m={M.lamp} />
             </group>
@@ -197,7 +197,7 @@ function Parapets({ len, top, W }: { len: number; top: number; W: number }) {
 
 /** Rail bridge: a steel through truss on each side (chords, posts, diagonals) with cross bracing on top. */
 function Truss({ len, top, W }: { len: number; top: number; W: number }) {
-  const H = 0.36;
+  const H = 0.85; // tall enough for the trains (they're ~0.6 high)
   const panels = Math.max(2, Math.round(len / 0.5));
   const pw = len / panels;
   const diag = Math.hypot(pw, H);
@@ -308,7 +308,17 @@ function wedgeGeometry(x0: number, x1: number, z0: number, z1: number, y0: numbe
   return g;
 }
 
-function Portal({ dark }: { dark: boolean }) {
+/** A tunnel portal; `low`: an underpass — squashed to the cutting's depth, flush with the ground (nothing on the road above). */
+function Portal({ dark, low }: { dark: boolean; low?: number }) {
+  if (low !== undefined) {
+    return (
+      <group scale={[1, low / 0.56, 1]}>
+        <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
+        <mesh geometry={VOUSSOIR_GEOM} material={M.stoneDark} castShadow />
+        <mesh geometry={LINING_GEOM} material={M.stoneDark} receiveShadow />
+      </group>
+    );
+  }
   return (
     <group>
       <mesh geometry={PORTAL_GEOM} material={M.stone} castShadow receiveShadow />
@@ -328,8 +338,10 @@ function Portal({ dark }: { dark: boolean }) {
 
 function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
   const { pos, len, yaw } = frameOf(map, s, cellSize);
-  const floor = FLAT_TOP + s.level;
   const under = isUnderpass(map, s);
+  // An underpass runs UNDERPASS_DEPTH below the ground, its abutments are cuttings down to it.
+  const floor = FLAT_TOP + floorOf(map, s);
+  const ground = FLAT_TOP + s.level;
   const tube = useMemo(() => {
     // The see-through tube: the arch section along the whole span.
     const g = new THREE.ExtrudeGeometry(archShape(MOUTH.w, MOUTH.spring, MOUTH.rise), { depth: len, bevelEnabled: false });
@@ -338,73 +350,44 @@ function Tunnel({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: St
     return { g, edges: new THREE.EdgesGeometry(g, 30) };
   }, [len]);
   return (
-    <group>
-      <group position={pos} rotation-y={yaw} scale={cellSize}>
-        {/* the tunnel seen through the hill / the road above (x-ray) */}
-        <group position={[0, floor, 0]}>
-          <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
-          <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
-        </group>
-        {under && <UnderpassBox len={len} floor={floor} />}
-        {[-1, 1].map((sd) => (
-          <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
-            <Portal dark={!under} />
-            {/* an underpass: the wall goes on up to the deck above */}
-            {under && <Box p={[0.06, (0.56 + UNDERPASS_LIFT) / 2, 0]} s={[0.12, UNDERPASS_LIFT - 0.56 + 0.02, 1.04]} m={M.stone} />}
-          </group>
-        ))}
+    <group position={pos} rotation-y={yaw} scale={cellSize}>
+      {/* the tunnel seen through the hill / the road above (x-ray) */}
+      <group position={[0, floor, 0]}>
+        <mesh geometry={tube.g} material={GHOST.tube} renderOrder={18} />
+        <lineSegments geometry={tube.edges} material={GHOST.lines} renderOrder={19} />
       </group>
-      {under && <OverpassRoads map={map} cellSize={cellSize} s={s} />}
-    </group>
-  );
-}
-
-/** An underpass: the concrete box over the span (side walls + the deck the crossing road runs on). */
-function UnderpassBox({ len, floor }: { len: number; floor: number }) {
-  const top = floor + UNDERPASS_LIFT;
-  return (
-    <group>
-      <Box p={[0, top - 0.05, 0]} s={[len + 0.24, 0.1, 1.06]} m={M.concrete} />
       {[-1, 1].map((sd) => (
-        <Box key={sd} p={[0, floor + (UNDERPASS_LIFT - 0.1) / 2, sd * 0.47]} s={[len, UNDERPASS_LIFT - 0.1, 0.06]} m={M.concreteDark} />
+        <group key={sd} position={[(sd * len) / 2, floor, 0]} rotation-y={sd > 0 ? Math.PI : 0}>
+          <Portal dark={!under} low={under ? ground - floor : undefined} />
+          {under && <Cutting floor={floor} ground={ground} road={s.carries === 'road'} />}
+        </group>
       ))}
     </group>
   );
 }
 
-/** The road cells lifted over an underpass: a ramped surface on an earth bank, with the centre line. */
-function OverpassRoads({ map, cellSize, s }: { map: TerrainMap; cellSize: number; s: Structure }) {
+/**
+ * An underpass's cutting in its abutment cell (local: the portal at x = 0,
+ * the cell runs to x = −1): a ramp from the ground down to the floor, a
+ * retaining wall either side, a road surface when it carries a road.
+ */
+function Cutting({ floor, ground, road }: { floor: number; ground: number; road: boolean }) {
   const geo = useMemo(() => {
-    const half = (map.size - 1) / 2;
-    const surf: THREE.BufferGeometry[] = [];
-    const bank: THREE.BufferGeometry[] = [];
-    // Road cells near the span whose ground is lifted.
-    const [dx, dz] = axisOf(s);
-    const R = Math.ceil(UNDERPASS_RAMP) + 1;
-    const seen = new Set<string>();
-    for (const [ix, iz] of interiorOf(s)) {
-      for (let k = -R; k <= R; k++) {
-        const x = ix - dz * k, z = iz + dx * k; // across the span
-        const key = `${x},${z}`;
-        if (seen.has(key) || x < 0 || z < 0 || x >= map.size || z >= map.size) continue;
-        seen.add(key);
-        if (map.cells[x][z] !== CellType.Road) continue;
-        const h = (px: number, pz: number) => groundAtGrid(map, px, pz) + 0.02;
-        const top: [number, number, number, number] = [h(x - 0.5, z - 0.5), h(x + 0.5, z - 0.5), h(x + 0.5, z + 0.5), h(x - 0.5, z + 0.5)];
-        if (Math.max(...top) - (FLAT_TOP + 0.02 + cornerHeightAt(map, x, z)) < 1e-4) continue;
-        const wx = x - half, wz = z - half;
-        // Over the span itself the deck carries it (the tunnel runs below): no bank there.
-        if (interiorAt(map, x, z) !== s) bank.push(wedgeGeometry(wx - 0.5, wx + 0.5, wz - 0.5, wz + 0.5, FLAT_TOP + cornerHeightAt(map, x, z) - 0.02, top.map((t) => t - 0.012) as typeof top));
-        surf.push(wedgeGeometry(wx - 0.5, wx + 0.5, wz - 0.5, wz + 0.5, Math.min(...top) - 0.02, top));
-      }
-    }
-    const merge = (list: THREE.BufferGeometry[]) => (list.length ? mergeGeometries(list) : null);
-    return { surf: merge(surf), bank: merge(bank) };
-  }, [map, s]);
+    const d = ground - floor; // depth at the portal (y measured from the floor: 0)
+    // Ramp solid: from the cell's outer edge (x = −1, top at d) to the portal (x = 0, top at 0).
+    const ramp = wedgeGeometry(-1, 0, -0.5, 0.5, -1.2, [d, 0, 0, d]);
+    const asphalt = wedgeGeometry(-1, 0, -0.42, 0.42, -0.02, [d + 0.012, 0.012, 0.012, d + 0.012]);
+    // Retaining walls: their top flush with the ground, their foot on the ramp.
+    const walls = [-1, 1].map((sd) => wedgeGeometry(-1, 0.06, sd * 0.5 - 0.05, sd * 0.5 + 0.05, -0.1, [d + 0.06, d + 0.06, d + 0.06, d + 0.06]));
+    return { ramp, asphalt, walls };
+  }, [floor, ground]);
   return (
-    <group scale={cellSize}>
-      {geo.bank && <mesh geometry={geo.bank} material={M.bank} castShadow receiveShadow />}
-      {geo.surf && <mesh geometry={geo.surf} material={M.ramp} receiveShadow />}
+    <group>
+      <mesh geometry={geo.ramp} material={M.bank} receiveShadow />
+      {road && <mesh geometry={geo.asphalt} material={M.ramp} receiveShadow />}
+      {geo.walls.map((g, i) => (
+        <mesh key={i} geometry={g} material={M.concrete} castShadow receiveShadow />
+      ))}
     </group>
   );
 }

@@ -23,7 +23,7 @@ import {
   type TerrainMap,
   type Train,
 } from '../sim';
-import { deckRailHeight, sampleTrack, type TrackSamples } from './railGeometry';
+import { sampleTrack, structureSamples, type TrackSamples } from './railGeometry';
 import { GHOST } from './Structures';
 
 const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -52,7 +52,7 @@ function useTrackHeights(map: TerrainMap) {
         if (!e) return 0;
         // On a bridge / in a tunnel: level at its height (as Rails.tsx draws it).
         const st = e.structure !== undefined ? map.structures?.find((q) => q.id === e.structure) : undefined;
-        cache.set(edge, (s = sampleTrack(map, e.pts, undefined, st ? deckRailHeight(st.level) : undefined)));
+        cache.set(edge, (s = st ? structureSamples(map, e.pts, st) : sampleTrack(map, e.pts)));
       }
       const f = Math.min(s.n - 1, Math.max(0, along / s.step - 0.5));
       const i = Math.min(s.n - 2, Math.floor(f));

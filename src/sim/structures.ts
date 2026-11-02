@@ -174,10 +174,13 @@ export function structurePrice(kind: StructureKind, a: readonly [number, number]
 
 // ------------------------------------------------------------- underpasses
 
-/** An underpass (a tunnel on flat ground, under a road / rail): the road over it rises this high … */
-export const UNDERPASS_LIFT = 0.6;
-/** … over this many cells either side of it, and the underpass is at most this long. */
-export const UNDERPASS_RAMP = 1.5;
+/**
+ * An underpass (a tunnel on flat ground, under a road / rail) is CUT INTO the
+ * ground: its abutment cells are a cutting, ramping down from their outer edge
+ * to UNDERPASS_DEPTH at the portal; the span runs that deep under what crosses
+ * it (which stays on the ground). At most UNDERPASS_MAX cells long.
+ */
+export const UNDERPASS_DEPTH = HILL_STEP;
 export const UNDERPASS_MAX = 3;
 
 const underCache = new WeakMap<Structure, boolean>();
@@ -192,34 +195,28 @@ export function isUnderpass(map: TerrainMap, s: Structure): boolean {
   return u;
 }
 
-/**
- * How much the ground at world point (x, z) is lifted over an underpass: the
- * cells over its span carry what crosses it UNDERPASS_LIFT high, with a ramp
- * UNDERPASS_RAMP cells long on either side (a little overpass). 0 elsewhere.
- */
-export function overpassLift(map: TerrainMap, x: number, z: number): number {
-  const list = map.structures;
-  if (!list?.length) return 0;
-  let best = 0;
-  for (const s of list) {
-    if (s.kind !== 'tunnel' || !isUnderpass(map, s)) continue;
-    const [dx, dz] = axisOf(s);
-    const along = (x - s.a[0]) * dx + (z - s.a[1]) * dz;
-    const span = Math.abs(s.b[0] - s.a[0]) + Math.abs(s.b[1] - s.a[1]);
-    if (along < 0.5 - EPS || along > span - 0.5 + EPS) continue;
-    const perp = Math.abs((x - s.a[0]) * -dz + (z - s.a[1]) * dx);
-    const f = 1 - (perp - 0.5) / UNDERPASS_RAMP;
-    if (f > 0) best = Math.max(best, UNDERPASS_LIFT * Math.min(1, f));
-  }
-  return best;
+/** The underpass whose cutting (an abutment cell) is cell (x, z), or null. */
+export function cutAt(map: TerrainMap, x: number, z: number): Structure | null {
+  const r = structureAt(map, x, z);
+  return r && r.role === 'abutment' && isUnderpass(map, r.s) ? r.s : null;
 }
 
-/** An underpass a vehicle at (x, z) heading (hx, hz) drives along (its abutments or span), or null. */
-export function alongUnderpass(map: TerrainMap, x: number, z: number, hx: number, hz: number): Structure | null {
-  const r = structureAt(map, Math.round(x), Math.round(z));
-  if (!r || !isUnderpass(map, r.s)) return null;
-  const [dx, dz] = axisOf(r.s);
-  return Math.abs(hx * dx + hz * dz) > 0.7 ? r.s : null;
+/** How deep the ground at world point (x, z) is cut away (an underpass ramp), 0 elsewhere. */
+export function cutDepth(map: TerrainMap, x: number, z: number): number {
+  if (!map.structures?.length) return 0;
+  const cx = Math.round(x), cz = Math.round(z);
+  const s = cutAt(map, cx, cz);
+  if (!s) return 0;
+  const [dx, dz] = axisOf(s);
+  const atA = s.a[0] === cx && s.a[1] === cz;
+  // −0.5 at the cell's outer edge … +0.5 at the portal.
+  const t = ((x - cx) * dx + (z - cz) * dz) * (atA ? 1 : -1);
+  return UNDERPASS_DEPTH * Math.max(0, Math.min(1, t + 0.5));
+}
+
+/** Floor of a structure's track / road (cell units, without FLAT_TOP): an underpass runs deeper. */
+export function floorOf(map: TerrainMap, s: Structure): number {
+  return isUnderpass(map, s) ? s.level - UNDERPASS_DEPTH : s.level;
 }
 
 // ------------------------------------------------------------- road links
@@ -259,8 +256,12 @@ export function structureStep(map: TerrainMap, p: { x: number; z: number }, q: {
 
 /** May a ground road / rail step from cell p to the neighbouring cell q? (Not along under / over a span.) */
 export function groundStepOk(map: TerrainMap, p: { x: number; z: number }, q: { x: number; z: number }): boolean {
-  const s = interiorAt(map, p.x, p.z);
-  return !s || s !== interiorAt(map, q.x, q.z);
+  const rp = structureAt(map, p.x, p.z), rq = structureAt(map, q.x, q.z);
+  if (!rp || !rq || rp.s !== rq.s) return true;
+  if (rp.role !== 'interior' && rq.role !== 'interior') return true;
+  // Along the span (abutment → span, or through it): that's the structure's way, not the ground's.
+  const [dx, dz] = axisOf(rp.s);
+  return !(Math.abs(q.x - p.x) === Math.abs(dx) && Math.abs(q.z - p.z) === Math.abs(dz));
 }
 
 /**

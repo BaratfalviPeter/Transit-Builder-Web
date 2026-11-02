@@ -48,7 +48,7 @@
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
 
-import { deckBoxes, inBoxes, roadLinkFrom } from './structures';
+import { deckBoxes, groundStepOk, inBoxes, roadLinkFrom } from './structures';
 import {
   CellType,
   getSlopeKind,
@@ -417,6 +417,7 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
       if (!isRoad(nx, nz)) continue;
       const k = nx * n + nz;
       if (prev[k] !== -2 || noStep.has(c * n * n + k)) continue;
+      if (!groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // along a span: only over / through it
       if (!axisOk(kind(x, z), d) || !axisOk(kind(nx, nz), d)) continue;
       if (Math.abs(map.heights[nx][nz] - map.heights[x][z]) > HILL_STEP + 1e-6) continue;
       const axis = d < 2 ? 'x' : 'z';

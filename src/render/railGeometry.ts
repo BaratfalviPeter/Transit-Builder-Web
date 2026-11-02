@@ -8,7 +8,7 @@
  */
 
 import * as THREE from 'three';
-import { CellType, cellCornerHeights, LineWalker, overpassLift, type TerrainMap } from '../sim';
+import { CellType, cellCornerHeights, cutDepth, floorOf, interiorAt, LineWalker, type Structure, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 
 /** Length of one track unit (cells). The track is this short piece, repeated. */
@@ -23,8 +23,8 @@ export function groundAtGrid(map: TerrainMap, x: number, z: number): number {
   const [h00, h10, h11, h01] = cellCornerHeights(map, cx, cz);
   const s = Math.min(1, Math.max(0, x - cx + 0.5));
   const t = Math.min(1, Math.max(0, z - cz + 0.5));
-  // Over an underpass the road / rail crossing it rises (a small overpass).
-  return FLAT_TOP + (h00 * (1 - s) + h10 * s) * (1 - t) + (h01 * (1 - s) + h11 * s) * t + overpassLift(map, x, z);
+  // An underpass's cutting ramps down into the ground.
+  return FLAT_TOP + (h00 * (1 - s) + h10 * s) * (1 - t) + (h01 * (1 - s) + h11 * s) * t - cutDepth(map, x, z);
 }
 
 export interface TrackSamples {
@@ -46,6 +46,16 @@ const ease = (t: number) => (t >= 1 ? 1 : t * t * (3 - 2 * t));
 /** Rail height on a structure (a bridge deck / a tunnel floor at `structureLevel`), cell units. */
 export function deckRailHeight(structureLevel: number): number {
   return FLAT_TOP + structureLevel;
+}
+
+/**
+ * Track heights of an edge on structure `st`: its floor over the span; on
+ * the abutments the ground (an underpass's cutting ramps down there).
+ */
+export function structureSamples(map: TerrainMap, pts: readonly number[], st: Structure): TrackSamples {
+  const s = sampleTrack(map, pts, UNIT, deckRailHeight(floorOf(map, st)));
+  for (let i = 0; i < s.n; i++) if (interiorAt(map, Math.round(s.x[i]), Math.round(s.z[i])) !== st) s.h[i] = groundAtGrid(map, s.x[i], s.z[i]);
+  return s;
 }
 
 /** Sample a centre-line at unit CENTRES, ≈ every `pitch` cells (`level`: flat at that height). */

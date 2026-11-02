@@ -204,11 +204,15 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   szerkezet celláit kihagyja és a végig bejárt szerkezetre ráteszi az utat. Sín: a `latticeAStar`
   ugrólépése hídfőtől hídfőig, a `compOf` is átköt rajta, a `traceLine` megtartja a két pontot, a
   `validate` a szerkezeten futó mintákat kihagyja, a `buildRail` az ugrást a szerkezetre teszi.
-  ALULJÁRÓ megjelenítése: a keresztező út / sín kis felüljárón megy át (`overpassLift`: UNDERPASS_LIFT
-  0,6 a szerkezet fölött, UNDERPASS_RAMP 1,5 cellás rámpával, a `groundAtGrid` hozzáadja — így a
-  kamionok, sínek is követik); a `Roads.tsx` ezeket a cellákat kihagyja (`overUnderpass`), a
-  `Structures.tsx` rajzolja (`OverpassRoads`, `UnderpassBox`). Az aluljáróban hosszában haladó
-  kamion nem emelkedik meg (`alongUnderpass`). Út: a `roadRoute`
+  ALULJÁRÓ = BEVÁGÁS (a felhasználó kérte; a felüljárós változatot elvetette): a két hídfő cellája
+  ki van vágva a terepből (`cutAt`, TerrainSurface `hole`, mint a bányánál; a patch a structures
+  változására is újraírja), a `groundAtGrid` levonja a `cutDepth`-et (rámpa: a cella külső szélén 0,
+  a kapunál UNDERPASS_DEPTH 0,45), a szerkezet padlója `floorOf` = level − 0,45; a keresztező út a
+  saját szintjén marad. Render: `Cutting` (rámpa-test, aszfalt, támfalak), lapított kapu
+  (`Portal low`). A `Roads.tsx` a bevágás celláit kihagyja. A sín szerkezeti éle:
+  `structureSamples` (a fesztávon a padló, a hídfőkön a talaj). Ha egy üres szerkezet MINDKÉT
+  végéhez út ér (vagy sín, a tengely irányában), magától ráépül (`buildPath` / `buildRail` vége).
+  A `roadRoute` (és a `groundStepOk`) a hídfőből a fesztávba hosszában földi lépést nem enged. Út: a `roadRoute`
   a két hídfőt közvetlenül köti (`roadLinkFrom`), a kamion útvonala UGRIK; `buildLane` egységnyi
   irányokkal + `lane.deck` dobozok (`deckBoxes`), `TruckPose.deck` — a kereszteződés-, sorompó- és
   kamion-ütközésvizsgálat a másik szinten lévőt kihagyja (`inBoxes`). A csomópont-fokszámba a
@@ -286,7 +290,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   városközpont oldalain vannak (ezek lesznek a belső város kapui).
 - Mergelve: #88 (megállók a város szélén, mentés / betöltés, hidak és alagutak).
 - Mergelve: #89 (szebb híd- és alagútmodell, átlátszó alagút).
-- Folyamatban: út / sín húzása átmegy a hídon / alagúton, aluljáró felüljáróval, hegyi alagút csak a hegyen át.
+- Mergelve: #90 (út / sín húzása a hídon / alagúton át, hegyi alagút csak a hegyen át).
+- Folyamatban: aluljáró bevágással, automatikus ráépítés, híd: magasabb rácsos tartó, korlát / lámpa nem lóg az útba.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).
   **Prioritás: a szállítás legyen jó.**
 - A felhasználó nehézségi szintet („mester”) említett, de választó NEM kell, csak az eszközök.

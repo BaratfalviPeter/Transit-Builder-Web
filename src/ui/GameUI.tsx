@@ -32,6 +32,7 @@ import { DevTab } from './DevTab';
 import { LinesPanel } from './LinesPanel';
 import { FinancePanel } from './FinancePanel';
 import { GamePanel } from './GamePanel';
+import { Checklist, Intro, useTutorial } from './Tutorial';
 import './financePanel.css';
 import './gameUI.css';
 
@@ -145,6 +146,7 @@ export function GameUI() {
   const roads = useRoadCount();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [help, setHelp] = useState(false);
+  const tut = useTutorial();
 
   // The Járatok panel IS the network view (and drops the build tool, so map
   // clicks don't build anything meanwhile).
@@ -207,6 +209,8 @@ export function GameUI() {
   return (
     <div className="ui">
       {snap.bankrupt && <Bankrupt />}
+      {tut.introOpen && !snap.bankrupt && <Intro onClose={tut.closeIntro} />}
+      {tut.listOn && !tut.introOpen && <Checklist done={tut.done} onDone={tut.markDone} onClose={tut.closeList} />}
       {/* Top-left: money, date, speed, counters */}
       <div className="ui-bar">
         <div className={'ui-bar__money' + (snap.money < 0 ? ' is-minus' : '')} title={snap.loan > 0 ? `Egyenleg (hitel: ${money(snap.loan)})` : 'Egyenleg'}>
@@ -325,6 +329,26 @@ export function GameUI() {
               <span>Gyorsbillentyűk</span>
               <button type="button" className="ui-panel__close" onClick={() => setHelp(false)}>
                 ✕
+              </button>
+            </div>
+            <div className="ui-help__tut">
+              <button
+                type="button"
+                onClick={() => {
+                  setHelp(false);
+                  tut.openIntro();
+                }}
+              >
+                📖 Bemutató (hogyan működik a játék)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHelp(false);
+                  tut.openList();
+                }}
+              >
+                ✅ Feladatlista
               </button>
             </div>
             <div className="ui-help__cols">

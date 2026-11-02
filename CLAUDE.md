@@ -265,6 +265,12 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Transport). Alagút max. `MAX_TUNNEL` 40 cella (híd: `MAX_SPAN` 14). A bent lévő vonatkocsik / kamionok helyett áttetsző sárga doboz (`GHOST.vehicle`, Trains.tsx /
   Transport.tsx); az átlátszó csövet a felhasználó kérésére kivettük. Teszt: scratchpad `bridge.ts`, `under.ts`
   (kamionjárat aluljárón át, keresztező földi úttal).
+- BEMUTATÓ (`src/ui/Tutorial.tsx`, `tutorial.css`): `Intro` (6 oldalas ablak a játék logikájáról,
+  első indításkor magától, szünetelteti a játékot, „Kihagyás” = feladatlista nélkül) + `Checklist`
+  (bal felső sarokban, 9 feladat, a játék állapotából pipálódik; a `sticky` feladatok — első bevétel,
+  városba szállítás — a `done` listában maradnak). Állapot: localStorage `transit-builder:tutorial`
+  (`useTutorial`). A Súgóból (H) mindkettő újra előhozható. Cél: `GOAL_POPULATION` 5000
+  (`CityDevelopment.ts`).
 - `StaticBatch` megtartja a csúcsszínt (vertexColors anyagnál) — e nélkül a
   lowPoly-modellek feketék.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
@@ -335,8 +341,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #95 (játékhurok — ipari szintek, menetidő szerinti fizetés, csőd, járat-statisztika + dugók).
 - Mergelve: #96 (a város nem nőtt — dátumugrás-hiba, nagyobb városi kereslet, „csak tele induljon”).
 - BÉTATESZT-CSOMAG (a felhasználó jóváhagyta, ebben a sorrendben): 1) áram (szén → erőmű → város,
-  automatikus) — folyamatban; 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
-  szélén (mindkettő átugorható); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
+  automatikus) — kész (#97); 2) indulás: nagy bemutató ablak a játék logikájáról + kis checklist a
+  szélén (mindkettő átugorható) — kész (#97); 3) a többi: megállónként be / ki + szétosztási arány, nagy statisztika
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.
 - Feltételes ötlet: lerakható iparágak fix lelőhelyekkel (`ötletek.md`).

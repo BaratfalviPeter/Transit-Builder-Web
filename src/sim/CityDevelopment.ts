@@ -27,6 +27,8 @@ import { CellType, type TerrainMap } from './terrain';
 
 /** Maximum development level a building can reach. */
 export const MAX_LEVEL = 5;
+/** The beta test's goal: this many inhabitants. */
+export const GOAL_POPULATION = 5000;
 /** Inhabitants per building level (display only). */
 export const POP_PER_LEVEL = 40;
 /** Monthly demand per item: `base + perLevel × size`. */

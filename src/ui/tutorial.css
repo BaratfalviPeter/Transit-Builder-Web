@@ -1,0 +1,227 @@
+/* Tutorial (Tutorial.tsx): the intro window and the checklist. */
+.tut-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 12, 0.55);
+  pointer-events: auto;
+}
+.tut-intro__card.ui-help__card {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  color: #eef0f4;
+}
+.tut-intro__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 18px 22px 6px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.tut-intro__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-dim);
+}
+.tut-intro__body {
+  padding: 4px 22px 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-y: auto;
+  min-height: 210px;
+}
+.tut-intro__body p {
+  margin: 8px 0;
+}
+.tut-intro__body ol,
+.tut-intro__body ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.tut-intro__body li {
+  margin: 6px 0;
+}
+.tut__goal {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(96, 165, 250, 0.14);
+  border: 1px solid rgba(96, 165, 250, 0.45);
+}
+.tut__chains li {
+  list-style: none;
+  margin-left: -20px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.tut__warn {
+  color: #fca5a5;
+}
+.tut__keys div {
+  margin: 8px 0;
+}
+.tut__keys kbd,
+.ui-help__row kbd {
+  white-space: nowrap;
+}
+.tut-intro__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+.tut-intro__dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+}
+.tut-intro__dots button.is-on {
+  background: #60a5fa;
+}
+.tut-intro__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px 16px;
+}
+.tut-intro__spacer {
+  flex: 1;
+}
+.tut-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef0f4;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tut-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.tut-btn--main {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+.tut-btn--main:hover {
+  background: #2f6fe0;
+}
+.tut-btn--ghost {
+  background: transparent;
+  color: var(--ui-dim);
+}
+
+/* Checklist: under the top-left bar. */
+.tut-list.ui-help__card {
+  position: absolute;
+  top: 72px;
+  left: 12px;
+  width: 290px;
+  pointer-events: auto;
+  color: #eef0f4;
+  font-size: 13px;
+  padding-bottom: 6px;
+}
+.tut-list__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 6px;
+}
+.tut-list__toggle,
+.tut-list__close {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0;
+}
+.tut-list__close {
+  color: var(--ui-dim);
+}
+.tut-list__count {
+  margin-left: auto;
+  color: var(--ui-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tut-list__bar {
+  height: 4px;
+  margin: 0 10px 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.tut-list__bar span {
+  display: block;
+  height: 100%;
+  background: #6cc36a;
+  transition: width 0.4s;
+}
+.tut-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px;
+}
+.tut-list__items li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  color: var(--ui-dim);
+}
+.tut-list__items li.is-done {
+  color: #8fdc8a;
+}
+.tut-list__items li.is-next {
+  color: #fff;
+  font-weight: 600;
+}
+.tut-list__mark {
+  width: 14px;
+  flex: none;
+  text-align: center;
+}
+.tut-list__hint {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: #9ec9ff;
+}
+.tut-list__pop {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The help's tutorial buttons. */
+.ui-help__tut {
+  display: flex;
+  gap: 8px;
+  padding: 10px 18px 0;
+}
+.ui-help__tut button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  background: rgba(96, 165, 250, 0.14);
+  color: #eef0f4;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ui-help__tut button:hover {
+  background: rgba(96, 165, 250, 0.26);
+}

@@ -62,3 +62,28 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
 - A városok fixek maradnak (ők a fogyasztók).
 - Jól illik a mikro nézethez és a „lyukból induló bánya” B tervhez: a saját
   gyáradat rendezed be belülről.
+
+## Terv: a város belső (mikro) nézete
+
+> A felhasználó jóváhagyta irányként („ez mehet a tervekbe”). Kint Transport
+> Tycoon, bent egy kicsi, letisztult Cities: Skylines / Mini Motorways.
+
+- **Kint a város csak bemeneti pont:** a városközpont oldalaira épített állomások /
+  rakodók a belső város **kapui** (teherpályaudvar a város szélén).
+- **Bent a város organikusan nő** (utcák, körzetek: lakó, bolt, munkahely) — nincs
+  zónázás, nincs épületlerakás. A játékos a **hálózatot** építi: utak,
+  kereszteződések, lámpák, körforgalmak, egyirányú utcák, megállók, sínek.
+- **Áru: automatikus** (Mini Motorways-szerű): a kapuból kis teherautók maguktól
+  viszik oda, ahol hiány van (boltok, üzemek; a deszka az építkezésekre). Nincs járat.
+  Elosztóraktárak a körzetekben. Ellátatlan bolt bezár; az építkezés csak deszkával halad.
+- **Utasok:** körzetek közötti forgalmi igény (nem egyenkénti emberek — gyors marad).
+  Gyalog / tömegközlekedés / autó: a „legolcsóbbat” választják (gyalog + várakozás +
+  utazás); az autók dugót okoznak, ami a teherautókat és a buszokat is lassítja.
+  Tömegközlekedés **egyszerű vonalhúzással** (Mini Metro-szerű): busz (olcsó, dugóban
+  ragad) → villamos (sín az utcában) → metró (föld alatt, drága, évekkel nyílik).
+  Jegybevétel + üzemeltetés. Mérőszámok: lefedettség, utazási idő, zsúfoltság.
+- **Kapcsolat a kinti játékkal:** elégedettség = áruellátás + közlekedés → növekedés →
+  nagyobb kereslet a kapuknál. Később városok közti személyvonat (átszállás bent).
+- **Sorrend (jóval később):** 1) belső város: utcák, körzetek, növekedés; 2) áruelosztás;
+  3) utasigény + autóforgalom; 4) busz → villamos → metró. Az iparági belső nézettel
+  együtt fejlődhet (közös rács / kapuk).

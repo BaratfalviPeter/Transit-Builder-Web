@@ -173,3 +173,20 @@ Gond: a 6 széles gyár mellé tett 12 hosszú peron furán néz ki. Körzetes (
 - **Rakodótábla**: a vonat úgy áll meg, hogy az első kocsi a garat alá kerüljön, onnan kocsinként
   gördül tovább. Előbb automatikusan (a rakodó része); később lerakható tábla, ha egy vonalon több
   rakodó is van (pl. szén + fa ugyanarra a vonatra).
+
+## Technika: motor, kiadás, teljesítmény (megbeszélve, 2026-11)
+
+- **Marad a web** (nincs Godot / Unity: minden újraírandó lenne). Béta weben; kiadáskor asztali
+  csomag **Electronnal** (ugyanaz a Chromium, amin tesztelünk; a Tauri Macen Safari, Windowson Edge
+  motorral futna). Electronban levehetők a böngészős fékek (háttér-lassítás, GPU-tiltólista, erősebb
+  GPU kérése), több RAM állítható; nehéz számítás natív (C++ / Rust) modulba tehető.
+- **Sorrend:** 1) béta tartalom (rakodók, úttípusok…) → 2) **szimuláció Web Workerbe** (külön magon;
+  ez hozza a legtöbbet, ha a sok jármű lassít, a böngészőben is működik) → 3) **könyvtárfrissítés +
+  WebGPU** kiadás előtt.
+- **WebGPU-próba KÜLÖN ÁGON** (pl. `claude/webgpu-proba`, draft PR; a `main` nem sérül, ha elromlik,
+  eldobjuk). Lépések, külön commitokban: (1) React 18 → 19, R3F 8 → 9, drei 9 → 10, three r169 →
+  legújabb (2026-11: React 19.3, R3F 9.8, drei 10.7, three r187 — mind stabil), még WebGL-lel,
+  ugyanúgy kell kinéznie; (2) felhőárnyék (`cloudShadows.ts`, `onBeforeCompile`) átírása TSL-re;
+  (3) `three/webgpu` renderelő bekapcsolása (magától WebGL2-re vált, ha nincs WebGPU); a besütött
+  árnyék (`shadowMap.needsUpdate`) ellenőrzése. A szimulációhoz (`src/sim/`) nem kell nyúlni.
+  Tesztelni a felhasználó Macén kell (itt nincs GPU). Az (1) lépés önmagában is előbb jöhet.

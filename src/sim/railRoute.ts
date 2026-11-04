@@ -396,8 +396,26 @@ function compOf(map: TerrainMap): Int32Array {
  */
 function latticeSnap(net: RailNet, s: NetSnap, cx: number, cz: number): NetSnap | null {
   if (s.kind === 'end') return endSnap(s);
-  return latticeSnaps(net, s, cx, cz, 1.5)[0] ?? null;
+  const near = latticeSnaps(net, s, cx, cz, 1.5)[0];
+  if (near) return near;
+  // Too close to a switch (or the piece between two switches is too short):
+  // the nearest place a switch may go, on any track within SNAP_SHIFT — not a refusal.
+  let best: NetSnap | null = null;
+  let bd = Infinity;
+  for (const e of net.edges) {
+    if (e.structure !== undefined) continue;
+    const q = latticeSnaps(net, { ...s, edge: e.id }, cx, cz, SNAP_SHIFT)[0];
+    if (!q) continue;
+    const d = Math.hypot(q.x - cx, q.z - cz);
+    if (d < bd) {
+      bd = d;
+      best = q;
+    }
+  }
+  return best;
 }
+/** How far (cells) a switch may move from the cursor when it can't go right there. */
+const SNAP_SHIFT = 4;
 
 const onNode = (x: number, z: number) => Math.abs(x - Math.round(x)) < 1e-3 && Math.abs(z - Math.round(z)) < 1e-3;
 

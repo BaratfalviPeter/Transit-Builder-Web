@@ -151,3 +151,18 @@ a növekedést (mint most az áram).
   1 sávos, ezért ez külön, nagyobb lépés (sávváltás, előzés).
 - Felújítás: a meglévő útra ráhúzva a jobb típus.
 - Sorrend: földút + főút + felújítás → autópálya → (később) járműkopás / szerviz.
+
+## Iparági rakodók a peron helyett (a felhasználó választotta: A irány, 2026-11)
+
+Gond: a 6 széles gyár mellé tett 12 hosszú peron furán néz ki. Körzetes (vonzáskörzet) rendszer NEM kell.
+
+- Minden iparágnak **saját, a modellbe épített rakodója** van: bánya = szénsiló garattal, fatelep =
+  rönkdaru, gyár = rakodórámpák, erőmű = szénbuktató, olajfúró = töltőkar.
+- A játékos csak a sínt / utat vezeti a rakodó alá, nincs külön kilógó peron.
+- A vonat a rakodó alatt **lassan áthalad, és kocsinként tölt** (mint a valódi szénrakodóknál); a sín
+  a telken túl is mehet (iparvágány), így mindegy, hány kocsis a vonat.
+- A kamion a telekre hajt be a saját rakodóállásához (mint a raktárnál).
+- A mikro nézettel összeillik: a rakodó maga a kapu, kint és bent ugyanaz a pont.
+- Nyitott kérdés: fix oldal (a modell része) vagy választható oldal. Kidolgozás: előbb egy iparággal
+  (pl. bánya) mintának.
+- Kiegészítésnek később: futószalag / csővezeték egy szabadon lerakott állomáshoz (nagy hálózatokhoz).

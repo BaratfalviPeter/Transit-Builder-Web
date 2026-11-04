@@ -166,3 +166,10 @@ Gond: a 6 széles gyár mellé tett 12 hosszú peron furán néz ki. Körzetes (
 - Nyitott kérdés: fix oldal (a modell része) vagy választható oldal. Kidolgozás: előbb egy iparággal
   (pl. bánya) mintának.
 - Kiegészítésnek később: futószalag / csővezeték egy szabadon lerakott állomáshoz (nagy hálózatokhoz).
+- **Bővíthető rakodó** (a felhasználó ötlete, jóváhagyva): 1. szinten 1 garat / töltőcső = egyszerre
+  1 kocsi; pénzért 2–3 garat egymás mellett = ennyi kocsi tölt egyszerre (kamionnál 1–3 rakodóállás).
+  A rakodó a TÖLTÉS sebessége, az ipari szint a TERMELÉS — két külön fejlesztés. Nyitott: a garatsor a
+  telken belül marad (max. 3) vagy kilóghat.
+- **Rakodótábla**: a vonat úgy áll meg, hogy az első kocsi a garat alá kerüljön, onnan kocsinként
+  gördül tovább. Előbb automatikusan (a rakodó része); később lerakható tábla, ha egy vonalon több
+  rakodó is van (pl. szén + fa ugyanarra a vonatra).

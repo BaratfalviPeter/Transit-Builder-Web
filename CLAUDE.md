@@ -46,7 +46,10 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   Középre kötés (mid snap): a kurzor iránya dönt (`onward`, ONWARD_MIN 2: előre indul és előre
   csatlakozik, nem fordul vissza); a becsatlakozás csúszhat a sínen ±JOIN_SLIDE (5) cellát
   (`latticeSnaps`), de csak ha a pontos hely nem érhető el, vagy a csúszás ≥ SLIDE_GAIN (6)-tal
-  olcsóbb (különben a kurzor nem irányítaná a hurok bezárását). A kerülő-korlát a tiszta
+  olcsóbb (különben a kurzor nem irányítaná a hurok bezárását). Ha a kurzor egy meglévő váltó mellé
+  esik (ott a `SWITCH_CLEAR` miatt nem lehet váltó), a `latticeSnap` nem tilt, hanem a legközelebbi
+  megengedett pontra csúszik bármelyik sínen `SNAP_SHIFT` (4) cellán belül (a felhasználó jelezte:
+  két leágazás közé nem lehetett bekötni egy harmadikat). Teszt: scratchpad `mid4.ts`. A kerülő-korlát a tiszta
   hosszra + kanyarköltségre vonatkozik (`gl`, a csatlakozási büntetés nélkül), + DETOUR_PER_TURN
   (5) / kényszerű 45° fordulás (hurok bezárása). TIGHT_COST {2: 8, 3: 7}, hogy a 90°-os ív csak
   szűk helyen jöjjön elő.
@@ -375,7 +378,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   ablak (12 hónap), 5000 lakosnál „teszt vége” ablak — kész (#97).
 - Mergelve: #97 (bétateszt-csomag), #98 (egyensúly, beállítások, visszajelzés gomb, Dev elrejtve,
   nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
-- Folyamatban (#99): ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről.
+- Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
+- Folyamatban: sín bekötése váltó mellé (csúszó becsatlakozás).
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

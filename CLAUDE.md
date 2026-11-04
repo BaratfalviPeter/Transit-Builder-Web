@@ -61,11 +61,13 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   (`latticeSnaps`), de csak ha a pontos hely nem érhető el, vagy a csúszás ≥ SLIDE_GAIN (6)-tal
   olcsóbb (különben a kurzor nem irányítaná a hurok bezárását). Ha a kurzor egy meglévő váltó mellé
   esik (ott a `SWITCH_CLEAR` miatt nem lehet váltó), a `latticeSnap` nem tilt, hanem a legközelebbi
-  megengedett pontra csúszik bármelyik sínen `SNAP_SHIFT` (4) cellán belül (a felhasználó jelezte:
-  két leágazás közé nem lehetett bekötni egy harmadikat). Ha a bekötés a kurzornál csak nagy
-  kerülővel menne (`DETOUR_WHY`), a `planRail` a kurzor körüli többi megengedett pontot is kipróbálja
-  (`JOIN_TRIES` 5, `SNAP_SHIFT` cellán belül, a legközelebbi működő nyer; a régi `planRail` most
-  `planRailTo`). Teszt: scratchpad `mid4.ts`, `fork.ts`, `diagS.ts`, `speed.ts`. A kerülő-korlát a tiszta
+  megengedett pontra csúszik `SNAP_SHIFT` (4) cellán belül — CSAK ugyanazon a vágányon vagy a végein
+  hozzá csatlakozókon (párhuzamos szomszéd sínre nem, mert ugrált a végpont). Ha a bekötés a kurzornál
+  csak nagy kerülővel menne (`DETOUR_WHY`), a `planRail` ugyanazon a vágányon a kurzor körüli többi
+  megengedett pontot is kipróbálja (`JOIN_TRIES` 5), de csak akkor fogadja el, ha az útvonal ≤
+  `ALT_DETOUR` 1,3 × a kurzorig mért táv + `ALT_ADD` 6 (a felhasználó jelezte: „ugrál, nagy kört
+  tesz”; a régi `planRail` most `planRailTo`). Teszt: scratchpad `sweep2.ts` (régi / új változat
+  összevetése git worktree-vel: blokkolt, ugrás, oldalváltás, nagy kör). Teszt: scratchpad `mid4.ts`, `fork.ts`, `diagS.ts`, `speed.ts`. A kerülő-korlát a tiszta
   hosszra + kanyarköltségre vonatkozik (`gl`, a csatlakozási büntetés nélkül), + DETOUR_PER_TURN
   (5) / kényszerű 45° fordulás (hurok bezárása). TIGHT_COST {2: 8, 3: 7}, hogy a 90°-os ív csak
   szűk helyen jöjjön elő.
@@ -396,7 +398,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
 - Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
 - Mergelve: #100 (sín bekötése váltó mellé, ötletek).
-- Folyamatban: átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál.
+- Mergelve: #101 (átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál).
+- Folyamatban: a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el.
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

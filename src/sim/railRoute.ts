@@ -73,10 +73,21 @@ const TIGHT_COST: Record<number, number> = { 2: 8, 3: 7 };
 const HAIRPIN_COST = 7;
 /**
  * S-curves (crossovers / lane changes) from an axis heading: [sideways
- * offset, length] — two opposite arcs, radius ≈ 4.3 / 5 / 6.1.
+ * offset, length] — two opposite arcs, radius ≈ 4.3 / 5 / 6.1. (Diagonal ones below.)
  */
 const S_CURVES: ReadonlyArray<[number, number]> = [[1, 4], [2, 6], [3, 8]];
+/**
+ * Diagonal S-curves: [lattice lines across (Δ(z − x), even), lattice steps
+ * along (x + z)] — the parallel diagonal tracks 1.4 / 2.8 / 4.2 cells apart,
+ * about as gentle as the axis ones.
+ */
+const S_CURVES_DIAG: ReadonlyArray<[number, number]> = [[2, 8], [4, 12], [6, 16]];
 const S_COST = 4.5;
+/**
+ * Diagonal S-curves cost more: only taken for a real lane change, not as a
+ * shortcut (cheaper ones closed search states early and lost joins).
+ */
+const S_COST_DIAG = 7;
 /** Extra cost per footprint cell already holding track (crossing). */
 const CROSS_COST = 0.5;
 /** Extra cost per footprint cell running along a track inside a join zone. */
@@ -265,11 +276,18 @@ const MOVES: Move[][] = (() => {
     diag.push([d, 2, 10 + r]);
     diag.push([d.map(([x, z]) => [z, x] as P), -2, 10 + r]);
   }
-  // S-curves (cost key 30 + offset), axis headings only.
+  // S-curves (cost key 30 + offset).
   for (const [o, L] of S_CURVES) {
     const c = sCurve(o, L);
     axis.push([c, 0, 30 + o]);
     axis.push([c.map(([x, z]) => [x, -z] as P), 0, 30 + o]);
+  }
+  // …and from a diagonal: the same S, turned by 45°, onto the next diagonal lattice line(s).
+  for (const [dc, sum] of S_CURVES_DIAG) {
+    const c = sCurve(dc * Math.SQRT1_2, sum * Math.SQRT1_2).map(([x, z]) => [(x - z) * Math.SQRT1_2, (x + z) * Math.SQRT1_2] as P);
+    c[c.length - 1] = [(sum - dc) / 2, (sum + dc) / 2];
+    diag.push([c, 0, 30 + dc / 2]);
+    diag.push([c.map(([x, z]) => [z, x] as P), 0, 30 + dc / 2]);
   }
   // Hairpins (cost key 20).
   const ha = hairpin(false), hd = hairpin(true);
@@ -282,15 +300,15 @@ const MOVES: Move[][] = (() => {
     const q = d >> 1;
     const list: Move[] = [buildMove([[0, 0], DIR[d]], d, false, 0)];
     for (const [tpl, dh, k] of d & 1 ? diag : axis) {
-      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k > 30 ? S_COST : k === 20 ? HAIRPIN_COST : k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
+      list.push(buildMove(tpl.map((p) => rot(p, q)), (d + dh + 8) % 8, true, k > 30 ? (d & 1 ? S_COST_DIAG : S_COST) : k === 20 ? HAIRPIN_COST : k > 10 ? TIGHT_COST[k - 10] : TURN_COST[k]));
     }
     moves.push(list);
   }
   return moves;
 })();
 
-/** Pieces per heading: one straight + a left and a right curve per size (45°, 90°) + 2 hairpins. */
-const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length + 2 + 2 * S_CURVES.length;
+/** Pieces per heading: one straight + a left and a right curve per size (45°, 90°) + 2 hairpins + the S-curves. */
+const MOVES_PER = 1 + 2 * CURVE_K.length + 2 * TIGHT_K.length + 2 + 2 * Math.max(S_CURVES.length, S_CURVES_DIAG.length);
 
 // ------------------------------------------------------- per-map caches
 
@@ -759,6 +777,35 @@ export function validate(map: TerrainMap, pts: number[], start: NetSnap | null, 
 // ------------------------------------------------------- main
 
 export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: number; z: number }): RailPlan {
+  const plan = planRailTo(map, a, b);
+  if (!plan.blocked || plan.reason !== DETOUR_WHY) return plan;
+  // Joining a track there would take a big detour (a curve, a switch in the
+  // way, the wrong side of a fork): try the other places a switch may go
+  // near the cursor, nearest first — the first that works wins.
+  const net = map.railNet ?? EMPTY_NET;
+  if (!snapToNet(net, b.x, b.z)) return plan;
+  const cands: NetSnap[] = [];
+  for (const e of net.edges) {
+    if (e.structure !== undefined) continue;
+    for (const q of latticeSnaps(net, { edge: e.id, along: 0, x: b.x, z: b.z, tx: 1, tz: 0, kind: 'mid' }, b.x, b.z, SNAP_SHIFT)) cands.push(q);
+  }
+  cands.sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z));
+  const tried = new Set<string>();
+  for (const c of cands) {
+    const k = `${c.x},${c.z}`;
+    if (tried.has(k)) continue;
+    tried.add(k);
+    if (tried.size > JOIN_TRIES) break;
+    const alt = planRailTo(map, a, { x: c.x, z: c.z });
+    if (!alt.blocked) return alt;
+  }
+  return plan;
+}
+const DETOUR_WHY = 'Útban van valami — csak nagy kerülővel menne';
+/** Other join spots planRail tries when the one under the cursor needs a big detour. */
+const JOIN_TRIES = 5;
+
+function planRailTo(map: TerrainMap, a: { x: number; z: number }, b: { x: number; z: number }): RailPlan {
   const net = map.railNet ?? EMPTY_NET;
   const pass = passOf(map);
   const empty = (reason: string | null): RailPlan => ({ pts: [], blocked: reason !== null, reason, length: 0, start: null, end: null });
@@ -844,7 +891,7 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
     const last = res.states[res.states.length - 1] >> 3;
     E = alts.find((q) => q.x * n + q.z === last) ?? E;
   }
-  const why = direct ? 'Útban van valami — csak nagy kerülővel menne' : 'Nem vezethető el idáig';
+  const why = direct ? DETOUR_WHY : 'Nem vezethető el idáig';
   const line = traceLine(n, res.states);
   if (line.length < 4) return { ...empty(res.reached ? null : why), start: S };
   const reason = res.reached ? validate(map, line, S, E) : why;

@@ -42,14 +42,19 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
   (TIGHT_K: sugár 2 / 3, átlósan 2√2 / 3√2), + 180°-os visszafordító (`hairpin`: a két vágány
   között 2 üres mező, R 1,5; átlósan (−2, 2)) — a felhasználó kérte, hogy ne legyen ilyen szűk.
   + S-ívek (`S_CURVES`, csak tengelyirányból: 1/2/3 cella oldalra 4/6/8 hosszon, R ≈ 4,3–6,1):
-  vágánykapcsolat / sávváltás, a 3 cellára lévő párhuzamos sínek közti átkötéshez kell.
+  vágánykapcsolat / sávváltás, a 3 cellára lévő párhuzamos sínek közti átkötéshez kell. ÁTLÓS S-ívek
+  is (`S_CURVES_DIAG`: 2 / 4 / 6 átlós rácsvonal = 1,4 / 2,8 / 4,2 cella, 8 / 12 / 16 hosszon, költség
+  `S_COST_DIAG` 7 — olcsóbbnál a keresés korán lezárt állapotokat és bekötések vesztek el).
   Középre kötés (mid snap): a kurzor iránya dönt (`onward`, ONWARD_MIN 2: előre indul és előre
   csatlakozik, nem fordul vissza); a becsatlakozás csúszhat a sínen ±JOIN_SLIDE (5) cellát
   (`latticeSnaps`), de csak ha a pontos hely nem érhető el, vagy a csúszás ≥ SLIDE_GAIN (6)-tal
   olcsóbb (különben a kurzor nem irányítaná a hurok bezárását). Ha a kurzor egy meglévő váltó mellé
   esik (ott a `SWITCH_CLEAR` miatt nem lehet váltó), a `latticeSnap` nem tilt, hanem a legközelebbi
   megengedett pontra csúszik bármelyik sínen `SNAP_SHIFT` (4) cellán belül (a felhasználó jelezte:
-  két leágazás közé nem lehetett bekötni egy harmadikat). Teszt: scratchpad `mid4.ts`. A kerülő-korlát a tiszta
+  két leágazás közé nem lehetett bekötni egy harmadikat). Ha a bekötés a kurzornál csak nagy
+  kerülővel menne (`DETOUR_WHY`), a `planRail` a kurzor körüli többi megengedett pontot is kipróbálja
+  (`JOIN_TRIES` 5, `SNAP_SHIFT` cellán belül, a legközelebbi működő nyer; a régi `planRail` most
+  `planRailTo`). Teszt: scratchpad `mid4.ts`, `fork.ts`, `diagS.ts`, `speed.ts`. A kerülő-korlát a tiszta
   hosszra + kanyarköltségre vonatkozik (`gl`, a csatlakozási büntetés nélkül), + DETOUR_PER_TURN
   (5) / kényszerű 45° fordulás (hurok bezárása). TIGHT_COST {2: 8, 3: 7}, hogy a 90°-os ív csak
   szűk helyen jöjjön elő.
@@ -379,7 +384,8 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 - Mergelve: #97 (bétateszt-csomag), #98 (egyensúly, beállítások, visszajelzés gomb, Dev elrejtve,
   nincs napszakváltás). A felhasználó végigjátszotta (5000 lakos 4 év 4 hónap alatt), tetszett neki.
 - Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
-- Folyamatban: sín bekötése váltó mellé (csúszó becsatlakozás).
+- Mergelve: #100 (sín bekötése váltó mellé, ötletek).
+- Folyamatban: átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál.
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

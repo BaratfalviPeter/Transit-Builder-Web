@@ -390,6 +390,9 @@ Tycoon-szerű). Domborzat, utak, sínek, iparágak, állomások, ipari belső n�
 ## Következő lépések
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem, PAY_SPEED, LEVEL_RATE)
 - Jelzők / vonatok finomítása (a felhasználó jóváhagyta; konkrétumok tőle)
+- Úttípusok: földút + főút + felújítás, utána autópálya (a felhasználó FIXEN szeretné; `ötletek.md`)
+- Ötletek (`ötletek.md`): sokszínű ipar (rakománycsoportok, lépcsőzetes láncok), épületek anyagból,
+  sínépítő vonat
 - Döntés a lerakható iparágakról (`ötletek.md`)
 - Később (`ötletek.md`): a bányát a játékos építi fel (lyukból indul), modellenként
   saját belső tér, többsávos szalagok, hidak, járművek fejlődése az évek során

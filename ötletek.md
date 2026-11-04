@@ -96,3 +96,58 @@ A belső nézet később átalakulhat úgy, hogy **a kinti, makro modell sem ké
   mentésüket egy hiba mellé, így pontosan az az állapot visszajátszható.
 - **Automatikus grafikai fokozat:** indításkor pár másodpercig mér, és ha nagyon akad,
   magától Energiatakarékosra vált (üzenettel; a Beállításokban visszaállítható).
+
+## Sokszínű ipar: alapanyagok, áruk, láncok (ötlet, 2026-11)
+
+Cél: sok áru, de **nem egyszerre** — a város növekedésével nyílnak az új láncok, a járművek
+**rakománycsoportokat** visznek (nem egyes árukat), és van egy „mi miből lesz” lánctérkép.
+Kb. 12–20 áru a felső határ.
+
+**Rakománycsoportok (= kocsi / pótkocsi típus):**
+- 🪨 ömlesztett (garatos kocsi, billencs): szén, érc, homok / kavics, mészkő, gabona
+- 🛢️ folyékony (tartály): olaj, üzemanyag, víz?, tej?
+- 🪵 rönk / hosszú (pőre kocsi): rönk, acél(rúd), cső
+- 📦 darabáru (fedett kocsi, dobozos kamion): deszka, áru, élelmiszer, ruha, bútor, elektronika
+- (később) 👥 utas — a város belső nézetével
+
+**Alapanyagok (lelőhelyek a térképen):**
+- Szén (bánya) · Vasérc (érc bánya) · Homok / kavics (bánya a folyónál) · Mészkő (kőfejtő, hegyen)
+- Rönk (erdő → fatelep) · Gabona (farm) · Állat / tej (farm) · Gyapot? (farm)
+- Olaj (olajfúró, tó / tenger)
+
+**Láncok, lépcsőzetesen nyílnak (a város igényei hozzák):**
+1. KEZDET (most is ez van): szén → erőmű → ⚡ áram · rönk → fatelep → deszka → város / gyár → áru
+2. ÉLELEM: gabona → malom → liszt → pékség / élelmiszergyár → 🍞 élelmiszer → város;
+   állat → vágóhíd → élelmiszer
+3. ÉPÍTŐANYAG: mészkő + homok → cementgyár → cement → betonüzem → beton;
+   vasérc + szén → kohó / acélmű → 🔩 acél (a város építkezései és az épületek építése kéri)
+4. ÜZEMANYAG: olaj → finomító → ⛽ üzemanyag (a város kéri; később a járműveknek is) + műanyag
+5. KÉSZÁRU: deszka + acél → bútorgyár → 🪑 bútor; gyapot → textilgyár → 👕 ruha;
+   műanyag + acél (+ réz?) → elektronikai gyár → 📺 elektronika (a nagy városnak)
+
+**A város igényei szintenként:** kisváros: áru, deszka, áram → közepes: + élelmiszer, üzemanyag,
+cement / acél (építkezés) → nagy: + bútor, ruha, elektronika. Egy ellátatlan igény lassítja / megállítja
+a növekedést (mint most az áram).
+
+## Épületek anyagból (ötlet)
+
+- Az iparág / állomás / raktár **tervét** veszed meg pénzért, az **anyagot oda kell szállítani**
+  (deszka, cement / beton, acél) — az építkezés is szállítási feladat (Workers & Resources-szerű).
+- Holtpont ellen: az első pár épület kész / van kezdő anyagkészlet; utak és sínek pénzből épülnek.
+- Építési terület a térképen: állványzat, a készültség százalékban.
+
+## Sínépítő vonat (ötlet, választható)
+
+- Depóból induló sárga munkavonat a terven végigmegy és megépíti a sínt; az anyagot (sín, talpfa,
+  zúzottkő) a depóba kell szállítani. Lassú → csak „valósághű építés” módban, vagy csak a nagy
+  munkáknál (híd, alagút, hosszú vonal); a munkagép inkább látvány.
+
+## Úttípusok (a felhasználó fixen szeretné — következő nagyobb lépés)
+
+- **Földút**: olcsó, lassú, az elején csak ez van; a kamionok jobban kopnak (amíg nincs járműkopás:
+  drágább üzemeltetés földúton).
+- **Főút**: a mostani aszfalt.
+- **Autópálya**: 2 sáv irányonként, gyors, drága, felhajtók — a forgalmi szimuláció most irányonként
+  1 sávos, ezért ez külön, nagyobb lépés (sávváltás, előzés).
+- Felújítás: a meglévő útra ráhúzva a jobb típus.
+- Sorrend: földút + főút + felújítás → autópálya → (később) járműkopás / szerviz.

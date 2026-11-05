@@ -417,6 +417,13 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
+- Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
+  és ki, elöl forduló, töltőállás-lámpák). Folyamatban: #105 (tartálykamion: `Trailer kind="tank"`).
+- OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön
+  darabokat illeszt): `OilDepotModel truckBays` 1–5 (a kamionos oldal +X felé szélesedik: állások párban,
+  közös szigettel) és `railTracks` 1–3 (a vasúti oldal −X felé, 0,5-ös vágánytávolság, köztük járda, a
+  töltőhíd mindet átfogja; a vágány hossza nem számít, a töltés „előreállós” lesz). A telek mérete:
+  `oilDepotBounds()` (0,5 egységes lépés = 1 mező a játékban). Modellnéző: OilDepotMin / Mix / Max.
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

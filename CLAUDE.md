@@ -408,7 +408,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #100 (sín bekötése váltó mellé, ötletek).
 - Mergelve: #101 (átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál).
 - Folyamatban (#102): a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
-  folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`).
+  folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
+  `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
+  −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

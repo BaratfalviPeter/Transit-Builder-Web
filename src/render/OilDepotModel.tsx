@@ -790,6 +790,11 @@ const CAN_Z = { z0: -0.46, z1: 0.46 };
 const PIPE_Y = 0.64;
 const HEAD_Z = -0.3;
 const SPLIT = { z0: -1.0, z1: -0.62 };
+/**
+ * Where the median wall bends from its diagonal to straight along the canopy: the
+ * straight piece before the canopy is twice what the split's end would give (the user asked).
+ */
+const WALL_BEND_Z = SPLIT.z1 - (CAN_Z.z0 - SPLIT.z1 + 0.03);
 /** Front edge of the turning area and its corner radius. */
 const FRONT_Z = 1.44;
 const TURN_R = 0.24;
@@ -881,7 +886,7 @@ function truckLayout(n: number): TruckLayout {
   // `g` grows it (for its edge lines).
   const wallLine: Array<[number, number]> = [
     [STUB.c, CONN.z1],
-    [medianX, SPLIT.z1],
+    [medianX, WALL_BEND_Z],
     [medianX, MEDIAN_Z1],
   ];
   const island = (g: number) => thickLine(wallLine, MEDIAN_W / 2 + g);

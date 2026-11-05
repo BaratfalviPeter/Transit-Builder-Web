@@ -60,16 +60,18 @@ const M = {
   ballast: std('#6b6256', { roughness: 1, flatShading: true }),
   sleeper: std('#5a3f27'),
   rail: std('#a3a9b0', { roughness: 0.5, metalness: 0.3 }),
-  tank: std('#5d6676', { roughness: 0.7, metalness: 0.3 }),
-  tankRoof: std('#4a5262', { roughness: 0.7, metalness: 0.3 }),
+  tank: std('#626b7c', { roughness: 0.85, metalness: 0.1 }),
+  tankRoof: std('#535b6b', { roughness: 0.85, metalness: 0.1 }),
   rust: std('#8f4a2f', { roughness: 0.95 }),
   rustDark: std('#6a3420', { roughness: 0.95 }),
   wall: std('#4a5262'),
   wallDark: std('#2f3540'),
   wallBack: std('#3f4655'),
   roof: std('#5a5c61', { roughness: 0.6, metalness: 0.3 }),
-  canopy: std('#4a5262', { roughness: 0.6, metalness: 0.3 }),
+  roofRib: std('#6b5244'),
+  canopy: std('#5a5c61', { roughness: 0.85 }),
   frame: std('#2f333a', { roughness: 0.6, metalness: 0.4 }),
+  girder: std('#7d828b', { roughness: 0.65, metalness: 0.3 }),
   steel: std('#7d828b', { roughness: 0.5, metalness: 0.5 }),
   pipe: std('#8f959c', { roughness: 0.5, metalness: 0.35 }),
   dark: std('#2a2c31', { roughness: 0.7 }),
@@ -320,7 +322,7 @@ function LoadingGantry({ phase }: { phase: number }) {
   });
   return (
     <group>
-      <Batch items={GANTRY_RODS} m={M.frame} />
+      <Batch items={GANTRY_RODS} m={M.girder} />
       {/* Footings */}
       {[G.xo, G.xi].map((x) =>
         [G.z0, G.z1].map((z) => (
@@ -328,10 +330,10 @@ function LoadingGantry({ phase }: { phase: number }) {
         )),
       )}
       {/* Walkway grating + yellow handrail on top */}
-      <Box p={[(G.xo + G.xi) / 2, G.top + 0.022, (G.z0 + G.z1) / 2]} s={[0.2, 0.008, G.z1 - G.z0]} m={M.dark} />
+      <Box p={[-1.1, G.top + 0.022, (G.z0 + G.z1) / 2]} s={[0.08, 0.008, G.z1 - G.z0]} m={M.dark} />
       <Box p={[-1.16, G.top + 0.09, (G.z0 + G.z1) / 2]} s={[0.008, 0.008, G.z1 - G.z0]} m={M.yellow} />
       {/* Center beam the arms hang from */}
-      <Box p={[RX, G.chord - 0.01, (G.z0 + G.z1) / 2]} s={[0.04, 0.03, G.z1 - G.z0]} m={M.frame} cast />
+      <Box p={[RX, G.chord - 0.01, (G.z0 + G.z1) / 2]} s={[0.03, 0.03, G.z1 - G.z0]} m={M.girder} cast />
       {/* Product pipe along the gantry top + drops to each arm */}
       <Pipe from={[-1.1, G.top + 0.04, G.z0]} to={[-1.1, G.top + 0.04, G.z1]} r={0.02} m={M.pipe} />
       {ARM_Z.map((z) => (
@@ -358,7 +360,7 @@ function LoadingGantry({ phase }: { phase: number }) {
 
 // --- Tank farm ------------------------------------------------------------------------------
 
-const BUND = { x0: -0.95, x1: 0.2, z0: -1.45, z1: -0.2, h: 0.12, t: 0.035 };
+const BUND = { x0: -0.95, x1: 0.2, z0: -1.45, z1: -0.2, h: 0.18, t: 0.035 };
 const TANK_R = 0.235;
 /** Tanks: center, body height, ladder side angle (0 = facing +Z, π/2 = +X). */
 const TANKS: Array<{ x: number; z: number; h: number; ladder: number }> = [
@@ -368,6 +370,13 @@ const TANKS: Array<{ x: number; z: number; h: number; ladder: number }> = [
   { x: -0.1, z: -0.5, h: 0.7, ladder: Math.PI / 4 },
 ];
 const TANK_BASE = Y0 + 0.03;
+/** Rust patches per tank: angle, width, top-band height and drip length (× tank height). */
+const RUST_PATCHES: Array<{ a: number; w: number; top: number; drip: number; off: number }> = [
+  { a: 0.3, w: 0.13, top: 0.16, drip: 0.34, off: 0.02 },
+  { a: 1.25, w: 0.1, top: 0.24, drip: 0.22, off: -0.015 },
+  { a: 2.4, w: 0.12, top: 0.12, drip: 0.4, off: 0.025 },
+  { a: 4.6, w: 0.11, top: 0.2, drip: 0.28, off: 0 },
+];
 const tankTop = (h: number) => TANK_BASE + h;
 
 /** Ladder rungs of all tanks (one instanced mesh). */
@@ -390,10 +399,10 @@ function TankFarm() {
     <group>
       {/* Bund floor + low walls */}
       <Box p={[cx, 0.103, cz]} s={[x1 - x0, 0.006, z1 - z0]} m={M.joint} />
-      <Box p={[cx, Y0 + h / 2, z0 + t / 2]} s={[x1 - x0, h, t]} m={M.slab} cast />
-      <Box p={[cx, Y0 + h / 2, z1 - t / 2]} s={[x1 - x0, h, t]} m={M.slab} cast />
-      <Box p={[x0 + t / 2, Y0 + h / 2, cz]} s={[t, h, z1 - z0]} m={M.slab} cast />
-      <Box p={[x1 - t / 2, Y0 + h / 2, cz]} s={[t, h, z1 - z0]} m={M.slab} cast />
+      <Box p={[cx, Y0 + h / 2, z0 + t / 2]} s={[x1 - x0, h, t]} m={M.curb} cast />
+      <Box p={[cx, Y0 + h / 2, z1 - t / 2]} s={[x1 - x0, h, t]} m={M.curb} cast />
+      <Box p={[x0 + t / 2, Y0 + h / 2, cz]} s={[t, h, z1 - z0]} m={M.curb} cast />
+      <Box p={[x1 - t / 2, Y0 + h / 2, cz]} s={[t, h, z1 - z0]} m={M.curb} cast />
       {TANKS.map((tk, i) => (
         <Tank key={i} {...tk} seed={i} />
       ))}
@@ -413,27 +422,29 @@ function Tank({ x, z, h, ladder, seed }: { x: number; z: number; h: number; ladd
   const tx = Math.cos(ladder);
   const tz = -Math.sin(ladder);
   const d = TANK_R + 0.02;
-  // Rust streaks: thin plates on the surface, facing the viewer sides (+X / +Z) mostly.
-  const streaks = [0.5 + seed * 0.9, 1.4 + seed * 0.7, 3.6 + seed * 0.5];
+  // Rust patches: a wide piece under the roof edge with a narrower run dripping down.
+  const patches = RUST_PATCHES.map((rp) => ({ ...rp, a: rp.a + seed * 1.3 }));
   return (
     <group>
       <Cyl p={[x, Y0 + 0.015, z]} r={TANK_R + 0.025} h={0.03} m={M.slab} seg={12} />
-      <Cyl p={[x, TANK_BASE + h / 2, z]} r={TANK_R} h={h} m={M.tank} seg={14} />
+      <Cyl p={[x, TANK_BASE + h / 2, z]} r={TANK_R} h={h} m={M.tank} seg={14} open />
       <mesh material={M.tankRoof} position={[x, top + 0.03, z]} castShadow>
-        <coneGeometry args={[TANK_R + 0.008, 0.06, 14]} />
+        <coneGeometry args={[TANK_R + 0.008, 0.06, 14, 1, true]} />
       </mesh>
-      {/* Rust bands: bottom course + one mid seam */}
+      {/* Rust: dark bottom course + irregular patches running down from the roof edge */}
       <Cyl p={[x, TANK_BASE + 0.03, z]} r={TANK_R + 0.004} h={0.05} m={M.rustDark} seg={14} open />
-      <Cyl p={[x, TANK_BASE + h * (0.55 + (seed % 2) * 0.12), z]} r={TANK_R + 0.003} h={0.018} m={M.rust} seg={14} open />
-      <Cyl p={[x, top - 0.012, z]} r={TANK_R + 0.003} h={0.02} m={M.rust} seg={14} open />
-      {streaks.map((a, i) => (
-        <Box
-          key={i}
-          p={[x + Math.sin(a) * (TANK_R + 0.002), TANK_BASE + h * (0.62 - i * 0.12), z + Math.cos(a) * (TANK_R + 0.002)]}
-          s={[0.05 + i * 0.015, h * (0.22 + i * 0.06), 0.006]}
-          m={i === 1 ? M.rustDark : M.rust}
-        />
-      ))}
+      {patches.map((rp, i) => {
+        const cx = x + Math.sin(rp.a) * (TANK_R + 0.002);
+        const cz = z + Math.cos(rp.a) * (TANK_R + 0.002);
+        const hTop = h * rp.top;
+        const hDrip = h * rp.drip;
+        return (
+          <group key={i} position={[cx, top, cz]} rotation={[0, rp.a, 0]}>
+            <Box p={[0, -hTop / 2, 0]} s={[rp.w, hTop, 0.012]} m={M.rust} />
+            <Box p={[rp.off, -hTop - hDrip / 2 + 0.01, -0.001]} s={[rp.w * 0.45, hDrip, 0.01]} m={i % 2 ? M.rustDark : M.rust} />
+          </group>
+        );
+      })}
       {/* Roof railing ring + vent */}
       <mesh material={M.yellow} position={[x, top + 0.07, z]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[TANK_R - 0.02, 0.005, 3, 12]} />
@@ -487,14 +498,15 @@ function prismGeom(w: number, h: number, d: number): THREE.BufferGeometry {
   return g;
 }
 
-const PH = { x: 0.39, w: 0.34, hallZ0: -1.25, hallZ1: -0.9, h: 0.34, rise: 0.12, backZ0: -1.45, backH: 0.5 };
+const PH = { x: 0.39, w: 0.34, hallZ0: -1.21, hallZ1: -0.86, h: 0.34, rise: 0.12, backZ0: -1.38, backH: 0.5 };
 
 function PumpHouse({ phase }: { phase: number }) {
   const fan = useRef<THREE.Group>(null);
-  const gable = useMemo(() => prismGeom(PH.w, PH.rise, PH.hallZ1 - PH.hallZ0), []);
-  const slope = Math.atan2(PH.rise, PH.w / 2);
-  const panelW = Math.hypot(PH.w / 2, PH.rise) + 0.04;
   const hallD = PH.hallZ1 - PH.hallZ0;
+  // Ridge along X: the gable prism spans the hall depth (Z) and is turned by 90°.
+  const gable = useMemo(() => prismGeom(hallD, PH.rise, PH.w), [hallD]);
+  const slope = Math.atan2(PH.rise, hallD / 2);
+  const panelW = Math.hypot(hallD / 2, PH.rise) + 0.04;
   const hallZ = (PH.hallZ0 + PH.hallZ1) / 2;
   const backD = PH.hallZ0 - PH.backZ0;
   const backZ = (PH.hallZ0 + PH.backZ0) / 2;
@@ -507,24 +519,36 @@ function PumpHouse({ phase }: { phase: number }) {
       {/* Gabled hall */}
       <Box p={[PH.x, Y0 + PH.h / 2, hallZ]} s={[PH.w, PH.h, hallD]} m={M.wall} cast />
       <Box p={[PH.x, Y0 + 0.025, hallZ]} s={[PH.w + 0.015, 0.05, hallD + 0.015]} m={M.wallDark} />
-      <mesh geometry={gable} material={M.wall} position={[PH.x, Y0 + PH.h, hallZ]} castShadow />
-      {/* Tilted roof panels with a rust patch */}
-      {[-1, 1].map((side) => (
-        <group key={`r${side}`} position={[PH.x + (side * PH.w) / 4, Y0 + PH.h + PH.rise / 2 + 0.012, hallZ]} rotation={[0, 0, -side * slope]}>
-          <Box p={[0, 0, 0]} s={[panelW, 0.022, hallD + 0.05]} m={M.roof} cast />
-          <Box p={[0, 0.013, -hallD / 4]} s={[panelW * 0.6, 0.006, 0.05]} m={M.rust} />
-        </group>
-      ))}
+      {/* Symmetric gable roof, ridge along X, small overhang, roof ribs */}
+      <group position={[PH.x, Y0 + PH.h, hallZ]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh geometry={gable} material={M.wall} castShadow />
+        {[-1, 1].map((side) => (
+          <group key={side} position={[(side * hallD) / 4, PH.rise / 2 + 0.012, 0]} rotation={[0, 0, -side * slope]}>
+            <Box p={[0, 0, 0]} s={[panelW, 0.022, PH.w + 0.05]} m={M.roof} cast />
+            {[-0.1, 0, 0.1].map((rz) => (
+              <Box key={rz} p={[0, 0.013, rz]} s={[panelW, 0.006, 0.014]} m={M.roofRib} />
+            ))}
+          </group>
+        ))}
+        <Box p={[0, PH.rise + 0.022, 0]} s={[0.03, 0.025, PH.w + 0.05]} m={M.wallDark} />
+      </group>
       {/* Front: door + windows; side windows */}
       <Box p={[PH.x - 0.06, Y0 + 0.11, PH.hallZ1 + 0.004]} s={[0.1, 0.2, 0.008]} m={M.door} />
       <Box p={[PH.x + 0.09, Y0 + 0.2, PH.hallZ1 + 0.004]} s={[0.08, 0.07, 0.008]} m={M.glass} />
-      {[-1.18, -1.0].map((z) => (
+      {[-1.14, -0.96].map((z) => (
         <Box key={z} p={[PH.x - PH.w / 2 - 0.004, Y0 + 0.22, z]} s={[0.008, 0.07, 0.1]} m={M.glass} />
       ))}
       {/* Taller back block with flat roof, roof fan and chimney */}
       <Box p={[PH.x, Y0 + PH.backH / 2, backZ]} s={[PH.w, PH.backH, backD]} m={M.wallBack} cast />
       <Box p={[PH.x, roofY + 0.012, backZ]} s={[PH.w + 0.02, 0.024, backD + 0.02]} m={M.roof} cast />
-      <Box p={[PH.x, Y0 + 0.3, PH.backZ0 - 0.004]} s={[0.12, 0.08, 0.008]} m={M.steel} />
+      {/* Back face: louvred vent (frame + slats), door, barrels */}
+      <Box p={[PH.x + 0.07, Y0 + 0.3, PH.backZ0 - 0.004]} s={[0.13, 0.11, 0.008]} m={M.wallDark} />
+      {[-0.03, 0, 0.03].map((dy) => (
+        <Box key={dy} p={[PH.x + 0.07, Y0 + 0.3 + dy, PH.backZ0 - 0.01]} s={[0.12, 0.012, 0.012]} m={M.steel} />
+      ))}
+      <Box p={[PH.x - 0.08, Y0 + 0.11, PH.backZ0 - 0.004]} s={[0.09, 0.2, 0.008]} m={M.door} />
+      <Barrel x={PH.x + 0.03} z={PH.backZ0 - 0.045} />
+      <Barrel x={PH.x + 0.1} z={PH.backZ0 - 0.045} m={M.rust} />
       <Box p={[PH.x - PH.w / 2 - 0.004, Y0 + 0.12, backZ]} s={[0.008, 0.2, 0.09]} m={M.door} />
       <Box p={[PH.x - 0.06, roofY + 0.08, backZ]} s={[0.16, 0.12, 0.16]} m={M.steel} cast />
       <Cyl p={[PH.x - 0.06, roofY + 0.145, backZ]} r={0.065} h={0.012} m={M.dark} seg={12} />
@@ -548,12 +572,12 @@ function Piping() {
   return (
     <group>
       {/* Incoming pipeline from the back edge, between the two tank columns */}
-      <Pipe from={[-0.37, 0.3, -1.5]} to={[-0.37, 0.3, -0.8]} r={0.035} m={M.rust} />
-      <Collar p={[-0.37, 0.3, -1.47]} r={0.048} axis="z" />
-      <Collar p={[-0.37, 0.3, -1.25]} r={0.048} axis="z" />
-      <Collar p={[-0.37, 0.3, -0.82]} r={0.048} axis="z" />
-      <Box p={[-0.37, 0.19, -1.35]} s={[0.05, 0.18, 0.03]} m={M.frame} />
-      <Box p={[-0.37, 0.19, -0.85]} s={[0.05, 0.18, 0.03]} m={M.frame} />
+      <Pipe from={[-0.37, 0.34, -1.5]} to={[-0.37, 0.34, -0.8]} r={0.035} m={M.rust} />
+      <Collar p={[-0.37, 0.34, -1.47]} r={0.048} axis="z" />
+      <Collar p={[-0.37, 0.34, -1.25]} r={0.048} axis="z" />
+      <Collar p={[-0.37, 0.34, -0.82]} r={0.048} axis="z" />
+      <Box p={[-0.37, 0.205, -1.35]} s={[0.05, 0.21, 0.03]} m={M.frame} />
+      <Box p={[-0.37, 0.205, -0.85]} s={[0.05, 0.21, 0.03]} m={M.frame} />
       {/* Front tank outlets through the bund wall to the manifold */}
       {[-0.64, -0.1].map((x) => (
         <group key={x}>
@@ -690,8 +714,8 @@ function TruckLane({ phase }: { phase: number }) {
       <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.028, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0, 0.02, CAN.z1 - CAN.z0]} m={M.canopy} cast />
       {/* Roof pipes + valves */}
       <Pipe from={[0.52, 0.64, -0.38]} to={[1.36, 0.64, -0.38]} r={0.022} m={M.rust} />
-      <Pipe from={[LANE_A, 0.625, -0.38]} to={[LANE_A, 0.625, 0.38]} r={0.018} m={M.pipe} />
-      <Pipe from={[LANE_B, 0.625, -0.38]} to={[LANE_B, 0.625, 0.38]} r={0.018} m={M.pipe} />
+      <Pipe from={[LANE_A, 0.625, -0.38]} to={[LANE_A, 0.625, 0.38]} r={0.018} m={M.rust} />
+      <Pipe from={[LANE_B, 0.625, -0.38]} to={[LANE_B, 0.625, 0.38]} r={0.018} m={M.rust} />
       <Collar p={[LANE_A, 0.64, -0.38]} r={0.03} axis="y" />
       <Collar p={[LANE_B, 0.64, -0.38]} r={0.03} axis="y" />
       <Valve p={[LANE_A, 0.625, 0.1]} axis="z" />

@@ -871,18 +871,16 @@ function truckLayout(n: number): TruckLayout {
       [STUB.c - STUB.h + i, CONN.z0 - 0.1],
     ];
   };
-  // The median: a thin L-shaped curb wall (along the back strip from the access road's
-  // center line, then up between the bays and the OUT lane), grown by `g` for its edge lines.
-  // Only a wall — the asphalt round it stays wide enough for the trucks to turn.
-  const mw = MEDIAN_W / 2;
-  const island = (g: number): Array<[number, number]> => [
-    [STUB.c - g, CONN.z1 - mw - g],
-    [medianR + g, CONN.z1 - mw - g],
-    [medianR + g, MEDIAN_Z1 + g],
-    [medianL - g, MEDIAN_Z1 + g],
-    [medianL - g, CONN.z1 + mw + g],
-    [STUB.c - g, CONN.z1 + mw + g],
+  // The median: a thin curb wall from the access road's center line diagonally up to the
+  // canopy's back corner (parallel to the IN lane's split), then straight on between the
+  // bays and the OUT lane. Only a wall — the asphalt round it stays wide for turning.
+  // `g` grows it (for its edge lines).
+  const wallLine: Array<[number, number]> = [
+    [STUB.c, CONN.z1],
+    [medianX, SPLIT.z1],
+    [medianX, MEDIAN_Z1],
   ];
+  const island = (g: number) => thickLine(wallLine, MEDIAN_W / 2 + g);
   const toV = (pts: Array<[number, number]>) => pts.map(([px, pz]) => new THREE.Vector2(px, -pz));
   const shape = new THREE.Shape(toV(outline(0)));
   shape.holes.push(new THREE.Path(toV(island(0))));
@@ -949,6 +947,33 @@ function truckLayout(n: number): TruckLayout {
     [can.x1 - 0.07, CAN_Y + 0.06, 0.41],
   ];
   return { bays, islands, in: IN, medianL, medianX, laneX1, outX, medianGeo, lotX1, can, beacons, geo, lines, arrows, stripes };
+}
+
+/** A polygon around a polyline, `half` to either side (mitred corners, square ends). */
+function thickLine(pts: Array<[number, number]>, half: number): Array<[number, number]> {
+  const n = pts.length;
+  const dir = (i: number) => {
+    const [ax, az] = pts[i];
+    const [bx, bz] = pts[i + 1];
+    const l = Math.hypot(bx - ax, bz - az);
+    return [(bx - ax) / l, (bz - az) / l] as [number, number];
+  };
+  const side = (sgn: number) =>
+    pts.map(([x, z], i) => {
+      if (i === 0 || i === n - 1) {
+        const [dx, dz] = dir(i === 0 ? 0 : n - 2);
+        return [x - dz * half * sgn, z + dx * half * sgn] as [number, number];
+      }
+      // Mitre: along the bisector of the two normals.
+      const [ax, az] = dir(i - 1);
+      const [bx, bz] = dir(i);
+      const nx = -(az + bz);
+      const nz = ax + bx;
+      const nl = Math.hypot(nx, nz);
+      const k = half / Math.max(0.2, (nx / nl) * -az + (nz / nl) * ax);
+      return [x + (nx / nl) * k * sgn, z + (nz / nl) * k * sgn] as [number, number];
+    });
+  return [...side(1), ...side(-1).reverse()];
 }
 
 /** Side (−1 / +1) of an island a bay lies on. */

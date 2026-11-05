@@ -426,7 +426,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   `oilDepotBounds()` (0,5 egységes lépés = 1 mező a játékban). Modellnéző: OilDepotMin / Mix / Max.
   BEJÁRAT: hátul EGYETLEN kétirányú útcsonk (`STUB`, 0,5 széles = 1 mező, szaggatott felezővonal, két sorompó);
   bent a bal fele a bejövő sáv (szétválik az állásokra), a jobb felére a hátsó sávon (`CONN`) át fut vissza a
-  kimenő sáv; köztük csak egy vékony, L alakú szegélyfal (`medianGeo`, lyuk az aszfaltban — a felhasználó kérte, hogy
+  kimenő sáv; köztük csak egy vékony szegélyfal (`medianGeo`, `thickLine`: a bejárati út közepétől ÁTLÓSAN a tető hátsó sarkáig, onnan egyenesen, lyuk az aszfaltban — a felhasználó kérte, hogy
   ne legyen kitöltve, mert a kamionok nem férnének el). A játékban 1 bejárati útmező lesz.
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.

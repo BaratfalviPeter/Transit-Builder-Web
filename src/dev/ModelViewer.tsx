@@ -9,7 +9,7 @@
  * the dev model editor works here too.
  *
  * URL parameters:
- *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | OilDepotModel | StationModel
+ *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | OilDepotModel | StationModel | … | Truck | Tanker
  *   view  = iso | front | side | back | top   (starting camera view)
  *   ui=0  → no panel (clean screenshots)
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
@@ -29,7 +29,7 @@ import { OilRigModel } from '../render/OilRigModel';
 import { OilDepotModel } from '../render/OilDepotModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
-import { TruckPreview } from '../render/TruckModel';
+import { TankerPreview, TruckPreview } from '../render/TruckModel';
 import { LocoPreview, TrainPreview, WagonsPreview } from '../render/TrainModel';
 import { DepotPreview } from '../render/DepotModel';
 import { CrossingPreview } from '../render/LevelCrossings';
@@ -66,6 +66,7 @@ export const VIEWER_MODELS: Array<{
   { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
   { id: 'Truck', label: 'Kamion', Comp: TruckPreview, zoom: 1.0, lookY: 0.3 },
+  { id: 'Tanker', label: 'Tartálykamion', Comp: TankerPreview, zoom: 1.0, lookY: 0.3 },
   { id: 'Train', label: 'Vonat', Comp: TrainPreview, zoom: 1.25, lookY: 0.4 },
   { id: 'Loco', label: 'Mozdony közelről', Comp: LocoPreview, zoom: 1.9, lookY: 0.6 },
   { id: 'Wagons', label: 'Kocsik közelről', Comp: WagonsPreview, zoom: 1.8, lookY: 0.5 },

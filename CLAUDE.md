@@ -133,7 +133,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Sima mozgás: a szimuláció 50 ms-onként lép (`useTransport` TICK_MS), a renderer a két
   utolsó lépés között interpolál (`drawPose` / `trainDrawS`, `prevS` + `prevLane`/`prevPath`,
   `tickAt`/`tickGap`). Új renderelő kódban NE a nyers `pose()`/`t.s`-t használd.
-- Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer`, origó a nyeregnél, 5 háló /
+- Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer` (`kind` 'box' | 'tank': ponyvás vagy tartályos pótkocsi,
+  ugyanazzal az alvázzal / kerekekkel; a tartály szín a `TruckColors.tank`, `TANK_COLORS`; a játékban még nincs használva), origó a nyeregnél, 5 háló /
   kamion), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
   pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
   (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
@@ -353,7 +354,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=MineModel&view=iso&ui=0` (id a `VIEWER_MODELS`-ből, `src/dev/ModelViewer.tsx`:
   MineModel, LumberMillModel, PowerPlantModel, FactoryModel, OilRigModel, StationModel, TruckStopModel,
-  Truck, Train, Loco, Wagons, Depot, Crossing; view = iso | front | side | back | top; ui=0 = panel
+  Truck, Tanker, Train, Loco, Wagons, Depot, Crossing, OilDepotModel; view = iso | front | side | back | top; ui=0 = panel
   nélkül; kész: `body[data-viewer-ready="<id>:<view>"]`; ismeretlen id → csendben az első modell).
 - MODELLKÉSZÍTŐ FOLYAMAT (a felhasználó hozta, 2026-11): `/new-model <Név>Model <ref/kép.png> [leírás]`
   (`.claude/commands/new-model.md`) → `model-builder` ágens (TSX + regisztráció a nézőben) ↔

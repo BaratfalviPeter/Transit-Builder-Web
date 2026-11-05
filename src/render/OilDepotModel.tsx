@@ -77,6 +77,8 @@ const M = {
   dark: std('#2a2c31', { roughness: 0.7 }),
   rubber: std('#1f2125', { roughness: 0.9 }),
   lens: std('#a8641e', { roughness: 0.4 }),
+  lampRed: std('#5a1a14', { roughness: 0.4 }),
+  lampGreen: std('#1a4a22', { roughness: 0.4 }),
   yellow: std('#e8b82e', { roughness: 0.5 }),
   red: std('#c23a2b', { roughness: 0.5 }),
   blue: std('#4f7fae', { roughness: 0.6 }),
@@ -96,6 +98,8 @@ Object.values(M).forEach((m) => patchCloudShadows(m));
 const GLOW = {
   window: new THREE.MeshBasicMaterial({ color: '#ffd36b', toneMapped: false }),
   beacon: new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
+  red: new THREE.MeshBasicMaterial({ color: '#ff3a2a', toneMapped: false }),
+  green: new THREE.MeshBasicMaterial({ color: '#4dff6a', toneMapped: false }),
 };
 
 /** Top of the base slab. */
@@ -691,7 +695,9 @@ function Piping() {
  *   - at the front, both bays turn round a rounded U into the OUT lane, which
  *     runs back past the canopy to the exit.
  */
-const LANE = { x0: 0.58, x1: 1.46 };
+const LANE = { x0: 0.58, x1: 1.4 };
+/** Exit barrier post: on the concrete strip right of the OUT lane. */
+const EXIT_POST_X = 1.44;
 /** IN lane at the back, before it splits. */
 const IN = { x0: 0.78, x1: 1.13 };
 /** Median between the bays / IN lane and the OUT lane; its nose at MEDIAN_Z1. */
@@ -800,6 +806,8 @@ function TruckLane({ phase }: { phase: number }) {
   const entry = useRef<THREE.Group>(null);
   const exit = useRef<THREE.Group>(null);
   const laneGeo = useMemo(laneGeometry, []);
+  /** Per bay: [red lamp, green lamp] glow meshes. */
+  const lamps = useRef<Array<THREE.Mesh | null>>([]);
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
     armRefs.current.forEach((g, i) => {
@@ -814,6 +822,14 @@ function TruckLane({ phase }: { phase: number }) {
       const up = Math.min(1, Math.max(0, c < 4 ? c / 0.8 : (4.8 - c) / 0.8));
       return up * 1.35;
     };
+    // Bay lights: the bays take turns to leave (8 s cycle), green for one at a time.
+    const goA = ((t % 8) + 8) % 8 < 4;
+    [goA, !goA].forEach((go, bay) => {
+      const red = lamps.current[bay * 2];
+      const green = lamps.current[bay * 2 + 1];
+      if (red) red.visible = !go;
+      if (green) green.visible = go;
+    });
     if (entry.current) entry.current.rotation.z = open(t); // arm toward +X
     if (exit.current) exit.current.rotation.z = -open(t + 4); // arm toward −X
   });
@@ -926,6 +942,37 @@ function TruckLane({ phase }: { phase: number }) {
         ))}
       </group>
 
+      {/* Red / green light at the end of each bay: a post on the island nose with an
+          arm, one signal head per bay facing the waiting truck (−Z) */}
+      <Box p={[ISLAND.x, 0.26, ISLAND.z1 + 0.05]} s={[0.018, 0.3, 0.018]} m={M.frame} cast />
+      <Box p={[ISLAND.x, 0.4, ISLAND.z1 + 0.05]} s={[LANE_B - LANE_A - 0.12, 0.014, 0.014]} m={M.frame} />
+      {[LANE_A + 0.06, LANE_B - 0.06].map((x, bay) => (
+        <group key={x} position={[x, 0.37, ISLAND.z1 + 0.05]}>
+          <Box p={[0, 0, 0]} s={[0.035, 0.075, 0.03]} m={M.dark} cast />
+          <Box p={[0, 0.042, -0.004]} s={[0.04, 0.006, 0.035]} m={M.dark} />
+          {([
+            [0.018, M.lampRed, GLOW.red],
+            [-0.018, M.lampGreen, GLOW.green],
+          ] as const).map(([dy, dim, glow], k) => (
+            <group key={k} position={[0, dy, -0.016]}>
+              <mesh material={dim} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.011, 0.011, 0.004, 10]} />
+              </mesh>
+              <mesh
+                material={glow}
+                position={[0, 0, -0.001]}
+                rotation={[Math.PI / 2, 0, 0]}
+                ref={(el) => {
+                  lamps.current[bay * 2 + k] = el;
+                }}
+              >
+                <cylinderGeometry args={[0.0115, 0.0115, 0.004, 10]} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      ))}
+
       {/* Back edge: IN barrier (pivot left of the IN lane) + gatehouse, OUT barrier
           (pivot at the lot edge); signs facing the road */}
       <Box p={[IN.x0 - 0.03, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
@@ -933,10 +980,10 @@ function TruckLane({ phase }: { phase: number }) {
       <group ref={entry} name="entryBarrier" position={[IN.x0 - 0.03, 0.22, -1.3]}>
         <Barrier dir={1} len={IN.x1 - IN.x0 + 0.02} />
       </group>
-      <Box p={[LANE.x1 - 0.02, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[LANE.x1 - 0.02, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={exit} name="exitBarrier" position={[LANE.x1 - 0.02, 0.22, -1.3]}>
-        <Barrier dir={-1} len={LANE.x1 - MEDIAN_X - 0.06} />
+      <Box p={[EXIT_POST_X, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[EXIT_POST_X, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={exit} name="exitBarrier" position={[EXIT_POST_X, 0.22, -1.3]}>
+        <Barrier dir={-1} len={EXIT_POST_X - MEDIAN_X - 0.04} />
       </group>
       <GateHouse />
       {/* IN: blue "straight ahead" sign */}
@@ -968,7 +1015,7 @@ function Barrier({ dir, len = 0.8 }: { dir: 1 | -1; len?: number }) {
       {bands.map((k) => (
         <Box key={k} p={[dir * k, 0, 0]} s={[0.09, 0.022, 0.022]} m={M.red} />
       ))}
-      <Box p={[-dir * 0.05, 0, 0]} s={[0.07, 0.04, 0.03]} m={M.dark} />
+      <Box p={[-dir * 0.035, 0, 0]} s={[0.04, 0.04, 0.03]} m={M.dark} />
     </group>
   );
 }

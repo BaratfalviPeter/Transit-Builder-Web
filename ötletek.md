@@ -190,3 +190,26 @@ Gond: a 6 széles gyár mellé tett 12 hosszú peron furán néz ki. Körzetes (
   (3) `three/webgpu` renderelő bekapcsolása (magától WebGL2-re vált, ha nincs WebGPU); a besütött
   árnyék (`shadowMap.needsUpdate`) ellenőrzése. A szimulációhoz (`src/sim/`) nem kell nyúlni.
   Tesztelni a felhasználó Macén kell (itt nincs GPU). Az (1) lépés önmagában is előbb jöhet.
+
+## Olaj a partra: csővezeték + olajterminál (megbeszélve, 2026-11)
+
+Most a fúrótoronyhoz nem építhető megálló (`stations.ts`), az olaj a tóban ragad.
+- Új eszköz: **Cső**. A vízen **víz alatt** fut (csak bóják / halvány vonal jelzi, élethű: a tengeri
+  fúrókból is a mederben megy a cső), a partra érve a föld alatt (jelzőoszlopok), utat / sínt alatta
+  keresztez (nincs ütközés).
+- A parton **olajterminál** (tartálypark) — ennek van rakodója: tartálykocsis vonat / tartálykamion
+  viszi tovább (finomítóba, később városba).
+- **Bővíthető cső**: vékony = kevés olaj / s, vastagabb = több (mint a garatok a rakodónál).
+- Csak folyadékra (olaj, később üzemanyag a finomítóból); a szilárd árut nem váltja ki.
+- Nyitott: a cső csak a terminálig, vagy közvetlenül a finomítóig is húzható.
+- Később: **kikötő + tankhajó** külön szállítási módként, ha lesz nagyobb víz (folyó / tenger).
+
+## Térképméret (becslés, mérés nélkül, 2026-11)
+
+Most 121×121. Kiadáskor választható méret: kicsi 121, közepes ~180, nagy ~256.
+- ~180: szinte semmi teendő (árnyék finomítása).
+- ~256: árnyék régiókra bontva (most egyetlen árnyéktérkép fedi a térképet, `SHADOW_EXTENT`), mentés
+  tömörítve / IndexedDB (a localStorage kb. 5 MB), a sín-tervező `MAX_EXPAND` emelése.
+- ~512 („óriás”, később): terep darabokra bontva + LOD + takarás, szimuláció Web Workerben.
+- A valódi korlát a járművek száma / útkeresés és a mentés mérete, nem a terep. Előtte mérés a
+  felhasználó Macén (ideiglenesen nagyobb térkép, rajzolási hívások, sebesség).

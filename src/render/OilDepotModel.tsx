@@ -259,7 +259,8 @@ function RailSiding() {
       <Box p={[-1.06, 0.15, 0]} s={[0.2, 0.1, 2.4]} m={M.slab} cast />
       <Box p={[-1.148, 0.201, 0]} s={[0.016, 0.003, 2.4]} m={M.yellow} />
       {/* Bollards + a small hut at the platform end */}
-      <Box p={[-1.04, 0.28, 1.0]} s={[0.12, 0.16, 0.14]} m={M.wallDark} cast />
+      <Box p={[-1.04, 0.28, 1.0]} s={[0.12, 0.16, 0.14]} m={M.girder} cast />
+      <Box p={[-1.04, 0.33, 1.0]} s={[0.124, 0.018, 0.144]} m={M.yellow} />
       <Box p={[-1.04, 0.37, 1.0]} s={[0.15, 0.02, 0.17]} m={M.roof} cast />
       <Box p={[-1.04, 0.28, 0.928]} s={[0.05, 0.1, 0.006]} m={M.door} />
     </group>
@@ -441,7 +442,8 @@ function Tank({ x, z, h, ladder, seed }: { x: number; z: number; h: number; ladd
         return (
           <group key={i} position={[cx, top, cz]} rotation={[0, rp.a, 0]}>
             <Box p={[0, -hTop / 2, 0]} s={[rp.w, hTop, 0.012]} m={M.rust} />
-            <Box p={[rp.off, -hTop - hDrip / 2 + 0.01, -0.001]} s={[rp.w * 0.45, hDrip, 0.01]} m={i % 2 ? M.rustDark : M.rust} />
+            <Box p={[rp.off, -hTop - (hDrip * 0.55) / 2 + 0.01, -0.001]} s={[rp.w * 0.5, hDrip * 0.55, 0.01]} m={M.rust} />
+            <Box p={[rp.off * 1.4, -hTop - hDrip * 0.55 - (hDrip * 0.45) / 2 + 0.02, -0.002]} s={[rp.w * 0.22, hDrip * 0.45, 0.008]} m={i % 2 ? M.rustDark : M.rust} />
           </group>
         );
       })}
@@ -703,13 +705,13 @@ function TruckLane({ phase }: { phase: number }) {
       {[CAN.x0 + 0.02, CAN.x1 - 0.02].map((x) =>
         [CAN.z0 + 0.03, CAN.z1 - 0.03].map((z) => (
           <group key={`${x}${z}`}>
-            <Box p={[x, (0.11 + CAN.y) / 2, z]} s={[0.035, CAN.y - 0.11, 0.035]} m={M.frame} cast />
+            <Box p={[x, (0.11 + CAN.y) / 2, z]} s={[0.035, CAN.y - 0.11, 0.035]} m={M.wall} cast />
             <Box p={[x, 0.13, z]} s={[0.06, 0.04, 0.06]} m={M.yellow} />
           </group>
         )),
       )}
-      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z0 + 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.frame} cast />
-      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z1 - 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.frame} cast />
+      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z0 + 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.wall} cast />
+      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z1 - 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.wall} cast />
       <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.005, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0 + 0.04, 0.03, CAN.z1 - CAN.z0 + 0.04]} m={M.wallDark} cast />
       <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.028, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0, 0.02, CAN.z1 - CAN.z0]} m={M.canopy} cast />
       {/* Roof pipes + valves */}

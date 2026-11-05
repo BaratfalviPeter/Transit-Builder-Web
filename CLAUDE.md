@@ -359,6 +359,10 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   `model-reviewer` ágens (csak a képeket nézi), max. 4 kör. Stílus: `docs/model-style.md` (paletta,
   méretek, elemszám a meglévő modellekből mérve). Renderelés: `node scripts/render-model.mjs <id>
   [round-N] [baseUrl]` → `renders/<id>/<round>/*.png` (gitignore), jelzi, ha üres a kép vagy rossz az id.
+  MIKOR MELYIKET (a felhasználó kérte, 2026-11): ALAPBÓL ágensek NÉLKÜL, közvetlenül készítsd a modellt (a felhasználó
+  bedobja a képet → stílusfájl + példamodell → TSX + regisztráció → `render-model.mjs` → képek megnézése → javítás);
+  az ágenses `/new-model` kb. 2–3× több kreditet visz (az olajdepó: ~375 000 token) — csak nagy / bonyolult
+  modellnél vagy nagyon hosszú beszélgetésnél, vagy ha a felhasználó kéri.
   Playwright devDependency PONTOSAN 1.56.1 (a felhős gép előtelepített böngészőjéhez illik; Macen
   egyszer `npx playwright install chromium` kell).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,

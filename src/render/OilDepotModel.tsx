@@ -261,7 +261,7 @@ function Ground() {
       <Box p={[-1.48, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
       <Box p={[1.48, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
       <Box p={[-0.3, 0.13, -1.48]} s={[1.76, 0.06, 0.04]} m={M.curb} />
-      <Box p={[-0.3, 0.13, 1.48]} s={[1.76, 0.06, 0.04]} m={M.curb} />
+      <Box p={[0.01, 0.13, 1.48]} s={[2.98, 0.06, 0.04]} m={M.curb} />
     </group>
   );
 }
@@ -683,45 +683,62 @@ function Piping() {
 
 // --- Truck loading lane ------------------------------------------------------------------------
 
+/**
+ * U-shaped truck loading (right-hand traffic; driving toward +Z, "right" is −X):
+ *   - back edge: the IN lane (left) and the OUT lane (right, along the lot edge),
+ *     split by a raised median;
+ *   - the IN lane widens into two loading bays under the canopy (island between);
+ *   - at the front, both bays turn round a rounded U into the OUT lane, which
+ *     runs back past the canopy to the exit.
+ */
 const LANE = { x0: 0.58, x1: 1.46 };
-const LANE_A = 0.8;
-const LANE_B = 1.25;
-const ISLAND = { x: 1.03, z0: -0.36, z1: 0.36 };
-const CAN = { x0: 0.6, x1: 1.44, z0: -0.46, z1: 0.46, y: 0.55 };
-/** Canopy roof pipes: header along X at HEAD_Z, then one branch per lane. */
+/** IN lane at the back, before it splits. */
+const IN = { x0: 0.78, x1: 1.13 };
+/** Median between the bays / IN lane and the OUT lane; its nose at MEDIAN_Z1. */
+const MEDIAN_X = 1.175;
+const MEDIAN_W = 0.04;
+const MEDIAN_Z1 = 0.7;
+/** OUT lane center line. */
+const OUT_X = (MEDIAN_X + MEDIAN_W / 2 + LANE.x1) / 2;
+const LANE_A = 0.7;
+const LANE_B = 1.05;
+const ISLAND = { x: 0.875, z0: -0.36, z1: 0.36 };
+const CAN = { x0: 0.56, x1: 1.19, z0: -0.46, z1: 0.46, y: 0.55 };
+/** Canopy roof pipes: header along X at HEAD_Z, then one branch per bay. */
 const PIPE_Y = 0.64;
 const HEAD_Z = -0.3;
 /** Beacons on the canopy corners, clear of the pipes. */
 const BEACONS: V3[] = [
-  [0.67, CAN.y + 0.06, -0.41],
-  [1.37, CAN.y + 0.06, -0.41],
-  [0.67, CAN.y + 0.06, 0.41],
-  [1.37, CAN.y + 0.06, 0.41],
+  [0.63, CAN.y + 0.06, -0.41],
+  [1.12, CAN.y + 0.06, -0.41],
+  [0.63, CAN.y + 0.06, 0.41],
+  [1.12, CAN.y + 0.06, 0.41],
 ];
-
-/**
- * Lane outline: ONE lane at the entry (back) and the exit (front), widening
- * to the two loading bays under the canopy. [x, z] corners, clockwise.
- */
-const NARROW = { x0: 0.8, x1: 1.26 };
 const SPLIT = { z0: -1.0, z1: -0.62 };
-const MERGE = { z0: 0.62, z1: 1.0 };
+/** Front edge of the turning area and its corner radius. */
+const FRONT_Z = 1.44;
+const TURN_R = 0.24;
+
+/** Quarter arc from angle a0 to a1 around (cx, cz), radius r. */
+function arc(cx: number, cz: number, r: number, a0: number, a1: number, n = 6): Array<[number, number]> {
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const a = a0 + ((a1 - a0) * i) / n;
+    return [cx + Math.cos(a) * r, cz + Math.sin(a) * r] as [number, number];
+  });
+}
+
+/** Asphalt outline ([x, z], around the area), shrunk by `inset` (for the edge lines). */
 const laneOutline = (inset: number): Array<[number, number]> => {
-  const n0 = NARROW.x0 + inset;
-  const n1 = NARROW.x1 - inset;
+  const n0 = IN.x0 + inset;
   const w0 = LANE.x0 + inset;
   const w1 = LANE.x1 - inset;
+  const zf = FRONT_Z - inset;
+  const r = TURN_R - inset;
   return [
     [n0, -1.5],
-    [n1, -1.5],
-    [n1, SPLIT.z0],
-    [w1, SPLIT.z1],
-    [w1, MERGE.z0],
-    [n1, MERGE.z1],
-    [n1, 1.5],
-    [n0, 1.5],
-    [n0, MERGE.z1],
-    [w0, MERGE.z0],
+    [w1, -1.5],
+    ...arc(w1 - r, zf - r, r, 0, Math.PI / 2),
+    ...arc(w0 + r, zf - r, r, Math.PI / 2, Math.PI),
     [w0, SPLIT.z1],
     [n0, SPLIT.z0],
   ];
@@ -734,43 +751,40 @@ function paint(a: [number, number], b: [number, number], w = 0.012): Inst {
   return rbox([(a[0] + b[0]) / 2, 0.1135, (a[1] + b[1]) / 2], [w, 0.002, Math.hypot(dx, dz)], [0, Math.atan2(dx, dz), 0]);
 }
 
-/** Edge lines along the outline (open at the lot edges) + the split / merge nose hatching. */
+/** Edge lines along the outline (open at the back edge) + the painted nose where the IN lane splits. */
 const EDGE_LINES: Inst[] = (() => {
   const o = laneOutline(0.025);
   const out: Inst[] = [];
   for (let i = 0; i < o.length; i++) {
     const a = o[i];
     const b = o[(i + 1) % o.length];
-    if (Math.abs(a[1]) > 1.49 && Math.abs(b[1]) > 1.49) continue; // across the lane at the lot edge
+    if (a[1] < -1.49 && b[1] < -1.49) continue; // across the lanes at the lot edge
     out.push(paint(a, b));
   }
-  // Painted noses where the lane splits / merges, up to the island ends.
-  const cx = (NARROW.x0 + NARROW.x1) / 2;
-  for (const [tip, end] of [
-    [SPLIT.z0 + 0.12, ISLAND.z0 - 0.02],
-    [MERGE.z1 - 0.12, ISLAND.z1 + 0.02],
-  ]) {
-    out.push(paint([cx, tip], [cx - 0.05, end]));
-    out.push(paint([cx, tip], [cx + 0.05, end]));
-  }
+  const cx = (IN.x0 + IN.x1) / 2;
+  out.push(paint([cx, SPLIT.z0 + 0.12], [ISLAND.x - 0.05, ISLAND.z0 - 0.02]));
+  out.push(paint([cx, SPLIT.z0 + 0.12], [ISLAND.x + 0.05, ISLAND.z0 - 0.02]));
   return out;
 })();
 
-/** White arrows on the asphalt, pointing +Z (shaft + two head bars). */
-const ARROW_AT: Array<[number, number]> = [
-  [(NARROW.x0 + NARROW.x1) / 2, -1.25],
-  [LANE_A, -0.56],
-  [LANE_B, -0.56],
-  [(NARROW.x0 + NARROW.x1) / 2, 1.2],
+/** White arrows on the asphalt: [x, z, heading] (0 = +Z, π/2 = +X, π = −Z). */
+const ARROW_AT: Array<[number, number, number]> = [
+  [(IN.x0 + IN.x1) / 2, -1.25, 0],
+  [LANE_A, -0.56, 0],
+  [LANE_B, -0.56, 0],
+  [0.95, 1.2, Math.PI / 2],
+  [OUT_X, 0.2, Math.PI],
+  [OUT_X, -1.2, Math.PI],
 ];
-const ARROWS: Inst[] = ARROW_AT.flatMap(([x, z]) =>
-  [z].flatMap((z) => [
-    { p: [x, 0.1135, z] as V3, s: [0.022, 0.002, 0.16] as V3 },
-    // Head: two bars running back from the tip (z + 0.08) to either side.
-    rbox([x - 0.022, 0.1135, z + 0.058], [0.02, 0.002, 0.07], [0, Math.PI / 4, 0]),
-    rbox([x + 0.022, 0.1135, z + 0.058], [0.02, 0.002, 0.07], [0, -Math.PI / 4, 0]),
-  ]),
-);
+const ARROWS: Inst[] = ARROW_AT.flatMap(([x, z, h]) => {
+  const at = (dx: number, dz: number): V3 => [x + dx * Math.cos(h) + dz * Math.sin(h), 0.1135, z - dx * Math.sin(h) + dz * Math.cos(h)];
+  return [
+    rbox(at(0, 0), [0.022, 0.002, 0.16], [0, h, 0]),
+    // Head: two bars running back from the tip (+0.08) to either side.
+    rbox(at(-0.022, 0.058), [0.02, 0.002, 0.07], [0, h + Math.PI / 4, 0]),
+    rbox(at(0.022, 0.058), [0.02, 0.002, 0.07], [0, h - Math.PI / 4, 0]),
+  ];
+});
 
 /** Asphalt slab of the lane outline, 0.012 thick on top of the base slab. */
 function laneGeometry(): THREE.BufferGeometry {
@@ -800,18 +814,22 @@ function TruckLane({ phase }: { phase: number }) {
       const up = Math.min(1, Math.max(0, c < 4 ? c / 0.8 : (4.8 - c) / 0.8));
       return up * 1.35;
     };
-    if (entry.current) entry.current.rotation.z = -open(t);
-    if (exit.current) exit.current.rotation.z = open(t + 4);
+    if (entry.current) entry.current.rotation.z = open(t); // arm toward +X
+    if (exit.current) exit.current.rotation.z = -open(t + 4); // arm toward −X
   });
   return (
     <group>
-      {/* Asphalt: one lane in, two bays, one lane out; edge lines + noses */}
+      {/* Asphalt: IN lane → two bays → U-turn → OUT lane; edge lines, nose, arrows */}
       <mesh geometry={laneGeo} material={M.asphalt} position={[0, 0.1, 0]} receiveShadow />
       <Batch items={EDGE_LINES} m={M.marking} cast={false} />
       <Batch items={ARROWS} m={M.marking} cast={false} />
+      {/* Raised median between the IN side and the OUT lane, rounded nose at the front */}
+      <Box p={[MEDIAN_X, 0.125, (MEDIAN_Z1 - 1.5) / 2]} s={[MEDIAN_W, 0.03, MEDIAN_Z1 + 1.5]} m={M.curb} cast />
+      <Cyl p={[MEDIAN_X, 0.125, MEDIAN_Z1]} r={MEDIAN_W / 2} h={0.03} m={M.curb} seg={10} />
+      <Cyl p={[MEDIAN_X, Y0 + 0.05, MEDIAN_Z1 - 0.01]} r={0.016} h={0.1} m={M.yellow} seg={8} />
       {/* Stop lines at the bays */}
-      <Box p={[LANE_A, 0.1135, CAN.z1 + 0.02]} s={[0.34, 0.002, 0.02]} m={M.marking} />
-      <Box p={[LANE_B, 0.1135, CAN.z1 + 0.02]} s={[0.34, 0.002, 0.02]} m={M.marking} />
+      <Box p={[LANE_A, 0.1135, CAN.z1 + 0.02]} s={[0.22, 0.002, 0.02]} m={M.marking} />
+      <Box p={[LANE_B, 0.1135, CAN.z1 + 0.02]} s={[0.22, 0.002, 0.02]} m={M.marking} />
 
       {/* Island: yellow curb (black stripes instanced), concrete top, dispensers */}
       <Box p={[ISLAND.x, 0.135, 0]} s={[0.11, 0.045, ISLAND.z1 - ISLAND.z0]} m={M.yellow} cast />
@@ -908,43 +926,35 @@ function TruckLane({ phase }: { phase: number }) {
         ))}
       </group>
 
-      {/* Entry (back, −Z): barrier pivot on the right, sign facing incoming trucks */}
-      <Box p={[NARROW.x1 + 0.03, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[NARROW.x1 + 0.03, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={entry} name="entryBarrier" position={[NARROW.x1 + 0.03, 0.22, -1.3]}>
-        <Barrier dir={-1} len={0.46} />
+      {/* Back edge: IN barrier (pivot left of the IN lane) + gatehouse, OUT barrier
+          (pivot at the lot edge); signs facing the road */}
+      <Box p={[IN.x0 - 0.03, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[IN.x0 - 0.03, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={entry} name="entryBarrier" position={[IN.x0 - 0.03, 0.22, -1.3]}>
+        <Barrier dir={1} len={IN.x1 - IN.x0 + 0.02} />
       </group>
-      {/* Gatehouse by the entry */}
+      <Box p={[LANE.x1 - 0.02, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[LANE.x1 - 0.02, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={exit} name="exitBarrier" position={[LANE.x1 - 0.02, 0.22, -1.3]}>
+        <Barrier dir={-1} len={LANE.x1 - MEDIAN_X - 0.06} />
+      </group>
       <GateHouse />
-      <Box p={[1.34, 0.25, -1.38]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <Box p={[1.34, 0.38, -1.388]} s={[0.12, 0.12, 0.01]} m={M.blue} cast />
-      {/* White "straight ahead" arrow pictogram */}
-      <Box p={[1.34, 0.365, -1.395]} s={[0.018, 0.06, 0.004]} m={M.curb} />
-      <group position={[1.34, 0.41, -1.395]} rotation={[0, 0, Math.PI / 4]}>
+      {/* IN: blue "straight ahead" sign */}
+      <Box p={[IN.x0 - 0.06, 0.25, -1.42]} s={[0.012, 0.3, 0.012]} m={M.steel} />
+      <Box p={[IN.x0 - 0.06, 0.38, -1.428]} s={[0.12, 0.12, 0.01]} m={M.blue} cast />
+      <Box p={[IN.x0 - 0.06, 0.365, -1.435]} s={[0.018, 0.06, 0.004]} m={M.curb} />
+      <group position={[IN.x0 - 0.06, 0.41, -1.435]} rotation={[0, 0, Math.PI / 4]}>
         <Box p={[0, 0, 0]} s={[0.035, 0.035, 0.004]} m={M.curb} />
       </group>
-
-      {/* Exit (front, +Z): barrier pivot on the left, "no entry" disc facing outward */}
-      <Box p={[NARROW.x0 - 0.03, 0.17, 1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[NARROW.x0 - 0.03, 0.16, 1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={exit} name="exitBarrier" position={[NARROW.x0 - 0.03, 0.22, 1.3]}>
-        <Barrier dir={1} len={0.46} />
-      </group>
-      {/* Bollards guarding the corners where the lanes merge */}
-      {[
-        [NARROW.x1 + 0.06, MERGE.z1 + 0.05],
-        [NARROW.x0 - 0.06, SPLIT.z0 - 0.05],
-      ].map(([x, z]) => (
-        <group key={`${x}${z}`}>
-          <Cyl p={[x, Y0 + 0.05, z]} r={0.018} h={0.1} m={M.yellow} seg={8} />
-          <Cyl p={[x, Y0 + 0.07, z]} r={0.019} h={0.02} m={M.rubber} seg={8} />
-        </group>
-      ))}
-      <Box p={[0.72, 0.25, 1.4]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <mesh material={M.red} position={[0.72, 0.39, 1.41]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.06, 0.06, 0.01, 12]} />
+      {/* OUT: "no entry" disc on the median end, facing the road */}
+      <Box p={[MEDIAN_X, 0.25, -1.44]} s={[0.012, 0.3, 0.012]} m={M.steel} />
+      <mesh material={M.red} position={[MEDIAN_X, 0.39, -1.45]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.05, 0.05, 0.01, 12]} />
       </mesh>
-      <Box p={[0.72, 0.39, 1.417]} s={[0.075, 0.016, 0.004]} m={M.curb} />
+      <Box p={[MEDIAN_X, 0.39, -1.457]} s={[0.065, 0.014, 0.004]} m={M.curb} />
+      {/* Bollard where the IN lane splits */}
+      <Cyl p={[IN.x0 - 0.05, Y0 + 0.05, SPLIT.z0 + 0.05]} r={0.018} h={0.1} m={M.yellow} seg={8} />
+      <Cyl p={[IN.x0 - 0.05, Y0 + 0.07, SPLIT.z0 + 0.05]} r={0.019} h={0.02} m={M.rubber} seg={8} />
     </group>
   );
 }
@@ -963,15 +973,15 @@ function Barrier({ dir, len = 0.8 }: { dir: 1 | -1; len?: number }) {
   );
 }
 
-/** Small gatehouse right of the entry lane: lit window toward the lane, flat roof. */
+/** Small gatehouse left of the IN lane: lit window toward the lane, flat roof. */
 function GateHouse() {
-  const x = 1.37;
+  const x = 0.66;
   const z = -1.12;
   return (
     <group>
       <Box p={[x, Y0 + 0.09, z]} s={[0.13, 0.18, 0.16]} m={M.office} cast />
       <Box p={[x, Y0 + 0.19, z]} s={[0.16, 0.02, 0.19]} m={M.roof} cast />
-      <mesh material={GLOW.window} position={[x - 0.066, Y0 + 0.12, z]}>
+      <mesh material={GLOW.window} position={[x + 0.066, Y0 + 0.12, z]}>
         <boxGeometry args={[0.004, 0.06, 0.1]} />
       </mesh>
       <Box p={[x, Y0 + 0.08, z + 0.081]} s={[0.05, 0.14, 0.004]} m={M.door} />

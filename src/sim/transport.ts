@@ -72,6 +72,7 @@ import {
   isDepot,
   type DepotDir,
 } from './depot';
+import { isOilDepot, oilBayPath, oilCenter, oilLayout, oilStub } from './oilDepot';
 import { FIXED_PRODUCTION, type ProductionSim } from './production';
 
 /** Pays a delivery (to the game's money), booked to the line that made it. */
@@ -252,6 +253,8 @@ export interface Truck {
 /** A truck's visit to a depot: wait → in (past the bay) → back (in) → load → out. */
 export interface DepotVisit {
   phase: 'wait' | 'in' | 'back' | 'load' | 'out';
+  /** An oil depot's drive-through bay (see oilDepot.ts): in → load → out, no backing in. */
+  oil?: boolean;
   /** Which end it came in at (+1: lx 0, −1: lx 5; see depot.ts). */
   dir: DepotDir;
   bay: number;
@@ -359,6 +362,7 @@ function axisOk(kind: SlopeKind, d: number): boolean {
 
 /** The road row of a truck stop (where trucks stop); a depot's drive. */
 export function stopCells(st: Station): Cell[] {
+  if (isOilDepot(st)) return [oilStub(st)];
   return isDepot(st) ? driveCells(st) : stationGeom(st.anchor, st.side).track;
 }
 
@@ -382,6 +386,7 @@ function oneWayRoute(map: TerrainMap, from: Cell[], to: Cell[]): Cell[] | null {
 export function stopLabel(map: TerrainMap, st: Station | null | undefined): string {
   if (!st) return '?';
   if (isDepot(st)) return '🏬 Raktár';
+  if (isOilDepot(st)) return '🛢️ Olajdepó';
   const t = map.cells[st.anchor[0]][st.anchor[1]];
   return `${INDUSTRY_ICON[t] ?? ''} ${INDUSTRY_NAME[t] ?? ''}`.trim() || '?';
 }
@@ -389,6 +394,7 @@ export function stopLabel(map: TerrainMap, st: Station | null | undefined): stri
 /** Centre of a stop's road row (grid coords); a depot's lot centre. */
 export function stopCenter(st: Station): [number, number] {
   if (isDepot(st)) return depotCenter(st);
+  if (isOilDepot(st)) return oilCenter(st);
   const c = stopCells(st);
   const a = c[0];
   const b = c[c.length - 1];
@@ -859,7 +865,7 @@ export class TransportSim {
       const line = this.snap.lines.find((l) => l.id === t.lineId);
       if (!line) continue;
       const here = byId.get(line.stops[t.target]);
-      if (!here || (stopKind(here) !== 'truck' && !isDepot(here))) {
+      if (!here || (stopKind(here) !== 'truck' && !isDepot(here) && !isOilDepot(here))) {
         if (t.depot) this.leaveDepot(t);
         noRoute.add(line.id);
         continue;
@@ -909,7 +915,8 @@ export class TransportSim {
         // Coming to a depot with no bay it can reach now: wait at its stop
         // line, out on the road — not in the yard. At the line it claims a
         // bay and its way in.
-        const gate = isDepot(here) && !t.depot ? t.lane.length - this.gateHold(t, map) : Infinity;
+        const yardStop = isDepot(here) || isOilDepot(here);
+        const gate = yardStop && !t.depot ? t.lane.length - this.gateHold(t, map) : Infinity;
         if (t.s >= gate) {
           const bay = this.pickBay(here, t);
           if (bay < 0) {
@@ -920,7 +927,7 @@ export class TransportSim {
           }
           this.bayList(here.id)[bay] = t.id;
           this.yardList(here.id).push({ truck: t.id, kind: 'in', bay });
-          t.depot = { phase: 'wait', dir: 1, bay, bayLane: null, sP: 0, sDock: 0 };
+          t.depot = { phase: 'wait', dir: 1, bay, bayLane: null, sP: 0, sDock: 0, oil: isOilDepot(here) };
         }
         const xing = this.crossingAhead(t, map, 0.9);
         if (xing >= 0) {
@@ -966,10 +973,10 @@ export class TransportSim {
           t.s = t.lane.length;
           this.release(t); // parked at the stop: the junction is free again
           t.v = 0;
-          if (isDepot(here)) {
+          if (isDepot(here) || isOilDepot(here)) {
             // In at the entrance (the drive is one-way).
             t.state = 'depot';
-            t.depot ??= { phase: 'wait', dir: 1, bay: -1, bayLane: null, sP: 0, sDock: 0 };
+            t.depot ??= { phase: 'wait', dir: 1, bay: -1, bayLane: null, sP: 0, sDock: 0, oil: isOilDepot(here) };
           } else {
             t.state = 'stop';
             t.timer = STOP_TIME;
@@ -1428,6 +1435,13 @@ export class TransportSim {
    */
   private pickBay(st: Station, t: Truck | null): number {
     const bays = this.bayList(st.id);
+    if (isOilDepot(st)) {
+      // Drive-through bays: the free one farthest from the access road first
+      // (the next truck can take a nearer one while it pulls in).
+      const n = oilLayout(st.bays ?? 2).bays.length;
+      for (let i = 0; i < n; i++) if (bays[i] === null) return i;
+      return -1;
+    }
     for (let i = bays.length - 1; i >= 0; i--)
       if (bays[i] === null && bayUsable(i, 1) && this.yardFits(st.id, 'in', i, t)) return i;
     return -1;
@@ -1483,6 +1497,10 @@ export class TransportSim {
     const v = t.depot;
     if (!v) {
       t.state = 'stop';
+      return;
+    }
+    if (isOilDepot(here)) {
+      this.tickOilDepot(t, dt, v, line, here, byId, map, prod, earn, poses);
       return;
     }
     if (v.phase === 'wait') {
@@ -1549,45 +1567,176 @@ export class TransportSim {
         }
       }
     } else if (v.phase === 'out' && t.lane) {
+      if (!this.yardDrive(t, dt, map, poses)) return;
+      if (t.s < t.lane.length) {
+        this.updatePose(t, poses);
+        return;
+      }
+      // Out on the road at the far end: free the bay, head for the next stop.
+      if (!this.yardExit(t, dt, line, here, byId, map, poses)) return;
+    }
+    this.updatePose(t, poses);
+  }
+
+  /**
+   * One step along a yard path (a depot's / an oil depot's): held up by a truck
+   * ahead → stands (false); else speeds up toward YARD_SPEED (true).
+   */
+  private yardDrive(t: Truck, dt: number, map: TerrainMap, poses: Map<number, TruckPose>): boolean {
+    if (!t.lane || this.heldUp(t, poses)) {
+      t.blocked += dt;
+      t.v = 0;
+      return false;
+    }
+    t.blocked = 0;
+    const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
+    t.v = Math.min(t.v + ACCEL * dt, cap);
+    t.s += dt * t.v;
+    return true;
+  }
+
+  /**
+   * At the end of a yard path, out on the road: take the route to the next stop
+   * — once its start is clear (false: still waiting). Frees the bay, drops the visit.
+   */
+  private yardExit(
+    t: Truck,
+    dt: number,
+    line: Line,
+    here: Station,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    poses: Map<number, TruckPose>,
+  ): boolean {
+    if (!t.lane) return false;
+    const front = laneAt(t.lane, t.lane.length);
+    const next = (t.target + 1) % line.stops.length;
+    const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
+    if (route && route.length) {
+      const lane = this.laneOf(route, map);
+      const ahead = { ...t, lane, s: nearestS(lane, front, 1.2), path: route } as Truck;
+      if (this.heldUp(ahead, poses)) {
+        t.s = t.lane.length;
+        t.v = 0;
+        t.blocked += dt;
+        t.waitFor = ahead.waitFor;
+        return false;
+      }
+    }
+    this.leaveDepot(t);
+    this.setPath(t, route, map);
+    t.target = next;
+    t.state = t.path ? 'drive' : 'noroute';
+    t.timer = 2;
+    // Pick the new route up where the truck is (no jump back).
+    if (t.lane) t.s = nearestS(t.lane, front, 1.2);
+    return true;
+  }
+
+  /** Oil depot id → the truck driving out (one at a time: the bay lights take turns). */
+  private oilOut = new Map<number, number>();
+
+  /**
+   * A truck at an oil depot (see oilDepot.ts): claim a bay, drive in along its
+   * path to the stop line, load (full load: until full), wait for the way out
+   * (one truck at a time — the bay lights take turns), round the U and out by
+   * the access road, onto the route to the next stop.
+   */
+  private tickOilDepot(
+    t: Truck,
+    dt: number,
+    v: DepotVisit,
+    line: Line,
+    here: Station,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    prod: ProductionSim,
+    earn: Earn,
+    poses: Map<number, TruckPose>,
+  ): void {
+    if (v.phase === 'wait') {
+      if (v.bay < 0) {
+        const bay = this.pickBay(here, t);
+        if (bay < 0) {
+          t.blocked += dt;
+          return;
+        }
+        this.bayList(here.id)[bay] = t.id;
+        v.bay = bay;
+      }
+      const path = oilBayPath(here, v.bay);
+      t.lane = polyLane(path.pts);
+      v.sP = path.sStop;
+      v.sDock = path.sOut;
+      t.s = 0;
+      t.blocked = 0;
+      v.phase = 'in';
+    } else if (v.phase === 'in' && t.lane) {
       if (this.heldUp(t, poses)) {
         t.blocked += dt;
         t.v = 0;
         return;
       }
       t.blocked = 0;
-      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
+      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED, v.sP), this.trafficCap(t, map, poses)), CREEP);
       t.v = Math.min(t.v + ACCEL * dt, cap);
-      t.s += dt * t.v;
+      t.s = Math.min(t.s + dt * t.v, v.sP);
+      if (t.s >= v.sP - 1e-3) {
+        t.v = 0;
+        this.serveStop(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn);
+        t.timer = STOP_TIME;
+        v.phase = 'load';
+      }
+    } else if (v.phase === 'load') {
+      t.timer -= dt;
+      if (t.timer > 0) {
+        this.updatePose(t, poses);
+        return;
+      }
+      // Full load: top up until full (while a later stop takes the oil).
+      if (this.oilWaits(t, line, here, byId, map)) {
+        this.serveStop(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn);
+        t.timer = 1;
+        this.updatePose(t, poses);
+        return;
+      }
+      const busy = this.oilOut.get(here.id);
+      if (busy !== undefined && busy !== t.id && this.trucks.some((q) => q.id === busy)) {
+        t.blocked += dt;
+        t.waitFor = busy;
+        this.updatePose(t, poses);
+        return;
+      }
+      this.oilOut.set(here.id, t.id);
+      // The bay is free for the next truck once this one has pulled out of it.
+      v.phase = 'out';
+      t.blocked = 0;
+    } else if (v.phase === 'out' && t.lane) {
+      if (!this.yardDrive(t, dt, map, poses)) return;
+      const bays = this.bayList(here.id);
+      if (t.s > v.sP + 1.4 && bays[v.bay] === t.id) bays[v.bay] = null;
       if (t.s < t.lane.length) {
         this.updatePose(t, poses);
         return;
       }
-      // Out on the road at the far end: free the bay, head for the next stop
-      // — once the start of that route is clear.
-      const front = laneAt(t.lane, t.lane.length);
-      const next = (t.target + 1) % line.stops.length;
-      const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
-      if (route && route.length) {
-        const lane = this.laneOf(route, map);
-        const s0 = nearestS(lane, front, 1.2);
-        const ahead = { ...t, lane, s: s0, path: route } as Truck;
-        if (this.heldUp(ahead, poses)) {
-          t.s = t.lane.length;
-          t.v = 0;
-          t.blocked += dt;
-          t.waitFor = ahead.waitFor;
-          return;
-        }
-      }
-      this.leaveDepot(t);
-      this.setPath(t, route, map);
-      t.target = next;
-      t.state = t.path ? 'drive' : 'noroute';
-      t.timer = 2;
-      // Pick the new route up where the truck is (no jump back).
-      if (t.lane) t.s = nearestS(t.lane, front, 1.2);
+      // At the access road: on to the next stop (the way out is free again).
+      if (!this.yardExit(t, dt, line, here, byId, map, poses)) return;
+      if (this.oilOut.get(here.id) === t.id) this.oilOut.delete(here.id);
     }
     this.updatePose(t, poses);
+  }
+
+  /** Full load at an oil depot: not full yet, and a later stop takes oil. */
+  private oilWaits(t: Truck, line: Line, here: Station, byId: Map<number, Station>, map: TerrainMap): boolean {
+    if (!line.fullLoad) return false;
+    let load = 0;
+    for (const n of Object.values(t.cargo)) load += n ?? 0;
+    if (load >= TRUCK_CAPACITY) return false;
+    return line.stops.some((id) => {
+      if (id === here.id) return false;
+      const st = byId.get(id);
+      return !!st && stopTakesIn(st) && (ACCEPTS[map.cells[st.anchor[0]][st.anchor[1]]] ?? []).includes('oil');
+    });
   }
 
   /**
@@ -1699,7 +1848,7 @@ export class TransportSim {
     for (const v of Object.values(t.cargo)) load += v ?? 0;
     for (const item of wanted) {
       if (load >= cap || (!depot && !stopGivesOut(here))) break;
-      const from = depot ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
+      const from = depot || isOilDepot(here) ? prod.originOf(here.id, item) : ([hx, hz] as [number, number]);
       const when = Math.min(this.clock, (depot ? prod.sinceOf(here.id, item) : null) ?? this.clock);
       const k = prod.take(here.id, item, cap - load);
       if (k <= 0) continue;

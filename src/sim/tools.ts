@@ -11,6 +11,8 @@
 import { CellType } from './terrain';
 import type { ControlKind } from './traffic';
 import { DEPOT_PRICE } from './depot';
+import { OIL_DEPOT_PRICE } from './oilDepot';
+import { PIPE_PRICE } from './pipes';
 import { SIGNAL_PRICE } from './signals';
 import { STRUCTURE_PRICE } from './structures';
 
@@ -24,6 +26,8 @@ export type ToolId =
   | 'station'
   | 'truckstop'
   | 'depot'
+  | 'oildepot'
+  | 'pipe'
   | 'signal'
   | 'light'
   | 'roundabout'
@@ -61,6 +65,9 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   truckstop: { id: 'truckstop', label: 'Kamionrakodó', cost: 300, builds: null },
   // Freight depot (6×6 transfer point, see depot.ts).
   depot: { id: 'depot', label: 'Raktár', cost: DEPOT_PRICE, builds: null },
+  // Oil depot (terminal on land, see oilDepot.ts) and the pipeline to it (per cell on land).
+  oildepot: { id: 'oildepot', label: 'Olajdepó', cost: OIL_DEPOT_PRICE, builds: null },
+  pipe: { id: 'pipe', label: 'Olajvezeték', cost: PIPE_PRICE.land, builds: null },
   // Rail signal (see signals.ts): on a track, one-way.
   signal: { id: 'signal', label: 'Vasúti jelző', cost: SIGNAL_PRICE, builds: null },
   // Traffic controls (see traffic.ts): on a junction / just before one.

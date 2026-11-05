@@ -30,3 +30,17 @@ export * from './structures';
 export * from './save';
 export * from './economy';
 export * from './selection';
+export * from './pipes';
+export {
+  OIL_DEPOT_PRICE,
+  OIL_DEPOT_CAPACITY,
+  isOilDepot,
+  oilCells,
+  oilCenter,
+  oilDepotAt,
+  oilDepotProblem,
+  oilLayout,
+  oilSize,
+  oilStub,
+  oilToWorld,
+} from './oilDepot';

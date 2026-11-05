@@ -36,6 +36,24 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BOX, Box, Pipe, Steam } from './PowerPlantModel';
 import { patchCloudShadows } from './cloudShadows';
+import {
+  CAN_Z,
+  CONN,
+  FRONT_Z,
+  IN,
+  BAY_W,
+  ISLAND_W,
+  ISLAND_Z,
+  LANE_X0,
+  MAX_RAIL_TRACKS,
+  MAX_TRUCK_BAYS,
+  MEDIAN_W,
+  MEDIAN_Z1,
+  SPLIT,
+  STUB,
+  TRACK_PITCH,
+  oilLayout,
+} from '../sim/oilDepot';
 
 type V3 = [number, number, number];
 
@@ -50,8 +68,7 @@ export interface OilDepotModelProps {
   railTracks?: number;
 }
 
-export const MAX_TRUCK_BAYS = 5;
-export const MAX_RAIL_TRACKS = 3;
+export { MAX_RAIL_TRACKS, MAX_TRUCK_BAYS };
 
 // --- Shared materials --------------------------------------------------------
 
@@ -315,7 +332,6 @@ const G = { xi: -1.02, z0: -0.85, z1: 0.55, top: 0.95, chord: 0.83 };
 /** Outer ends of the gantry: each leg is a pair of posts at z ± 0.05. */
 const GZA = G.z0 - 0.05;
 const GZB = G.z1 + 0.05;
-const TRACK_PITCH = 0.5;
 const ARM_Z = [-0.55, -0.15, 0.25];
 
 interface RailLayout {
@@ -331,11 +347,10 @@ interface RailLayout {
 }
 
 function railLayout(n: number): RailLayout {
-  const tracks = Array.from({ length: n }, (_, i) => -1.3 - TRACK_PITCH * i);
+  const { tracks, lotX0 } = oilLayout(2, n);
   const walks = tracks.slice(0, -1).map((x) => x - TRACK_PITCH / 2);
   const xo = tracks[n - 1] - 0.17;
   const legs = [G.xi, ...walks, xo];
-  const lotX0 = -1.5 - TRACK_PITCH * (n - 1);
   // Legs stand on the platform / walkways (raised), the outermost (last) on the slab.
   const r: Inst[] = [];
   legs.forEach((x, k) => {
@@ -766,32 +781,16 @@ function Piping({ truck }: { truck: TruckLayout }) {
  *   - at the front, the bays turn round a rounded U into the OUT lane, which
  *     runs back past the canopy to the exit.
  */
-const LANE_X0 = 0.58;
-const BAY_W = 0.24;
-const ISLAND_W = 0.11;
-const MEDIAN_W = 0.04;
-const MEDIAN_Z1 = 0.7;
-const OUT_W = 0.2;
-/** Concrete rim between the asphalt and the lot edge on the right (incl. the curb). */
-const EDGE_RIM = 0.06;
-/** IN lane at the back, before it splits. */
-const IN = { x0: 0.78, x1: 1.13 };
-/**
- * The ONE two-way access road at the back edge (one game cell = 0.5 wide):
- * centered on IN.x1; trucks drive in on its left half (+Z), out on its right.
- */
-const STUB = { c: IN.x1, h: 0.25 };
-/** Back strip where the OUT lane runs over to the access road (z range). */
-const CONN = { z0: -1.3, z1: -1.0 };
-const ISLAND_Z = { z0: -0.36, z1: 0.36 };
 const CAN_Y = 0.55;
-const CAN_Z = { z0: -0.46, z1: 0.46 };
 /** Canopy roof pipes: header along X at HEAD_Z, then one branch per bay. */
 const PIPE_Y = 0.64;
 const HEAD_Z = -0.3;
-const SPLIT = { z0: -1.0, z1: -0.62 };
-/** Front edge of the turning area and its corner radius. */
-const FRONT_Z = 1.44;
+/**
+ * Where the median wall bends from its diagonal to straight along the canopy: the
+ * straight piece before the canopy is twice what the split's end would give (the user asked).
+ */
+const WALL_BEND_Z = SPLIT.z1 - (CAN_Z.z0 - SPLIT.z1 + 0.03);
+/** The turning area's corner radius. */
 const TURN_R = 0.24;
 
 interface TruckLayout {
@@ -831,28 +830,7 @@ function paint(a: [number, number], b: [number, number], w = 0.012): Inst {
 }
 
 function truckLayout(n: number): TruckLayout {
-  const bays: number[] = [];
-  const islands: Array<{ x: number; bays: number[] }> = [];
-  let x = LANE_X0;
-  for (let i = 0; i < n; i += 2) {
-    bays.push(x + BAY_W / 2);
-    x += BAY_W;
-    const isl = { x: x + ISLAND_W / 2, bays: [i] };
-    islands.push(isl);
-    x += ISLAND_W;
-    if (i + 1 < n) {
-      bays.push(x + BAY_W / 2);
-      isl.bays.push(i + 1);
-      x += BAY_W;
-    }
-  }
-  const medianL = Math.max(x, IN.x1 + 0.02) + 0.005;
-  const medianX = medianL + MEDIAN_W / 2;
-  const medianR = medianL + MEDIAN_W;
-  // The lot edge (whole 0.5 steps) leaves room for at least OUT_W; the OUT lane then takes
-  // all of it up to a narrow rim by the edge curb.
-  const lotX1 = Math.max(1.5, Math.ceil((medianR + OUT_W + 0.08) * 2 - 1e-6) / 2);
-  const laneX1 = lotX1 - EDGE_RIM;
+  const { bays, islands, medianL, medianX, laneX1, outX, lotX1 } = oilLayout(n);
   const can = { x0: LANE_X0 - 0.02, x1: medianL + 0.02 };
 
   // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines): the access road at
@@ -881,7 +859,7 @@ function truckLayout(n: number): TruckLayout {
   // `g` grows it (for its edge lines).
   const wallLine: Array<[number, number]> = [
     [STUB.c, CONN.z1],
-    [medianX, SPLIT.z1],
+    [medianX, WALL_BEND_Z],
     [medianX, MEDIAN_Z1],
   ];
   const island = (g: number) => thickLine(wallLine, MEDIAN_W / 2 + g);
@@ -915,7 +893,6 @@ function truckLayout(n: number): TruckLayout {
   for (const bx of bays) lines.push(paint([bx - BAY_W / 2 + 0.02, CAN_Z.z1 + 0.02], [bx + BAY_W / 2 - 0.02, CAN_Z.z1 + 0.02], 0.02));
 
   // Arrows: [x, z, heading] (0 = +Z, π/2 = +X, π = −Z).
-  const outX = (medianR + laneX1) / 2;
   const at: Array<[number, number, number]> = [
     [STUB.c - STUB.h / 2, -1.36, 0],
     ...bays.map((bx) => [bx, -0.56, 0] as [number, number, number]),

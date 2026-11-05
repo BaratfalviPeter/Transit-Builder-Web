@@ -27,12 +27,13 @@ import {
   type TerrainMap,
 } from './terrain';
 import { depotAt, type DepotRot } from './depot';
+import { oilDepotAt } from './oilDepot';
 
 /** Which side of the lot: N = −Z, S = +Z, W = −X, E = +X. */
 export type Side = 'N' | 'S' | 'W' | 'E';
 
-/** Rail station, truck stop, or a freight depot (see depot.ts). */
-export type StopKind = 'rail' | 'truck' | 'depot';
+/** Rail station, truck stop, a freight depot (see depot.ts) or an oil depot (oilDepot.ts). */
+export type StopKind = 'rail' | 'truck' | 'depot' | 'oil';
 
 export interface Station {
   readonly id: number;
@@ -43,6 +44,9 @@ export interface Station {
   readonly kind?: StopKind;
   /** A depot's quarter turns (its anchor is the lot's min corner; `side` unused). */
   readonly rot?: DepotRot;
+  /** An oil depot's truck bays (1–5, missing = 2) and rail tracks (1–3, missing = 1). */
+  readonly bays?: number;
+  readonly tracks?: number;
   /** A rail station's platform runs this many cells past the lot at each end (0…3). */
   readonly ext?: number;
   /** What it does for its industry: deliveries in, products out, or both (missing = both). */
@@ -108,15 +112,15 @@ export function stationGeom(anchor: readonly [number, number], side: Side, ext =
 
 /** The station (if any) on that side of that industry. */
 export function stationOn(map: TerrainMap, anchor: readonly [number, number], side: Side): Station | null {
-  return map.stations?.find((s) => s.kind !== 'depot' && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1] && s.side === side) ?? null;
+  return map.stations?.find((s) => s.kind !== 'depot' && s.kind !== 'oil' && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1] && s.side === side) ?? null;
 }
 
 /** The station (or depot) whose cells cover (x, z), or null. */
 export function stationAt(map: TerrainMap, x: number, z: number): Station | null {
-  const d = depotAt(map, x, z);
+  const d = depotAt(map, x, z) ?? oilDepotAt(map, x, z);
   if (d) return d;
   for (const s of map.stations ?? []) {
-    if (s.kind === 'depot') continue;
+    if (s.kind === 'depot' || s.kind === 'oil') continue;
     const g = stationGeom(s.anchor, s.side, s.ext);
     if (g.platform.some(([a, b]) => a === x && b === z) || g.track.some(([a, b]) => a === x && b === z)) return s;
   }

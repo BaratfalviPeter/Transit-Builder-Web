@@ -37,7 +37,8 @@ import { Trains } from './Trains';
 import { RailSignals, SignalPreview } from './Signals';
 import { LevelCrossings } from './LevelCrossings';
 import { TrafficControls, TrafficPreview } from './TrafficControls';
-import { DepotPlacement } from './Stations';
+import { DepotPlacement, OilDepotPlacement } from './Stations';
+import { PipePreview, Pipes } from './Pipes';
 import { Structures, StructurePreview, type StructPlan } from './Structures';
 import { BuildingIcons } from './BuildingIcons';
 import { CityBuildings } from './CityBuildings';
@@ -54,6 +55,9 @@ import {
   controlOfTool,
   controlProblem,
   depotProblem,
+  oilDepotProblem,
+  pipeCost,
+  pipePath,
   type DepotRot,
   industryAnchorOf,
   interiorAt,
@@ -438,6 +442,32 @@ function Scene() {
     if (!structKindOf(activeTool)) setStructPlan(null);
   }, [activeTool, setStructPlan]);
 
+  // ---- Pipe tool: click the start, then each next point (an L of pipe); Esc ends --
+  const [pipeStart, setPipeStart] = useState<[number, number] | null>(null);
+  const pipeStartRef = useRef<[number, number] | null>(null);
+  const [pipeEnd, setPipeEnd] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    const stop = () => {
+      pipeStartRef.current = null;
+      setPipeStart(null);
+    };
+    if (activeTool !== 'pipe') {
+      stop();
+      setPipeEnd(null);
+      return;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') stop();
+    };
+    const onCtx = () => stop();
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('contextmenu', onCtx);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('contextmenu', onCtx);
+    };
+  }, [activeTool]);
+
   // ---- Depot tool: hover a spot (the lot is centred on it), Q turns it ---------
   const [depotRot, setDepotRot] = useState<DepotRot>(0);
   const depotRotRef = useRef<DepotRot>(0);
@@ -446,14 +476,18 @@ function Scene() {
   const depotTarget = useCallback(
     (wx: number, wz: number) => {
       const { x, z } = cellOf(wx, wz);
+      if (game.getActiveTool() === 'oildepot') {
+        const x0 = x - 3, z0 = z - 3;
+        return { x0, z0, problem: oilDepotProblem(terrain.getMap(), x0, z0, depotRotRef.current) };
+      }
       const x0 = x - 2, z0 = z - 2;
       return { x0, z0, problem: depotProblem(terrain.getMap(), x0, z0, depotRotRef.current) };
     },
-    [terrain, cellOf],
+    [terrain, cellOf, game],
   );
   const lastHoverW = useRef<[number, number] | null>(null);
   useEffect(() => {
-    if (activeTool !== 'depot') {
+    if (activeTool !== 'depot' && activeTool !== 'oildepot') {
       setDepotHover(null);
       return;
     }
@@ -535,7 +569,7 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || structKindOf(t) !== null || t === 'depot' || t === 'signal' || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || structKindOf(t) !== null || t === 'depot' || t === 'oildepot' || t === 'pipe' || t === 'signal' || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
         const sk = structKindOf(game.getActiveTool());
@@ -555,7 +589,12 @@ function Scene() {
           );
           return;
         }
-        if (game.getActiveTool() === 'depot') {
+        if (game.getActiveTool() === 'pipe') {
+          const c = cellOf(wx, wz);
+          setPipeEnd((cur) => (cur && cur[0] === c.x && cur[1] === c.z ? cur : [c.x, c.z]));
+          return;
+        }
+        if (game.getActiveTool() === 'depot' || game.getActiveTool() === 'oildepot') {
           lastHoverW.current = [wx, wz];
           const h = depotTarget(wx, wz);
           setDepotHover((cur) => (cur && cur.x0 === h.x0 && cur.z0 === h.z0 && cur.problem === h.problem ? cur : h));
@@ -645,11 +684,30 @@ function Scene() {
           setSignalHover(signalSpot(terrain.getMap(), g.x, g.z));
           return;
         }
-        if (tool.id === 'depot') {
+        if (tool.id === 'depot' || tool.id === 'oildepot') {
           const h = depotTarget(wx, wz);
           if (h.problem || !game.canAfford(tool.cost)) return;
-          if (terrain.buildDepot(h.x0, h.z0, depotRotRef.current)) game.spend(tool.cost);
+          const ok = tool.id === 'oildepot' ? terrain.buildOilDepot(h.x0, h.z0, depotRotRef.current) : terrain.buildDepot(h.x0, h.z0, depotRotRef.current);
+          if (ok) game.spend(tool.cost);
           setDepotHover(depotTarget(wx, wz));
+          return;
+        }
+        if (tool.id === 'pipe') {
+          // First click: the start; next clicks lay an L of pipe to the cursor and
+          // go on from there (Esc / right click: done).
+          const c = cellOf(wx, wz);
+          const a = pipeStartRef.current;
+          if (!a) {
+            pipeStartRef.current = [c.x, c.z];
+            setPipeStart([c.x, c.z]);
+            return;
+          }
+          const path = pipePath(a, [c.x, c.z]);
+          const cost = pipeCost(terrain.getMap(), path);
+          if (!game.canAfford(cost)) return;
+          if (terrain.layPipe(path) > 0) game.spend(cost);
+          pipeStartRef.current = [c.x, c.z];
+          setPipeStart([c.x, c.z]);
           return;
         }
         const control = controlOfTool(tool.id);
@@ -843,6 +901,19 @@ function Scene() {
       {/* Lights, signs, roundabout islands. */}
       <TrafficControls map={map} cellSize={cellSize} />
       {structPlan && <StructurePreview map={map} cellSize={cellSize} plan={structPlan} canAfford={money >= structPlan.cost} />}
+      {activeTool === 'pipe' && <PipePreview map={map} cellSize={cellSize} start={pipeStart} end={pipeEnd} money={money} />}
+      {depotHover && activeTool === 'oildepot' && (
+        <OilDepotPlacement
+          map={map}
+          cellSize={cellSize}
+          x0={depotHover.x0}
+          z0={depotHover.z0}
+          rot={depotRot}
+          problem={depotHover.problem}
+          cost={TOOLS.oildepot.cost}
+          canAfford={money >= TOOLS.oildepot.cost}
+        />
+      )}
       {depotHover && activeTool === 'depot' && (
         <DepotPlacement
           map={map}
@@ -897,6 +968,7 @@ function Scene() {
       {/* Rails: gravel bed + sleepers + metal rails, slope-aware. */}
       <RailsM map={map} cellSize={cellSize} />
       <Structures map={map} cellSize={cellSize} />
+      <Pipes map={map} cellSize={cellSize} />
 
       {/* Auto-spawned city buildings that grow taller as they level up. */}
       <CityBuildings buildings={buildings} map={map} cellSize={cellSize} />

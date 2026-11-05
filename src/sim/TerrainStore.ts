@@ -10,6 +10,8 @@
  */
 
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
+import { oilCells, oilDepotProblem, oilStub } from './oilDepot';
+import { pipeCellOk } from './pipes';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import { nextSignalMode, signalIndexNear, signalSpot } from './signals';
 import {
@@ -363,6 +365,58 @@ export class TerrainStore {
     return true;
   }
 
+  /**
+   * Build an oil depot (see oilDepot.ts) with its lot's min corner at (x0, z0),
+   * turned `rot`: Station cells, the access road cell → Road. False if not allowed.
+   */
+  buildOilDepot(x0: number, z0: number, rot: DepotRot): boolean {
+    if (oilDepotProblem(this.map, x0, z0, rot)) return false;
+    const stations = this.map.stations ?? [];
+    const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
+    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: 2, tracks: 1 };
+    const [sx, sz] = oilStub(st);
+    const cells = this.map.cells.slice();
+    let roads = 0;
+    for (const { x, z } of oilCells(st)) {
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      const road = x === sx && z === sz;
+      if (road && cells[x][z] !== CellType.Road) roads++;
+      cells[x][z] = road ? CellType.Road : CellType.Station;
+    }
+    this.commit({ cells, stations: stations.concat(st) }, true);
+    this.roadCount += roads;
+    this.emit();
+    return true;
+  }
+
+  /**
+   * Lay oil pipeline on `path` (cells; see pipes.ts). Cells that can't take a
+   * pipe, or have one already, are skipped. Returns how many were laid.
+   */
+  layPipe(path: Array<[number, number]>): number {
+    const have = new Set(this.map.pipes ?? []);
+    const add: number[] = [];
+    for (const [x, z] of path) {
+      const k = x * this.map.size + z;
+      if (have.has(k) || !pipeCellOk(this.map, x, z)) continue;
+      have.add(k);
+      add.push(k);
+    }
+    if (!add.length) return 0;
+    this.map = { ...this.map, pipes: [...(this.map.pipes ?? []), ...add], version: this.map.version + 1 };
+    this.emit();
+    return add.length;
+  }
+
+  /** Remove the pipeline from one cell. */
+  removePipe(x: number, z: number): boolean {
+    const k = x * this.map.size + z;
+    if (!this.map.pipes?.includes(k)) return false;
+    this.map = { ...this.map, pipes: this.map.pipes.filter((c) => c !== k), version: this.map.version + 1 };
+    this.emit();
+    return true;
+  }
+
   /** Remove a whole stop (platform + its track / road, or a depot's lot). */
   /**
    * Build an empty bridge / tunnel from abutment `a` to `b` (see
@@ -446,6 +500,19 @@ export class TerrainStore {
   private removeStation(id: number): void {
     const st = this.map.stations?.find((s) => s.id === id);
     if (!st) return;
+    if (st.kind === 'oil') {
+      const cells = this.map.cells.slice();
+      let roads = 0;
+      for (const { x, z } of oilCells(st)) {
+        if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+        if (cells[x][z] === CellType.Road) roads++;
+        cells[x][z] = CellType.Empty;
+      }
+      this.commit({ cells, stations: (this.map.stations ?? []).filter((s) => s.id !== id) }, true);
+      this.roadCount -= roads;
+      this.emit();
+      return;
+    }
     if (st.kind === 'depot') {
       const cells = this.map.cells.slice();
       let roads = 0;
@@ -518,6 +585,9 @@ export class TerrainStore {
         return true;
       }
     }
+
+    // A pipeline under bare ground / water goes (a road, track or tree over it first).
+    if (current !== CellType.Road && current !== CellType.Rail && current !== CellType.Forest && this.removePipe(x, z)) return true;
 
     if (canBulldoze(current)) {
       // Road / rail / forest → bare ground, and mark it cleared so no fringe

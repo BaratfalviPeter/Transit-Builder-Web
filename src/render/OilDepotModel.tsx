@@ -337,12 +337,11 @@ function railLayout(n: number): RailLayout {
   const xo = tracks[n - 1] - 0.17;
   const legs = [G.xi, ...walks, xo];
   const lotX0 = -1.5 - TRACK_PITCH * (n - 1);
-  // Legs stand on the platform / walkways (raised), the outermost on the slab.
-  const base = (x: number) => (x === xo ? Y0 : 0.2);
+  // Legs stand on the platform / walkways (raised), the outermost (last) on the slab.
   const r: Inst[] = [];
-  for (const x of legs) {
+  legs.forEach((x, k) => {
+    const y0 = k === legs.length - 1 ? Y0 : 0.2;
     for (const z of [G.z0, G.z1]) {
-      const y0 = base(x);
       // Two posts 0.1 apart in Z with zigzag bracing
       r.push(rod([x, y0, z - 0.05], [x, G.top, z - 0.05], 0.022));
       r.push(rod([x, y0, z + 0.05], [x, G.top, z + 0.05], 0.022));
@@ -360,7 +359,7 @@ function railLayout(n: number): RailLayout {
       const zb = G.z0 + ((G.z1 - G.z0) * (i + 1)) / 5;
       r.push(rod([x, i % 2 ? G.top : G.chord, za], [x, i % 2 ? G.chord : G.top, zb], 0.01));
     }
-  }
+  });
   // Portal cross beams over every bay between two leg lines + diagonals
   for (let k = 0; k + 1 < legs.length; k++) {
     const a = legs[k + 1];

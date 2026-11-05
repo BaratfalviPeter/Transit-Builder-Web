@@ -253,7 +253,7 @@ export function OilDepotModel({
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
       {/* The lot is centered on the origin whatever its width. */}
       <group position={[-(x0 + x1) / 2, 0, 0]}>
-        <Ground x0={x0} x1={x1} truck={truck} />
+        <Ground x0={x0} x1={x1} />
         <RailSiding rail={rail} />
         <LoadingGantry rail={rail} phase={phase} />
         <TankFarm />
@@ -278,16 +278,15 @@ export function oilDepotBounds(truckBays = 2, railTracks = 1): { x0: number; x1:
 
 // --- Ground ----------------------------------------------------------------------
 
-function Ground({ x0, x1, truck }: { x0: number; x1: number; truck: TruckLayout }) {
+function Ground({ x0, x1 }: { x0: number; x1: number }) {
   const w = x1 - x0;
   const cx = (x0 + x1) / 2;
   const joints: number[] = [];
   for (let j = Math.ceil((x0 + 0.01) * 2) / 2; j < x1 - 0.01; j += 0.5) joints.push(j);
-  // Back edge curb pieces: core (rail platform → IN lane), between IN lane and median, right of the OUT lane.
+  // Back edge curb: open only where the two-way access road leaves the lot.
   const back: Array<[number, number]> = [
-    [-1.19, truck.in.x0 - 0.15],
-    [truck.in.x1 + 0.02, truck.medianL - 0.02],
-    [truck.laneX1 + 0.01, x1],
+    [-1.19, STUB.c - STUB.h],
+    [STUB.c + STUB.h, x1],
   ].filter(([a, b]) => b - a > 0.04) as Array<[number, number]>;
   return (
     <group>
@@ -775,6 +774,13 @@ const MEDIAN_Z1 = 0.7;
 const OUT_W = 0.2;
 /** IN lane at the back, before it splits. */
 const IN = { x0: 0.78, x1: 1.13 };
+/**
+ * The ONE two-way access road at the back edge (one game cell = 0.5 wide):
+ * centered on IN.x1; trucks drive in on its left half (+Z), out on its right.
+ */
+const STUB = { c: IN.x1, h: 0.25 };
+/** Back strip where the OUT lane runs over to the access road (z range). */
+const CONN = { z0: -1.3, z1: -1.0 };
 const ISLAND_Z = { z0: -0.36, z1: 0.36 };
 const CAN_Y = 0.55;
 const CAN_Z = { z0: -0.46, z1: 0.46 };
@@ -796,7 +802,8 @@ interface TruckLayout {
   medianX: number;
   laneX1: number;
   outX: number;
-  exitPostX: number;
+  /** Raised island between the IN side and the OUT lane (a hole in the asphalt). */
+  medianGeo: THREE.BufferGeometry;
   lotX1: number;
   can: { x0: number; x1: number };
   beacons: V3[];
@@ -841,44 +848,59 @@ function truckLayout(n: number): TruckLayout {
   const medianX = medianL + MEDIAN_W / 2;
   const medianR = medianL + MEDIAN_W;
   const laneX1 = medianR + OUT_W;
-  const exitPostX = laneX1 + 0.04;
   const lotX1 = Math.max(1.5, Math.ceil((laneX1 + 0.08) * 2 - 1e-6) / 2);
   const can = { x0: LANE_X0 - 0.02, x1: medianL + 0.02 };
 
-  // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines); the median is a slot.
+  // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines): the access road at
+  // the back edge, the IN lane to its left, the strip over to the OUT lane on its right.
   const outline = (i: number): Array<[number, number]> => {
     const zf = FRONT_Z - i;
     const r = TURN_R - i;
     const w0 = LANE_X0 + i;
     const w1 = laneX1 - i;
     return [
-      [IN.x0 + i, -1.5],
-      [IN.x1 - i, -1.5],
-      [IN.x1 - i, SPLIT.z0],
-      [medianL - i, SPLIT.z1],
-      [medianL - i, MEDIAN_Z1 + i],
-      [medianR + i, MEDIAN_Z1 + i],
-      [medianR + i, -1.5],
-      [w1, -1.5],
+      [STUB.c - STUB.h + i, -1.5],
+      [STUB.c + STUB.h - i, -1.5],
+      [STUB.c + STUB.h - i, CONN.z0 + i],
+      [w1, CONN.z0 + i],
       ...arc(w1 - r, zf - r, r, 0, Math.PI / 2),
       ...arc(w0 + r, zf - r, r, Math.PI / 2, Math.PI),
       [w0, SPLIT.z1],
       [IN.x0 + i, SPLIT.z0],
+      [IN.x0 + i, CONN.z0],
+      [STUB.c - STUB.h + i, CONN.z0 - 0.1],
     ];
   };
-  const shape = new THREE.Shape(outline(0).map(([px, pz]) => new THREE.Vector2(px, -pz)));
+  // The median island, grown by `grow` (for its edge lines).
+  const island = (g: number): Array<[number, number]> => [
+    [STUB.c - g, CONN.z1 - g],
+    [medianR + g, CONN.z1 - g],
+    [medianR + g, MEDIAN_Z1 + g],
+    [medianL - g, MEDIAN_Z1 + g],
+    [medianL - g, SPLIT.z1],
+  ];
+  const toV = (pts: Array<[number, number]>) => pts.map(([px, pz]) => new THREE.Vector2(px, -pz));
+  const shape = new THREE.Shape(toV(outline(0)));
+  shape.holes.push(new THREE.Path(toV(island(0))));
   const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false });
   geo.rotateX(-Math.PI / 2);
+  const medianGeo = new THREE.ExtrudeGeometry(new THREE.Shape(toV(island(0))), { depth: 0.03, bevelEnabled: false });
+  medianGeo.rotateX(-Math.PI / 2);
 
-  // Edge lines (open across the lanes at the back edge) + the painted split nose.
-  const o = outline(0.025);
+  // Edge lines (open across the access road at the back edge), round the median,
+  // a dashed center line on the access road, and the painted split nose.
   const lines: Inst[] = [];
-  for (let k = 0; k < o.length; k++) {
-    const a = o[k];
-    const b = o[(k + 1) % o.length];
-    if (a[1] < -1.49 && b[1] < -1.49) continue;
-    lines.push(paint(a, b));
-  }
+  const ring = (pts: Array<[number, number]>, skipBack: boolean) => {
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[k];
+      const b = pts[(k + 1) % pts.length];
+      if (skipBack && a[1] < -1.49 && b[1] < -1.49) continue;
+      lines.push(paint(a, b));
+    }
+  };
+  ring(outline(0.025), true);
+  ring(island(0.025), false);
+  for (let z = -1.47; z < CONN.z1 - 0.06; z += 0.1) lines.push(paint([STUB.c, z], [STUB.c, z + 0.055]));
   const inC = (IN.x0 + IN.x1) / 2;
   const first = islands[0].x;
   lines.push(paint([inC, SPLIT.z0 + 0.12], [first - 0.05, ISLAND_Z.z0 - 0.02]));
@@ -889,12 +911,14 @@ function truckLayout(n: number): TruckLayout {
   // Arrows: [x, z, heading] (0 = +Z, π/2 = +X, π = −Z).
   const outX = (medianR + laneX1) / 2;
   const at: Array<[number, number, number]> = [
-    [inC, -1.25, 0],
+    [STUB.c - STUB.h / 2, -1.36, 0],
     ...bays.map((bx) => [bx, -0.56, 0] as [number, number, number]),
     [(LANE_X0 + laneX1) / 2, 1.2, Math.PI / 2],
     [outX, 0.2, Math.PI],
-    [outX, -1.2, Math.PI],
+    [STUB.c + STUB.h / 2, -1.36, Math.PI],
   ];
+  // A wide depot: the OUT lane turns left along the back strip to the access road.
+  if (laneX1 - (STUB.c + STUB.h) > 0.45) at.push([(STUB.c + STUB.h + laneX1) / 2, (CONN.z0 + CONN.z1) / 2, -Math.PI / 2]);
   const arrows = at.flatMap(([ax, az, h]) => {
     const pt = (dx: number, dz: number): V3 => [ax + dx * Math.cos(h) + dz * Math.sin(h), 0.1135, az - dx * Math.sin(h) + dz * Math.cos(h)];
     return [
@@ -920,7 +944,7 @@ function truckLayout(n: number): TruckLayout {
     [can.x0 + 0.07, CAN_Y + 0.06, 0.41],
     [can.x1 - 0.07, CAN_Y + 0.06, 0.41],
   ];
-  return { bays, islands, in: IN, medianL, medianX, laneX1, outX, exitPostX, lotX1, can, beacons, geo, lines, arrows, stripes };
+  return { bays, islands, in: IN, medianL, medianX, laneX1, outX, medianGeo, lotX1, can, beacons, geo, lines, arrows, stripes };
 }
 
 /** Side (−1 / +1) of an island a bay lies on. */
@@ -969,9 +993,9 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
       <Batch items={truck.arrows} m={M.marking} cast={false} />
       <Batch items={truck.stripes} m={M.rubber} cast={false} />
       {/* Raised median between the IN side and the OUT lane, rounded nose at the front */}
-      <Box p={[truck.medianX, 0.125, (MEDIAN_Z1 - 1.5) / 2]} s={[MEDIAN_W, 0.03, MEDIAN_Z1 + 1.5]} m={M.curb} cast />
-      <Cyl p={[truck.medianX, 0.125, MEDIAN_Z1]} r={MEDIAN_W / 2} h={0.03} m={M.curb} seg={10} />
-      <Cyl p={[truck.medianX, Y0 + 0.05, MEDIAN_Z1 - 0.01]} r={0.016} h={0.1} m={M.yellow} seg={8} />
+      <mesh geometry={truck.medianGeo} material={M.curb} position={[0, 0.11, 0]} castShadow receiveShadow />
+      <Cyl p={[truck.medianX, Y0 + 0.05, MEDIAN_Z1 - 0.02]} r={0.016} h={0.1} m={M.yellow} seg={8} />
+      <Cyl p={[STUB.c + 0.03, Y0 + 0.05, CONN.z1 + 0.03]} r={0.016} h={0.1} m={M.yellow} seg={8} />
 
       {islands.map((isl) => (
         <group key={isl.x}>
@@ -1111,32 +1135,26 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
         ))}
       </group>
 
-      {/* Back edge: IN barrier (pivot left of the IN lane) + gatehouse, OUT barrier
-          (pivot right of the OUT lane); signs facing the road */}
-      <Box p={[IN.x0 - 0.03, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[IN.x0 - 0.03, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={entry} name="entryBarrier" position={[IN.x0 - 0.03, 0.22, -1.3]}>
-        <Barrier dir={1} len={IN.x1 - IN.x0 + 0.02} />
+      {/* Back edge: one two-way access road; a barrier on each half (IN on the left,
+          OUT on the right), the gatehouse by the IN side, a sign facing the road */}
+      <Box p={[STUB.c - STUB.h - 0.03, 0.17, -1.4]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[STUB.c - STUB.h - 0.03, 0.16, -1.4]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={entry} name="entryBarrier" position={[STUB.c - STUB.h - 0.03, 0.22, -1.4]}>
+        <Barrier dir={1} len={STUB.h + 0.01} />
       </group>
-      <Box p={[truck.exitPostX, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[truck.exitPostX, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={exit} name="exitBarrier" position={[truck.exitPostX, 0.22, -1.3]}>
-        <Barrier dir={-1} len={truck.exitPostX - truck.medianX - 0.04} />
+      <Box p={[STUB.c + STUB.h + 0.03, 0.17, -1.4]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[STUB.c + STUB.h + 0.03, 0.16, -1.4]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={exit} name="exitBarrier" position={[STUB.c + STUB.h + 0.03, 0.22, -1.4]}>
+        <Barrier dir={-1} len={STUB.h + 0.01} />
       </group>
       <GateHouse />
-      {/* IN: blue "straight ahead" sign */}
-      <Box p={[IN.x0 - 0.06, 0.25, -1.42]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <Box p={[IN.x0 - 0.06, 0.38, -1.428]} s={[0.12, 0.12, 0.01]} m={M.blue} cast />
-      <Box p={[IN.x0 - 0.06, 0.365, -1.435]} s={[0.018, 0.06, 0.004]} m={M.curb} />
-      <group position={[IN.x0 - 0.06, 0.41, -1.435]} rotation={[0, 0, Math.PI / 4]}>
+      {/* Blue "oil depot / trucks this way" sign */}
+      <Box p={[STUB.c - STUB.h - 0.08, 0.25, -1.46]} s={[0.012, 0.3, 0.012]} m={M.steel} />
+      <Box p={[STUB.c - STUB.h - 0.08, 0.38, -1.468]} s={[0.12, 0.12, 0.01]} m={M.blue} cast />
+      <Box p={[STUB.c - STUB.h - 0.08, 0.365, -1.475]} s={[0.018, 0.06, 0.004]} m={M.curb} />
+      <group position={[STUB.c - STUB.h - 0.08, 0.41, -1.475]} rotation={[0, 0, Math.PI / 4]}>
         <Box p={[0, 0, 0]} s={[0.035, 0.035, 0.004]} m={M.curb} />
       </group>
-      {/* OUT: "no entry" disc on the median end, facing the road */}
-      <Box p={[truck.medianX, 0.25, -1.44]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <mesh material={M.red} position={[truck.medianX, 0.39, -1.45]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.05, 0.05, 0.01, 12]} />
-      </mesh>
-      <Box p={[truck.medianX, 0.39, -1.457]} s={[0.065, 0.014, 0.004]} m={M.curb} />
       {/* Bollard where the IN lane splits */}
       <Cyl p={[IN.x0 - 0.05, Y0 + 0.05, SPLIT.z0 + 0.05]} r={0.018} h={0.1} m={M.yellow} seg={8} />
       <Cyl p={[IN.x0 - 0.05, Y0 + 0.07, SPLIT.z0 + 0.05]} r={0.019} h={0.02} m={M.rubber} seg={8} />

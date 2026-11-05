@@ -13,6 +13,8 @@ import type { MapControls as MapControlsImpl } from 'three-stdlib';
 import {
   CellType,
   isDepot,
+  isOilDepot,
+  oilCells,
   stopLabel,
   stopCenter,
   stopKind,
@@ -32,7 +34,7 @@ import {
 import { groundAtGrid } from './railGeometry';
 import { DECK_LIFT, GHOST } from './Structures';
 import { CELL_STYLE } from './terrainStyle';
-import { Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
+import { TANK_COLORS, Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
 import './transport.css';
 
 /** Height (world) of the grey veil over the map. */
@@ -48,6 +50,8 @@ const LINE_GAP = 0.42;
 type Cell = [number, number];
 /** Top of the road coat above the ground (cells): the trucks drive on it. */
 const ROAD_TOP = 0.026;
+/** A truck's height over the ground on an oil depot's slab (the model's slab + asphalt, ×2). */
+const OIL_SLAB = 0.224;
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -55,13 +59,18 @@ const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
 // ---------------------------------------------------------------- trucks
 
 /** One articulated truck, placed every frame from the simulation. */
-function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckColors; map: TerrainMap; cellSize: number }) {
+function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: TruckColors; tank: boolean; map: TerrainMap; cellSize: number }) {
   const sim = useTransport();
   const root = useRef<THREE.Group>(null);
   const tractor = useRef<THREE.Group>(null);
   const trailer = useRef<THREE.Group>(null);
   const ghost = useRef<THREE.Mesh>(null);
   const half = (map.size - 1) / 2;
+  const oilLot = useMemo(() => {
+    const set = new Set<number>();
+    for (const st of map.stations ?? []) if (isOilDepot(st)) for (const c of oilCells(st)) set.add(c.x * map.size + c.z);
+    return set;
+  }, [map]);
   useFrame(() => {
     const g = root.current, tr = tractor.current, tl = trailer.current;
     const t = sim.allTrucks().find((q) => q.id === id);
@@ -91,7 +100,8 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
     }
     tr.visible = tl.visible = true;
     const deck = span ? (span.kind === 'bridge' ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : FLAT_TOP + floorOf(map, span) + ROAD_TOP) : null;
-    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + ROAD_TOP;
+    // On an oil depot's lot the trucks drive on its slab (0.112 design units = 0.224 cells up).
+    const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + (oilLot.has(Math.round(x) * map.size + Math.round(z)) ? OIL_SLAB : ROAD_TOP);
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.
@@ -102,7 +112,7 @@ function TruckView({ id, colors, map, cellSize }: { id: number; colors: TruckCol
   return (
     <group ref={root} scale={cellSize} visible={false}>
       <Tractor ref={tractor} colors={colors} />
-      <Trailer ref={trailer} colors={colors} />
+      <Trailer ref={trailer} colors={colors} kind={tank ? 'tank' : 'box'} />
       <mesh ref={ghost} geometry={GHOST_BOX} material={GHOST.vehicle} scale={[0.75, 0.22, 0.2]} visible={false} renderOrder={20} />
     </group>
   );
@@ -112,10 +122,20 @@ export function Trucks({ map, cellSize }: { map: TerrainMap; cellSize: number })
   const sim = useTransport();
   const snap = useTransportSnapshot(); // re-render on fleet / line changes
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
+  // Lines that serve an oil depot run tanker trucks.
+  const oilIds = new Set((map.stations ?? []).filter(isOilDepot).map((s) => s.id));
+  const tanker = new Set(snap.lines.filter((l) => l.stops.some((id) => oilIds.has(id))).map((l) => l.id));
   return (
     <group>
       {sim.allTrucks().map((t) => (
-        <TruckView key={t.id} id={t.id} colors={{ ...truckColors(t.id), stripe: colors.get(t.lineId) ?? '#888' }} map={map} cellSize={cellSize} />
+        <TruckView
+          key={t.id}
+          id={t.id}
+          colors={{ ...truckColors(t.id), stripe: colors.get(t.lineId) ?? '#888', tank: TANK_COLORS[t.id % TANK_COLORS.length] }}
+          tank={tanker.has(t.lineId)}
+          map={map}
+          cellSize={cellSize}
+        />
       ))}
       <Payments map={map} cellSize={cellSize} />
     </group>
@@ -285,7 +305,8 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {/* Stops */}
       {stops.map((s) => {
         const depot = isDepot(s);
-        const truck = stopKind(s) === 'truck' || depot;
+        const oil = isOilDepot(s);
+        const truck = stopKind(s) === 'truck' || depot || oil;
         const rail = stopKind(s) === 'rail' || depot;
         // Lit: stops of the kind being drafted (else the truck ones, as before).
         const lit = snap.draft ? (snap.draftKind === 'rail' ? rail : truck) : true;
@@ -302,11 +323,11 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
               }}
             >
               <circleGeometry args={[1.1 * cellSize, 24]} />
-              <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={lit ? 1 : 0.35} />
+              <meshBasicMaterial color={picked ? '#ffffff' : depot ? '#c084fc' : oil ? '#e8762b' : truck ? '#f0a03a' : '#5b8fd6'} depthTest={false} transparent opacity={lit ? 1 : 0.35} />
             </mesh>
             <Html zIndexRange={[10, 0]} center position={[0, 0.2, -2.6 * cellSize]} style={{ pointerEvents: 'none' }}>
               <div className={'net-stop' + (lit ? '' : ' is-rail') + (picked ? ' is-picked' : '')}>
-                {depot ? '' : truck ? '🚚 ' : '🚉 '}
+                {depot || oil ? '' : truck ? '🚚 ' : '🚉 '}
                 {nameOf(s.id)}
               </div>
             </Html>

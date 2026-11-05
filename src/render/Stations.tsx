@@ -19,6 +19,11 @@ import {
   depotExit,
   type DepotRot,
   isDepot,
+  isOilDepot,
+  OIL_DEPOT_CAPACITY,
+  oilCells,
+  oilCenter,
+  oilStub,
   stationGeom,
   useTransport,
   type Station,
@@ -34,6 +39,7 @@ import { CELL_STYLE } from './terrainStyle';
 import { StationModel } from './StationModel';
 import { TruckStopModel } from './TruckStopModel';
 import { DepotDynamic, DepotModel } from './DepotModel';
+import { OilDepotModel } from './OilDepotModel';
 import { StaticBatch } from './StaticBatch';
 import { useDev } from '../dev/modelEditorStore';
 import './stations.css';
@@ -66,6 +72,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
     <group>
       {(map.stations ?? []).map((s) => {
         if (isDepot(s)) return <Depot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
+        if (isOilDepot(s)) return <OilDepot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
         const { pos, rot } = placement(map, cellSize, s.anchor, s.side);
         const total = prod.stationTotal(s.id);
         const stock = prod.stationStock(s.id);
@@ -117,6 +124,36 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
       <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.4, pos[2]]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip station-stock' + (total >= DEPOT_CAPACITY ? ' is-bad' : '')}>
           🏬 {parts.length ? parts.join('  ') : 'üres'} · {total}/{DEPOT_CAPACITY}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+/** An oil depot: the model (batched), its tank stock as a label. */
+function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number; st: Station; batch: boolean }) {
+  const prod = useInteriorStore().production;
+  const half = (map.size - 1) / 2;
+  const [cx, cz] = oilCenter(st);
+  const y = (FLAT_TOP + cornerHeightAt(map, st.anchor[0], st.anchor[1])) * cellSize;
+  const pos: [number, number, number] = [(cx - half) * cellSize, y, (cz - half) * cellSize];
+  const rotY = -(st.rot ?? 0) * (Math.PI / 2);
+  const oil = Math.floor(prod.stationStock(st.id).oil ?? 0);
+  return (
+    <group>
+      <StaticBatch enabled={batch}>
+        <OilDepotModel
+          position={pos}
+          rotationY={rotY}
+          scale={cellSize * INDUSTRY_MODEL_SCALE}
+          truckBays={st.bays ?? 2}
+          railTracks={st.tracks ?? 1}
+          phase={st.id * 0.7}
+        />
+      </StaticBatch>
+      <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.6, pos[2]]} center style={{ pointerEvents: 'none' }}>
+        <div className={'station-tip station-stock' + (oil >= OIL_DEPOT_CAPACITY ? ' is-bad' : '')}>
+          🛢️ {oil}/{OIL_DEPOT_CAPACITY}
         </div>
       </Html>
     </group>
@@ -220,6 +257,52 @@ export function DepotPlacement({
       </Html>
       <Html zIndexRange={[10, 0]} position={[(mx - half) * cellSize, y + cellSize * 1.6, (mz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
         <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `🏬 Raktár · $${cost} · Q: forgatás` : reason}</div>
+      </Html>
+    </group>
+  );
+}
+
+/** The oil depot tool's preview: the lot (the access road cell in orange) and a tip. */
+export function OilDepotPlacement({
+  map,
+  cellSize,
+  x0,
+  z0,
+  rot,
+  problem,
+  cost,
+  canAfford,
+}: {
+  map: TerrainMap;
+  cellSize: number;
+  x0: number;
+  z0: number;
+  rot: DepotRot;
+  problem: string | null;
+  cost: number;
+  canAfford: boolean;
+}) {
+  const half = (map.size - 1) / 2;
+  const reason = problem ?? (canAfford ? null : 'Nincs elég pénz');
+  const ok = reason === null;
+  const st: Station = { id: 0, anchor: [x0, z0], side: 'S', kind: 'oil', rot };
+  const cx = Math.min(map.size - 1, Math.max(0, x0)), cz = Math.min(map.size - 1, Math.max(0, z0));
+  const y = (FLAT_TOP + cornerHeightAt(map, cx, cz)) * cellSize;
+  const [mx, mz] = oilCenter(st);
+  const [sx, sz] = oilStub(st);
+  return (
+    <group>
+      {oilCells(st).map(({ x, z }) => (
+        <mesh key={`${x},${z}`} position={[(x - half) * cellSize, y + 0.06 * cellSize, (z - half) * cellSize]}>
+          <boxGeometry args={[cellSize * 0.94, cellSize * 0.06, cellSize * 0.94]} />
+          <meshBasicMaterial color={!ok ? '#f87171' : x === sx && z === sz ? '#f0a03a' : '#c9b37a'} transparent opacity={0.5} depthWrite={false} />
+        </mesh>
+      ))}
+      <Html zIndexRange={[10, 0]} position={[(sx - half) * cellSize, y + cellSize * 0.6, (sz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+        <div className="station-tip">⇅ bejárat (ide jön az út)</div>
+      </Html>
+      <Html zIndexRange={[10, 0]} position={[(mx - half) * cellSize, y + cellSize * 1.6, (mz - half) * cellSize]} center style={{ pointerEvents: 'none' }}>
+        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `🛢️ Olajdepó · $${cost} · Q: forgatás` : reason}</div>
       </Html>
     </group>
   );

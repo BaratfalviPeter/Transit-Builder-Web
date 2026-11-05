@@ -327,6 +327,24 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Víz emelése: az első emelés a part szintjére (0) tölti fel szárazföldnek
   (`terraformBatch`, `filled`), csak a következő emel egy lépcsőt (HILL_STEP 0,45).
 - Olajfúró torony: térképenként pontosan 1, egy tó közepén (`placeOilRig`).
+- OLAJ A JÁTÉKBAN (1. rész, 2026-11): OLAJDEPÓ = `Station kind 'oil'` (`src/sim/oilDepot.ts`; `rot` 0–3,
+  `bays` 2, `tracks` 1 — a bővítés később), 7×6 cella (`oilSize`, a modell `oilLayout` számaiból; a modell
+  `OilDepotModel` ugyanezeket importálja, cellához igazítva: bejárat `STUB.c` 1,25, első vágány −1,25).
+  Lerakás: eszköz 🛢️ (`oildepot`, $9000, fenntartás 350/hó), `TerrainStore.buildOilDepot` (Station cellák, a
+  bejárati cella Road = `oilStub`), előnézet `OilDepotPlacement`, Q forgat. CSŐVEZETÉK (`src/sim/pipes.ts`):
+  `map.pipes` cellaindexek (a cella típusát nem változtatja: víz, föld, erdő, út, sín alatt is), eszköz 〰️
+  (`pipe`, kattintás a kezdőpontra, utána minden kattintás egy L-alakot rak le, Esc / jobb klikk: vége; $40
+  föld / $80 víz, fenntartás 1/cella), bontás (B) cellánként. `pipedDepots`: a fúró telkével és a depó
+  telkével (átlósan is) érintkező cső-hálózat. `ProductionSim.tickPipes`: a fúró (szintje mint bármely
+  iparé) a csővel elért depókba termel (`store`, kapacitás 400), a fizetési táv a fúróhoz LEGKÖZELEBBI
+  PARTPONTTÓL számít (`rigShore`, a felhasználó kérte: ne lehessen csővel csalni). Render: `Pipes.tsx` (bóják a
+  vízen, oszlopok a szárazföldön). KAMION: a megálló cellája a bejárat (`stopCells`), érkezéskor `pickBay`
+  (szabad állás) → `tickOilDepot`: wait → in (`oilBayPath`: a bejárat bal felén be, az állás stopvonaláig) →
+  load (teli rakomány: `oilWaits`) → out (egyszerre egy kamion hajt ki: `oilOut`; körbe a fordulón, a bejárat
+  jobb felén ki) → a következő megálló útja. A depó telkén a kamion a betonlapon gurul (`Transport.tsx`
+  `OIL_SLAB`), az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
+  tartalmazta az olajat), később a finomító. Teszt: a böngészőben `__tb` hookkal (depó a parthoz, cső, út az
+  erőműig, járat) — kb. $1200 / forduló.
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
     A szerkesztő alatt kikapcsol.
@@ -417,6 +435,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
+- Folyamatban (#108): az elválasztó fal törése hátrébb; OLAJ A JÁTÉKBAN 1. rész (depó lerakása, csővezeték,
+  kamionos rakodás, erőmű). Utána: 2. vasúti rakodás, 3. bővítés (állás / vágány), 4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

@@ -25,6 +25,7 @@
 
 import { stationOn, stopGivesOut, stopShare, type Side, type Station } from './stations';
 import { DEPOT_CAPACITY } from './depot';
+import { pipedDepots, rigAnchor, rigShore } from './pipes';
 import { CellType, type TerrainMap } from './terrain';
 import {
   INTERIORS_ENABLED,
@@ -373,7 +374,47 @@ export class ProductionSim {
   // ------------------------------------------------------------- internals
 
   /** Fixed production: every industry with stops makes / turns / burns. */
+  /** The pipeline view of the map (re-derived when the map changes). */
+  private pipeCache: { version: number; depots: number[]; rig: [number, number] | null; shore: [number, number] | null } | null = null;
+
+  /**
+   * The oil rig pumps into the oil depots its pipeline reaches (see pipes.ts):
+   * like an industry's output stops, levelled the same way; the oil's pay
+   * distance starts at the shore point nearest the rig.
+   */
+  private tickPipes(map: TerrainMap, dt: number): void {
+    if (!this.pipeCache || this.pipeCache.version !== map.version)
+      this.pipeCache = { version: map.version, depots: pipedDepots(map), rig: rigAnchor(map), shore: rigShore(map) };
+    const { depots, rig, shore } = this.pipeCache;
+    if (!rig || !shore || !depots.length) return;
+    const key = `${rig[0]},${rig[1]}`;
+    const p = FIXED_PRODUCTION[CellType.OilRig];
+    if (!p?.makes) return;
+    for (const id of depots) this.stopIndustry.set(id, key);
+    const level = this.industries.get(key)?.level ?? START_LEVEL;
+    const budget = (this.carry.get(key) ?? 0) + p.rate * LEVEL_RATE[level - 1] * dt;
+    const units = Math.floor(budget);
+    this.carry.set(key, budget - units);
+    if (units <= 0) return;
+    this.offered.set(key, (this.offered.get(key) ?? 0) + units);
+    // One unit at a time to the emptiest depot with room.
+    for (let i = 0; i < units; i++) {
+      let best = -1;
+      let low = Infinity;
+      for (const id of depots) {
+        const n = this.stationTotal(id);
+        if (n < low && n < DEPOT_CAPACITY) {
+          low = n;
+          best = id;
+        }
+      }
+      if (best < 0) break;
+      this.store(best, p.makes, 1, shore, 0);
+    }
+  }
+
   private tickFixed(map: TerrainMap, dt: number): void {
+    this.tickPipes(map, dt);
     const byIndustry = new Map<string, Station[]>();
     for (const st of map.stations ?? []) {
       const key = `${st.anchor[0]},${st.anchor[1]}`;

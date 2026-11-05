@@ -11,6 +11,7 @@
  */
 
 import { isDepot } from './depot';
+import { isOilDepot } from './oilDepot';
 import { LineWalker } from './railNet';
 import { stopKind } from './stations';
 import { CellType, type TerrainMap } from './terrain';
@@ -23,6 +24,8 @@ export const UPKEEP = {
   railStation: 50,
   truckStop: 25,
   depot: 300,
+  oilDepot: 350,
+  pipeCell: 1,
   signal: 8,
   light: 15,
   roundabout: 15,
@@ -48,9 +51,10 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
   for (let x = 0; x < map.size; x++) for (let z = 0; z < map.size; z++) if (map.cells[x][z] === CellType.Road) road++;
   let rail = 0;
   for (const e of map.railNet?.edges ?? []) rail += new LineWalker(e.pts).total;
-  let stations = 0, stops = 0, depots = 0;
+  let stations = 0, stops = 0, depots = 0, oil = 0;
   for (const s of map.stations ?? []) {
     if (isDepot(s)) depots++;
+    else if (isOilDepot(s)) oil++;
     else if (stopKind(s) === 'truck') stops++;
     else stations++;
   }
@@ -73,6 +77,8 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
     { label: 'Vasútállomás', count: stations, unit: 'db', cost: stations * UPKEEP.railStation },
     { label: 'Kamionrakodó', count: stops, unit: 'db', cost: stops * UPKEEP.truckStop },
     { label: 'Raktár', count: depots, unit: 'db', cost: depots * UPKEEP.depot },
+    { label: 'Olajdepó', count: oil, unit: 'db', cost: oil * UPKEEP.oilDepot },
+    { label: 'Olajvezeték', count: map.pipes?.length ?? 0, unit: 'cella', cost: (map.pipes?.length ?? 0) * UPKEEP.pipeCell },
     { label: 'Jelző', count: signals, unit: 'db', cost: signals * UPKEEP.signal },
     { label: 'Lámpa / körforgalom', count: lights + rounds, unit: 'db', cost: lights * UPKEEP.light + rounds * UPKEEP.roundabout },
     { label: 'Tábla', count: signs, unit: 'db', cost: signs * UPKEEP.sign },

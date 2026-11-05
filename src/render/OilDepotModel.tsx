@@ -871,13 +871,17 @@ function truckLayout(n: number): TruckLayout {
       [STUB.c - STUB.h + i, CONN.z0 - 0.1],
     ];
   };
-  // The median island, grown by `grow` (for its edge lines).
+  // The median: a thin L-shaped curb wall (along the back strip from the access road's
+  // center line, then up between the bays and the OUT lane), grown by `g` for its edge lines.
+  // Only a wall — the asphalt round it stays wide enough for the trucks to turn.
+  const mw = MEDIAN_W / 2;
   const island = (g: number): Array<[number, number]> => [
-    [STUB.c - g, CONN.z1 - g],
-    [medianR + g, CONN.z1 - g],
+    [STUB.c - g, CONN.z1 - mw - g],
+    [medianR + g, CONN.z1 - mw - g],
     [medianR + g, MEDIAN_Z1 + g],
     [medianL - g, MEDIAN_Z1 + g],
-    [medianL - g, SPLIT.z1],
+    [medianL - g, CONN.z1 + mw + g],
+    [STUB.c - g, CONN.z1 + mw + g],
   ];
   const toV = (pts: Array<[number, number]>) => pts.map(([px, pz]) => new THREE.Vector2(px, -pz));
   const shape = new THREE.Shape(toV(outline(0)));
@@ -995,7 +999,7 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
       {/* Raised median between the IN side and the OUT lane, rounded nose at the front */}
       <mesh geometry={truck.medianGeo} material={M.curb} position={[0, 0.11, 0]} castShadow receiveShadow />
       <Cyl p={[truck.medianX, Y0 + 0.05, MEDIAN_Z1 - 0.02]} r={0.016} h={0.1} m={M.yellow} seg={8} />
-      <Cyl p={[STUB.c + 0.03, Y0 + 0.05, CONN.z1 + 0.03]} r={0.016} h={0.1} m={M.yellow} seg={8} />
+      <Cyl p={[STUB.c + 0.02, Y0 + 0.05, CONN.z1]} r={0.016} h={0.1} m={M.yellow} seg={8} />
 
       {islands.map((isl) => (
         <group key={isl.x}>

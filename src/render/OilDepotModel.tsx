@@ -1,24 +1,26 @@
 /**
- * OilDepotModel — a low-poly coastal oil terminal / oil depot on a 3×3-cell
- * lot, after the reference art (`ref/oil-depot.jpg`).
+ * OilDepotModel — a low-poly coastal oil terminal / oil depot, after the
+ * reference art (`ref/oil-depot.jpg`). PARAMETRIC: `truckBays` (1–5) and
+ * `railTracks` (1–3) widen the lot to +X / −X (`oilDepotBounds`); the default
+ * (2 bays, 1 track) is the 3×3-cell lot.
  *
- * Built in CELL UNITS: the base slab is exactly [3, 0.1, 3] centered on the
- * origin, resting on Y=0; the caller scales the group by `cellSize`.
+ * Built in CELL UNITS: the base slab is 3 deep (z ±1.5), resting on Y=0 and
+ * centered on the origin; the caller scales the group by `cellSize`.
  *
  * Layout (−Z = back, +Z = front, +X = right):
- *   - left edge: a rail loading track along Z (ballast, sleepers, rails), a
- *     narrow platform on the lot side and a raised steel lattice loading gantry
- *     with three hanging filling arms (the tank wagons are drawn by the game);
+ *   - left: 1–3 rail loading tracks along Z (walkways between them), a narrow
+ *     platform on the lot side and a raised steel lattice gantry over all of
+ *     them with three filling arms per track (the wagons are drawn by the game);
  *   - center / back: tank farm inside a low concrete bund wall: four dark slate
  *     steel tanks with rust bands, yellow ladders, roof railings and catwalk
  *     bridges; the incoming pipeline enters at the back edge between them;
  *   - back right: pump house (gabled hall + taller back block with a roof fan
  *     and a brick chimney with smoke), pipes with red valves to the rail gantry
  *     and over to the truck canopy;
- *   - right edge: one-way drive-through truck loading lane: entry barrier at
- *     the back (−Z), two parallel bays under a flat steel canopy (yellow
- *     beacons, pipes on the roof), a hazard-striped island with yellow loading
- *     arms, exit barrier at the front (+Z), white arrows pointing +Z;
+ *   - right: U-shaped truck loading: IN and OUT lanes side by side at the back
+ *     (barriers, gatehouse, median), the IN lane splits into the bays under a
+ *     flat steel canopy (islands with arms, red / green bay lights taking
+ *     turns), a rounded U-turn at the front into the OUT lane;
  *   - front center: small two-storey office with lit windows, two
  *     transformers, crates, pallets, barrels, jersey barriers, a wire fence.
  *
@@ -42,7 +44,14 @@ export interface OilDepotModelProps {
   scale?: number;
   rotationY?: number;
   phase?: number;
+  /** Truck loading bays, 1–5 (default 2): the truck side widens (+X). */
+  truckBays?: number;
+  /** Rail loading tracks under the gantry, 1–3 (default 1): the rail side widens (−X). */
+  railTracks?: number;
 }
+
+export const MAX_TRUCK_BAYS = 5;
+export const MAX_RAIL_TRACKS = 3;
 
 // --- Shared materials --------------------------------------------------------
 
@@ -231,65 +240,174 @@ export function OilDepotModel({
   scale = 1,
   rotationY = 0,
   phase = 0,
+  truckBays = 2,
+  railTracks = 1,
 }: OilDepotModelProps) {
+  const bays = Math.max(1, Math.min(MAX_TRUCK_BAYS, Math.round(truckBays)));
+  const tracks = Math.max(1, Math.min(MAX_RAIL_TRACKS, Math.round(railTracks)));
+  const truck = useMemo(() => truckLayout(bays), [bays]);
+  const rail = useMemo(() => railLayout(tracks), [tracks]);
+  const x0 = rail.lotX0;
+  const x1 = truck.lotX1;
   return (
     <group position={position} scale={scale} rotation={[0, rotationY, 0]}>
-      <Ground />
-      <RailSiding />
-      <LoadingGantry phase={phase} />
-      <TankFarm />
-      <PumpHouse phase={phase} />
-      <Piping />
-      <TruckLane phase={phase} />
-      <Office />
-      <Yard />
-      <SharedBatches />
+      {/* The lot is centered on the origin whatever its width. */}
+      <group position={[-(x0 + x1) / 2, 0, 0]}>
+        <Ground x0={x0} x1={x1} truck={truck} />
+        <RailSiding rail={rail} />
+        <LoadingGantry rail={rail} phase={phase} />
+        <TankFarm />
+        <PumpHouse phase={phase} />
+        <Piping truck={truck} />
+        <TruckLane truck={truck} phase={phase} />
+        <Office />
+        <Yard />
+        <SharedBatches />
+      </group>
     </group>
   );
 }
 
+/**
+ * Lot size of a depot in design units (×2 in the game): x from x0 to x1
+ * (it grows to −X with rail tracks, to +X with truck bays), z always ±1.5.
+ */
+export function oilDepotBounds(truckBays = 2, railTracks = 1): { x0: number; x1: number } {
+  return { x0: railLayout(railTracks).lotX0, x1: truckLayout(truckBays).lotX1 };
+}
+
 // --- Ground ----------------------------------------------------------------------
 
-function Ground() {
-  const joints = [-1, -0.5, 0, 0.5, 1];
+function Ground({ x0, x1, truck }: { x0: number; x1: number; truck: TruckLayout }) {
+  const w = x1 - x0;
+  const cx = (x0 + x1) / 2;
+  const joints: number[] = [];
+  for (let j = Math.ceil((x0 + 0.01) * 2) / 2; j < x1 - 0.01; j += 0.5) joints.push(j);
+  // Back edge curb pieces: core (rail platform → IN lane), between IN lane and median, right of the OUT lane.
+  const back: Array<[number, number]> = [
+    [-1.19, truck.in.x0 - 0.15],
+    [truck.in.x1 + 0.02, truck.medianL - 0.02],
+    [truck.laneX1 + 0.01, x1],
+  ].filter(([a, b]) => b - a > 0.04) as Array<[number, number]>;
   return (
     <group>
-      <Box p={[0, 0.05, 0]} s={[3, 0.1, 3]} m={M.slab} />
+      <Box p={[cx, 0.05, 0]} s={[w, 0.1, 3]} m={M.slab} />
       {joints.map((j) => (
         <Box key={`jx${j}`} p={[j, 0.101, 0]} s={[0.012, 0.004, 3]} m={M.joint} />
       ))}
-      {joints.map((j) => (
-        <Box key={`jz${j}`} p={[0, 0.101, j]} s={[3, 0.004, 0.012]} m={M.joint} />
+      {[-1, -0.5, 0, 0.5, 1].map((j) => (
+        <Box key={`jz${j}`} p={[cx, 0.101, j]} s={[w, 0.004, 0.012]} m={M.joint} />
       ))}
-      {/* Edge curb: left / right full length, back / front only between the rail and the truck lane */}
-      <Box p={[-1.48, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
-      <Box p={[1.48, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
-      <Box p={[-0.3, 0.13, -1.48]} s={[1.76, 0.06, 0.04]} m={M.curb} />
-      <Box p={[0.01, 0.13, 1.48]} s={[2.98, 0.06, 0.04]} m={M.curb} />
+      {/* Edge curb: left / right full length; back in pieces (lanes open); front from the rail on */}
+      <Box p={[x0 + 0.02, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
+      <Box p={[x1 - 0.02, 0.13, 0]} s={[0.04, 0.06, 3]} m={M.curb} />
+      {back.map(([a, b]) => (
+        <Box key={a} p={[(a + b) / 2, 0.13, -1.48]} s={[b - a, 0.06, 0.04]} m={M.curb} />
+      ))}
+      <Box p={[(-1.19 + x1) / 2, 0.13, 1.48]} s={[x1 + 1.19, 0.06, 0.04]} m={M.curb} />
     </group>
   );
 }
 
 // --- Rail siding + loading gantry ------------------------------------------------------
 
-const RX = -1.3; // track center line
-const SLEEPERS: Inst[] = Array.from({ length: 30 }, (_, i) => ({
-  p: [RX, 0.1475, -1.45 + i * 0.1],
-  s: [0.15, 0.015, 0.035],
-}));
+/** Gantry fixed parts: inner legs on the platform edge, z span, heights. */
+const G = { xi: -1.02, z0: -0.85, z1: 0.55, top: 0.95, chord: 0.83 };
+/** Outer ends of the gantry: each leg is a pair of posts at z ± 0.05. */
+const GZA = G.z0 - 0.05;
+const GZB = G.z1 + 0.05;
+const TRACK_PITCH = 0.5;
+const ARM_Z = [-0.55, -0.15, 0.25];
 
-function RailSiding() {
+interface RailLayout {
+  /** Track center lines, from the platform outward (−X). */
+  tracks: number[];
+  /** Walkway centers between neighbouring tracks. */
+  walks: number[];
+  /** Gantry leg lines (x), inner first. */
+  legs: number[];
+  lotX0: number;
+  rods: Inst[];
+  sleepers: Inst[];
+}
+
+function railLayout(n: number): RailLayout {
+  const tracks = Array.from({ length: n }, (_, i) => -1.3 - TRACK_PITCH * i);
+  const walks = tracks.slice(0, -1).map((x) => x - TRACK_PITCH / 2);
+  const xo = tracks[n - 1] - 0.17;
+  const legs = [G.xi, ...walks, xo];
+  const lotX0 = -1.5 - TRACK_PITCH * (n - 1);
+  // Legs stand on the platform / walkways (raised), the outermost (last) on the slab.
+  const r: Inst[] = [];
+  legs.forEach((x, k) => {
+    const y0 = k === legs.length - 1 ? Y0 : 0.2;
+    for (const z of [G.z0, G.z1]) {
+      // Two posts 0.1 apart in Z with zigzag bracing
+      r.push(rod([x, y0, z - 0.05], [x, G.top, z - 0.05], 0.022));
+      r.push(rod([x, y0, z + 0.05], [x, G.top, z + 0.05], 0.022));
+      for (let i = 0; i < 3; i++) {
+        const ya = y0 + ((G.top - y0) * i) / 3;
+        const yb = y0 + ((G.top - y0) * (i + 1)) / 3;
+        r.push(rod([x, ya, i % 2 ? z + 0.05 : z - 0.05], [x, yb, i % 2 ? z - 0.05 : z + 0.05], 0.01));
+      }
+    }
+    // Side truss along Z: top + bottom chord, diagonals
+    r.push(rod([x, G.top, GZA - 0.012], [x, G.top, GZB + 0.012], 0.024));
+    r.push(rod([x, G.chord, GZA - 0.01], [x, G.chord, GZB + 0.01], 0.02));
+    for (let i = 0; i < 5; i++) {
+      const za = G.z0 + ((G.z1 - G.z0) * i) / 5;
+      const zb = G.z0 + ((G.z1 - G.z0) * (i + 1)) / 5;
+      r.push(rod([x, i % 2 ? G.top : G.chord, za], [x, i % 2 ? G.chord : G.top, zb], 0.01));
+    }
+  });
+  // Portal cross beams over every bay between two leg lines + diagonals
+  for (let k = 0; k + 1 < legs.length; k++) {
+    const a = legs[k + 1];
+    const b = legs[k];
+    for (const zc of [G.z0, G.z1]) {
+      for (const z of [zc - 0.05, zc + 0.05]) {
+        r.push(rod([a - 0.012, G.top, z], [b + 0.012, G.top, z], 0.024));
+        r.push(rod([a - 0.01, G.chord, z], [b + 0.01, G.chord, z], 0.02));
+        r.push(rod([a, G.chord, z], [(a + b) / 2, G.top, z], 0.01));
+        r.push(rod([(a + b) / 2, G.top, z], [b, G.chord, z], 0.01));
+      }
+    }
+  }
+  // Top deck cross members (walkway joists) over the full width
+  for (let i = 1; i < 5; i++) {
+    const z = G.z0 + ((G.z1 - G.z0) * i) / 5;
+    r.push(rod([xo, G.top + 0.012, z], [G.xi, G.top + 0.012, z], 0.012));
+  }
+  const sleepers = tracks.flatMap((x) =>
+    Array.from({ length: 30 }, (_, i) => ({ p: [x, 0.1475, -1.45 + i * 0.1] as V3, s: [0.15, 0.015, 0.035] as V3 })),
+  );
+  return { tracks, walks, legs, lotX0, rods: r, sleepers };
+}
+
+function RailSiding({ rail }: { rail: RailLayout }) {
   return (
     <group>
-      <Box p={[RX, 0.12, 0]} s={[0.22, 0.04, 3]} m={M.ballast} />
-      <Batch items={SLEEPERS} m={M.sleeper} cast={false} />
-      {[-0.0375, 0.0375].map((dx) => (
-        <Box key={dx} p={[RX + dx, 0.164, 0]} s={[0.012, 0.018, 3]} m={M.rail} cast />
+      {rail.tracks.map((x) => (
+        <group key={x}>
+          <Box p={[x, 0.12, 0]} s={[0.22, 0.04, 3]} m={M.ballast} />
+          {[-0.0375, 0.0375].map((dx) => (
+            <Box key={dx} p={[x + dx, 0.164, 0]} s={[0.012, 0.018, 3]} m={M.rail} cast />
+          ))}
+        </group>
       ))}
+      <Batch items={rail.sleepers} m={M.sleeper} cast={false} />
       {/* Platform on the lot side with a yellow safety line */}
       <Box p={[-1.06, 0.15, 0]} s={[0.2, 0.1, 2.4]} m={M.slab} cast />
       <Box p={[-1.148, 0.201, 0]} s={[0.016, 0.003, 2.4]} m={M.yellow} />
-      {/* Bollards + a small hut at the platform end */}
+      {/* Walkways between neighbouring tracks (gantry legs stand on them) */}
+      {rail.walks.map((x) => (
+        <group key={x}>
+          <Box p={[x, 0.15, (GZA + GZB) / 2]} s={[0.22, 0.1, GZB - GZA + 0.3]} m={M.slab} cast />
+          <Box p={[x - 0.1, 0.201, (GZA + GZB) / 2]} s={[0.012, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
+          <Box p={[x + 0.1, 0.201, (GZA + GZB) / 2]} s={[0.012, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
+        </group>
+      ))}
+      {/* Small hut at the platform end */}
       <Box p={[-1.04, 0.28, 1.0]} s={[0.12, 0.16, 0.14]} m={M.girder} cast />
       <Box p={[-1.04, 0.33, 1.0]} s={[0.124, 0.018, 0.144]} m={M.yellow} />
       <Box p={[-1.04, 0.37, 1.0]} s={[0.15, 0.02, 0.17]} m={M.roof} cast />
@@ -298,58 +416,7 @@ function RailSiding() {
   );
 }
 
-const G = { xo: -1.47, xi: -1.02, z0: -0.85, z1: 0.55, top: 0.95, chord: 0.83 };
-/** Outer ends of the gantry: each leg is a pair of posts at z ± 0.05. */
-const GZA = G.z0 - 0.05;
-const GZB = G.z1 + 0.05;
-
-/** Lattice rods of the gantry: four lattice legs, two portal beams, two side trusses. */
-const GANTRY_RODS: Inst[] = (() => {
-  const r: Inst[] = [];
-  const base = (x: number) => (x === G.xi ? 0.2 : Y0);
-  for (const x of [G.xo, G.xi]) {
-    for (const z of [G.z0, G.z1]) {
-      const y0 = base(x);
-      // Two posts 0.1 apart in Z with zigzag bracing
-      r.push(rod([x, y0, z - 0.05], [x, G.top, z - 0.05], 0.022));
-      r.push(rod([x, y0, z + 0.05], [x, G.top, z + 0.05], 0.022));
-      const n = 3;
-      for (let i = 0; i < n; i++) {
-        const ya = y0 + ((G.top - y0) * i) / n;
-        const yb = y0 + ((G.top - y0) * (i + 1)) / n;
-        r.push(rod([x, ya, i % 2 ? z + 0.05 : z - 0.05], [x, yb, i % 2 ? z - 0.05 : z + 0.05], 0.01));
-      }
-    }
-    // Side truss along Z: top + bottom chord, diagonals
-    r.push(rod([x, G.top, GZA - 0.012], [x, G.top, GZB + 0.012], 0.024));
-    r.push(rod([x, G.chord, GZA - 0.01], [x, G.chord, GZB + 0.01], 0.02));
-    const panels = 5;
-    for (let i = 0; i < panels; i++) {
-      const za = G.z0 + ((G.z1 - G.z0) * i) / panels;
-      const zb = G.z0 + ((G.z1 - G.z0) * (i + 1)) / panels;
-      r.push(rod([x, i % 2 ? G.top : G.chord, za], [x, i % 2 ? G.chord : G.top, zb], 0.01));
-    }
-  }
-  // Portal cross beams + diagonals
-  for (const zc of [G.z0, G.z1]) {
-    for (const z of [zc - 0.05, zc + 0.05]) {
-      r.push(rod([G.xo - 0.012, G.top, z], [G.xi + 0.012, G.top, z], 0.024));
-      r.push(rod([G.xo - 0.01, G.chord, z], [G.xi + 0.01, G.chord, z], 0.02));
-      r.push(rod([G.xo, G.chord, z], [(G.xo + G.xi) / 2, G.top, z], 0.01));
-      r.push(rod([(G.xo + G.xi) / 2, G.top, z], [G.xi, G.chord, z], 0.01));
-    }
-  }
-  // Top deck cross members (walkway joists)
-  for (let i = 1; i < 5; i++) {
-    const z = G.z0 + ((G.z1 - G.z0) * i) / 5;
-    r.push(rod([G.xo, G.top + 0.012, z], [G.xi, G.top + 0.012, z], 0.012));
-  }
-  return r;
-})();
-
-const ARM_Z = [-0.55, -0.15, 0.25];
-
-function LoadingGantry({ phase }: { phase: number }) {
+function LoadingGantry({ rail, phase }: { rail: RailLayout; phase: number }) {
   const arms = useRef<Array<THREE.Group | null>>([]);
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
@@ -359,11 +426,11 @@ function LoadingGantry({ phase }: { phase: number }) {
   });
   return (
     <group>
-      <Batch items={GANTRY_RODS} m={M.girder} />
+      <Batch items={rail.rods} m={M.girder} />
       {/* Footings */}
-      {[G.xo, G.xi].map((x) =>
+      {rail.legs.map((x, k) =>
         [G.z0, G.z1].map((z) => (
-          <Box key={`${x}${z}`} p={[x, (x === G.xi ? 0.2 : Y0) + 0.015, z]} s={[0.06, 0.03, 0.16]} m={M.joint} />
+          <Box key={`${x}${z}`} p={[x, (k === rail.legs.length - 1 ? Y0 : 0.2) + 0.015, z]} s={[0.06, 0.03, 0.16]} m={M.joint} />
         )),
       )}
       {/* Walkway grating + yellow handrail on top */}
@@ -372,27 +439,31 @@ function LoadingGantry({ phase }: { phase: number }) {
       {[GZA, (GZA + GZB) / 2, GZB].map((z) => (
         <Box key={z} p={[-1.16, G.top + 0.055, z]} s={[0.008, 0.07, 0.008]} m={M.yellow} />
       ))}
-      {/* Center beam the arms hang from */}
-      <Box p={[RX, G.chord - 0.01, (GZA + GZB) / 2]} s={[0.03, 0.03, GZB - GZA]} m={M.girder} cast />
-      {/* Product pipe along the gantry top + drops to each arm */}
+      {/* Product pipe along the gantry top */}
       <Pipe from={[-1.1, G.top + 0.04, GZA]} to={[-1.1, G.top + 0.04, GZB]} r={0.02} m={M.pipe} />
       <Joint p={[-1.1, G.top + 0.04, MAN_Z]} r={0.022} m={M.pipe} />
-      {ARM_Z.map((z) => (
-        <Box key={z} p={[(-1.1 + RX) / 2, G.top + 0.04, z]} s={[-1.1 - RX, 0.024, 0.024]} m={M.pipe} />
-      ))}
-      {ARM_Z.map((z, i) => (
-        <group
-          key={z}
-          name="fillArm"
-          position={[RX, G.chord, z]}
-          ref={(el) => {
-            arms.current[i] = el;
-          }}
-        >
-          <Box p={[0, -0.025, 0]} s={[0.026, 0.35, 0.026]} m={M.frame} cast />
-          <Box p={[0, -0.2, 0]} s={[0.04, 0.04, 0.04]} m={M.yellow} cast />
-          <Box p={[0, -0.27, 0]} s={[0.03, 0.14, 0.03]} m={M.rubber} cast />
-          <Box p={[0, -0.36, 0]} s={[0.035, 0.025, 0.035]} m={M.yellow} cast />
+      {rail.tracks.map((rx, ti) => (
+        <group key={rx}>
+          {/* Center beam over the track the arms hang from */}
+          <Box p={[rx, G.chord - 0.01, (GZA + GZB) / 2]} s={[0.03, 0.03, GZB - GZA]} m={M.girder} cast />
+          {ARM_Z.map((z) => (
+            <Box key={z} p={[(-1.1 + rx) / 2, G.top + 0.04, z]} s={[-1.1 - rx, 0.024, 0.024]} m={M.pipe} />
+          ))}
+          {ARM_Z.map((z, i) => (
+            <group
+              key={z}
+              name="fillArm"
+              position={[rx, G.chord, z]}
+              ref={(el) => {
+                arms.current[ti * ARM_Z.length + i] = el;
+              }}
+            >
+              <Box p={[0, -0.025, 0]} s={[0.026, 0.35, 0.026]} m={M.frame} cast />
+              <Box p={[0, -0.2, 0]} s={[0.04, 0.04, 0.04]} m={M.yellow} cast />
+              <Box p={[0, -0.27, 0]} s={[0.03, 0.14, 0.03]} m={M.rubber} cast />
+              <Box p={[0, -0.36, 0]} s={[0.035, 0.025, 0.035]} m={M.yellow} cast />
+            </group>
+          ))}
         </group>
       ))}
     </group>
@@ -619,7 +690,7 @@ function PumpHouse({ phase }: { phase: number }) {
 const MAN_Z = -0.12; // manifold in front of the bund
 const MAN_Y = 0.18;
 
-function Piping() {
+function Piping({ truck }: { truck: TruckLayout }) {
   return (
     <group>
       {/* Incoming pipeline from the back edge, between the two tank columns, then a
@@ -672,9 +743,9 @@ function Piping() {
           [0.52, Y0, -0.82],
           [0.52, PIPE_Y, -0.82],
           [0.52, PIPE_Y, HEAD_Z],
-          [LANE_B, PIPE_Y, HEAD_Z],
-          [LANE_B, PIPE_Y, 0.38],
-          [LANE_B, CAN.y + 0.02, 0.38],
+          [truck.bays[truck.bays.length - 1], PIPE_Y, HEAD_Z],
+          [truck.bays[truck.bays.length - 1], PIPE_Y, 0.38],
+          [truck.bays[truck.bays.length - 1], CAN_Y + 0.02, 0.38],
         ]}
         r={0.022}
         m={M.rust}
@@ -691,39 +762,49 @@ function Piping() {
  * U-shaped truck loading (right-hand traffic; driving toward +Z, "right" is −X):
  *   - back edge: the IN lane (left) and the OUT lane (right, along the lot edge),
  *     split by a raised median;
- *   - the IN lane widens into two loading bays under the canopy (island between);
- *   - at the front, both bays turn round a rounded U into the OUT lane, which
+ *   - the IN lane widens into 1–5 loading bays under the canopy; the bays come
+ *     in pairs with a shared island between them (an odd last bay gets its own);
+ *   - at the front, the bays turn round a rounded U into the OUT lane, which
  *     runs back past the canopy to the exit.
  */
-const LANE = { x0: 0.58, x1: 1.4 };
-/** Exit barrier post: on the concrete strip right of the OUT lane. */
-const EXIT_POST_X = 1.44;
-/** IN lane at the back, before it splits. */
-const IN = { x0: 0.78, x1: 1.13 };
-/** Median between the bays / IN lane and the OUT lane; its nose at MEDIAN_Z1. */
-const MEDIAN_X = 1.175;
+const LANE_X0 = 0.58;
+const BAY_W = 0.24;
+const ISLAND_W = 0.11;
 const MEDIAN_W = 0.04;
 const MEDIAN_Z1 = 0.7;
-/** OUT lane center line. */
-const OUT_X = (MEDIAN_X + MEDIAN_W / 2 + LANE.x1) / 2;
-const LANE_A = 0.7;
-const LANE_B = 1.05;
-const ISLAND = { x: 0.875, z0: -0.36, z1: 0.36 };
-const CAN = { x0: 0.56, x1: 1.19, z0: -0.46, z1: 0.46, y: 0.55 };
+const OUT_W = 0.2;
+/** IN lane at the back, before it splits. */
+const IN = { x0: 0.78, x1: 1.13 };
+const ISLAND_Z = { z0: -0.36, z1: 0.36 };
+const CAN_Y = 0.55;
+const CAN_Z = { z0: -0.46, z1: 0.46 };
 /** Canopy roof pipes: header along X at HEAD_Z, then one branch per bay. */
 const PIPE_Y = 0.64;
 const HEAD_Z = -0.3;
-/** Beacons on the canopy corners, clear of the pipes. */
-const BEACONS: V3[] = [
-  [0.63, CAN.y + 0.06, -0.41],
-  [1.12, CAN.y + 0.06, -0.41],
-  [0.63, CAN.y + 0.06, 0.41],
-  [1.12, CAN.y + 0.06, 0.41],
-];
 const SPLIT = { z0: -1.0, z1: -0.62 };
 /** Front edge of the turning area and its corner radius. */
 const FRONT_Z = 1.44;
 const TURN_R = 0.24;
+
+interface TruckLayout {
+  /** Bay center lines (x). */
+  bays: number[];
+  /** Islands: center x and the bays they serve. */
+  islands: Array<{ x: number; bays: number[] }>;
+  in: { x0: number; x1: number };
+  medianL: number;
+  medianX: number;
+  laneX1: number;
+  outX: number;
+  exitPostX: number;
+  lotX1: number;
+  can: { x0: number; x1: number };
+  beacons: V3[];
+  geo: THREE.BufferGeometry;
+  lines: Inst[];
+  arrows: Inst[];
+  stripes: Inst[];
+}
 
 /** Quarter arc from angle a0 to a1 around (cx, cz), radius r. */
 function arc(cx: number, cz: number, r: number, a0: number, a1: number, n = 6): Array<[number, number]> {
@@ -733,23 +814,6 @@ function arc(cx: number, cz: number, r: number, a0: number, a1: number, n = 6): 
   });
 }
 
-/** Asphalt outline ([x, z], around the area), shrunk by `inset` (for the edge lines). */
-const laneOutline = (inset: number): Array<[number, number]> => {
-  const n0 = IN.x0 + inset;
-  const w0 = LANE.x0 + inset;
-  const w1 = LANE.x1 - inset;
-  const zf = FRONT_Z - inset;
-  const r = TURN_R - inset;
-  return [
-    [n0, -1.5],
-    [w1, -1.5],
-    ...arc(w1 - r, zf - r, r, 0, Math.PI / 2),
-    ...arc(w0 + r, zf - r, r, Math.PI / 2, Math.PI),
-    [w0, SPLIT.z1],
-    [n0, SPLIT.z0],
-  ];
-};
-
 /** A flat painted strip from a to b (on the asphalt). */
 function paint(a: [number, number], b: [number, number], w = 0.012): Inst {
   const dx = b[0] - a[0];
@@ -757,61 +821,123 @@ function paint(a: [number, number], b: [number, number], w = 0.012): Inst {
   return rbox([(a[0] + b[0]) / 2, 0.1135, (a[1] + b[1]) / 2], [w, 0.002, Math.hypot(dx, dz)], [0, Math.atan2(dx, dz), 0]);
 }
 
-/** Edge lines along the outline (open at the back edge) + the painted nose where the IN lane splits. */
-const EDGE_LINES: Inst[] = (() => {
-  const o = laneOutline(0.025);
-  const out: Inst[] = [];
-  for (let i = 0; i < o.length; i++) {
-    const a = o[i];
-    const b = o[(i + 1) % o.length];
-    if (a[1] < -1.49 && b[1] < -1.49) continue; // across the lanes at the lot edge
-    out.push(paint(a, b));
+function truckLayout(n: number): TruckLayout {
+  const bays: number[] = [];
+  const islands: Array<{ x: number; bays: number[] }> = [];
+  let x = LANE_X0;
+  for (let i = 0; i < n; i += 2) {
+    bays.push(x + BAY_W / 2);
+    x += BAY_W;
+    const isl = { x: x + ISLAND_W / 2, bays: [i] };
+    islands.push(isl);
+    x += ISLAND_W;
+    if (i + 1 < n) {
+      bays.push(x + BAY_W / 2);
+      isl.bays.push(i + 1);
+      x += BAY_W;
+    }
   }
-  const cx = (IN.x0 + IN.x1) / 2;
-  out.push(paint([cx, SPLIT.z0 + 0.12], [ISLAND.x - 0.05, ISLAND.z0 - 0.02]));
-  out.push(paint([cx, SPLIT.z0 + 0.12], [ISLAND.x + 0.05, ISLAND.z0 - 0.02]));
-  return out;
-})();
+  const medianL = Math.max(x, IN.x1 + 0.02) + 0.005;
+  const medianX = medianL + MEDIAN_W / 2;
+  const medianR = medianL + MEDIAN_W;
+  const laneX1 = medianR + OUT_W;
+  const exitPostX = laneX1 + 0.04;
+  const lotX1 = Math.max(1.5, Math.ceil((laneX1 + 0.08) * 2 - 1e-6) / 2);
+  const can = { x0: LANE_X0 - 0.02, x1: medianL + 0.02 };
 
-/** White arrows on the asphalt: [x, z, heading] (0 = +Z, π/2 = +X, π = −Z). */
-const ARROW_AT: Array<[number, number, number]> = [
-  [(IN.x0 + IN.x1) / 2, -1.25, 0],
-  [LANE_A, -0.56, 0],
-  [LANE_B, -0.56, 0],
-  [0.95, 1.2, Math.PI / 2],
-  [OUT_X, 0.2, Math.PI],
-  [OUT_X, -1.2, Math.PI],
-];
-const ARROWS: Inst[] = ARROW_AT.flatMap(([x, z, h]) => {
-  const at = (dx: number, dz: number): V3 => [x + dx * Math.cos(h) + dz * Math.sin(h), 0.1135, z - dx * Math.sin(h) + dz * Math.cos(h)];
-  return [
-    rbox(at(0, 0), [0.022, 0.002, 0.16], [0, h, 0]),
-    // Head: two bars running back from the tip (+0.08) to either side.
-    rbox(at(-0.022, 0.058), [0.02, 0.002, 0.07], [0, h + Math.PI / 4, 0]),
-    rbox(at(0.022, 0.058), [0.02, 0.002, 0.07], [0, h - Math.PI / 4, 0]),
+  // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines); the median is a slot.
+  const outline = (i: number): Array<[number, number]> => {
+    const zf = FRONT_Z - i;
+    const r = TURN_R - i;
+    const w0 = LANE_X0 + i;
+    const w1 = laneX1 - i;
+    return [
+      [IN.x0 + i, -1.5],
+      [IN.x1 - i, -1.5],
+      [IN.x1 - i, SPLIT.z0],
+      [medianL - i, SPLIT.z1],
+      [medianL - i, MEDIAN_Z1 + i],
+      [medianR + i, MEDIAN_Z1 + i],
+      [medianR + i, -1.5],
+      [w1, -1.5],
+      ...arc(w1 - r, zf - r, r, 0, Math.PI / 2),
+      ...arc(w0 + r, zf - r, r, Math.PI / 2, Math.PI),
+      [w0, SPLIT.z1],
+      [IN.x0 + i, SPLIT.z0],
+    ];
+  };
+  const shape = new THREE.Shape(outline(0).map(([px, pz]) => new THREE.Vector2(px, -pz)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+
+  // Edge lines (open across the lanes at the back edge) + the painted split nose.
+  const o = outline(0.025);
+  const lines: Inst[] = [];
+  for (let k = 0; k < o.length; k++) {
+    const a = o[k];
+    const b = o[(k + 1) % o.length];
+    if (a[1] < -1.49 && b[1] < -1.49) continue;
+    lines.push(paint(a, b));
+  }
+  const inC = (IN.x0 + IN.x1) / 2;
+  const first = islands[0].x;
+  lines.push(paint([inC, SPLIT.z0 + 0.12], [first - 0.05, ISLAND_Z.z0 - 0.02]));
+  lines.push(paint([inC, SPLIT.z0 + 0.12], [first + 0.05, ISLAND_Z.z0 - 0.02]));
+  // Stop lines at the bays.
+  for (const bx of bays) lines.push(paint([bx - BAY_W / 2 + 0.02, CAN_Z.z1 + 0.02], [bx + BAY_W / 2 - 0.02, CAN_Z.z1 + 0.02], 0.02));
+
+  // Arrows: [x, z, heading] (0 = +Z, π/2 = +X, π = −Z).
+  const outX = (medianR + laneX1) / 2;
+  const at: Array<[number, number, number]> = [
+    [inC, -1.25, 0],
+    ...bays.map((bx) => [bx, -0.56, 0] as [number, number, number]),
+    [(LANE_X0 + laneX1) / 2, 1.2, Math.PI / 2],
+    [outX, 0.2, Math.PI],
+    [outX, -1.2, Math.PI],
   ];
-});
+  const arrows = at.flatMap(([ax, az, h]) => {
+    const pt = (dx: number, dz: number): V3 => [ax + dx * Math.cos(h) + dz * Math.sin(h), 0.1135, az - dx * Math.sin(h) + dz * Math.cos(h)];
+    return [
+      rbox(pt(0, 0), [0.022, 0.002, 0.16], [0, h, 0]),
+      rbox(pt(-0.022, 0.058), [0.02, 0.002, 0.07], [0, h + Math.PI / 4, 0]),
+      rbox(pt(0.022, 0.058), [0.02, 0.002, 0.07], [0, h - Math.PI / 4, 0]),
+    ];
+  });
 
-/** Asphalt slab of the lane outline, 0.012 thick on top of the base slab. */
-function laneGeometry(): THREE.BufferGeometry {
-  const shape = new THREE.Shape(laneOutline(0).map(([x, z]) => new THREE.Vector2(x, -z)));
-  const g = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false });
-  g.rotateX(-Math.PI / 2);
-  return g;
+  // Hazard stripes on the island curbs.
+  const stripes: Inst[] = [];
+  for (const isl of islands) {
+    for (const sx of [-1, 1]) {
+      for (let z = ISLAND_Z.z0 + 0.04; z < ISLAND_Z.z1 - 0.01; z += 0.08) {
+        stripes.push(rbox([isl.x + sx * 0.056, 0.135, z], [0.003, 0.016, 0.06], [Math.PI / 4, 0, 0]));
+      }
+    }
+  }
+
+  const beacons: V3[] = [
+    [can.x0 + 0.07, CAN_Y + 0.06, -0.41],
+    [can.x1 - 0.07, CAN_Y + 0.06, -0.41],
+    [can.x0 + 0.07, CAN_Y + 0.06, 0.41],
+    [can.x1 - 0.07, CAN_Y + 0.06, 0.41],
+  ];
+  return { bays, islands, in: IN, medianL, medianX, laneX1, outX, exitPostX, lotX1, can, beacons, geo, lines, arrows, stripes };
 }
 
-function TruckLane({ phase }: { phase: number }) {
+/** Side (−1 / +1) of an island a bay lies on. */
+const sideOf = (islandX: number, bayX: number) => (bayX < islandX ? -1 : 1);
+
+function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
   const armRefs = useRef<Array<THREE.Group | null>>([]);
   const beaconRefs = useRef<Array<THREE.Mesh | null>>([]);
   const entry = useRef<THREE.Group>(null);
   const exit = useRef<THREE.Group>(null);
-  const laneGeo = useMemo(laneGeometry, []);
   /** Per bay: [red lamp, green lamp] glow meshes. */
   const lamps = useRef<Array<THREE.Mesh | null>>([]);
+  const n = truck.bays.length;
   useFrame((state) => {
     const t = state.clock.getElapsedTime() + phase;
     armRefs.current.forEach((g, i) => {
-      if (g) g.rotation.y = (i % 2 ? 1 : -1) * (0.15 + Math.sin(t * 0.5 + i) * 0.12);
+      if (g) g.rotation.y = Number(g.userData.side ?? 1) * (0.15 + Math.sin(t * 0.5 + i) * 0.12);
     });
     beaconRefs.current.forEach((m, i) => {
       if (m) m.visible = Math.sin(t * 5 + i * Math.PI * 0.5) > 0;
@@ -822,59 +948,105 @@ function TruckLane({ phase }: { phase: number }) {
       const up = Math.min(1, Math.max(0, c < 4 ? c / 0.8 : (4.8 - c) / 0.8));
       return up * 1.35;
     };
-    // Bay lights: the bays take turns to leave (8 s cycle), green for one at a time.
-    const goA = ((t % 8) + 8) % 8 < 4;
-    [goA, !goA].forEach((go, bay) => {
+    // Bay lights: the bays take turns to leave, green for one at a time (4 s each).
+    const go = Math.floor(((t % (4 * n)) + 4 * n) % (4 * n) / 4);
+    for (let bay = 0; bay < n; bay++) {
       const red = lamps.current[bay * 2];
       const green = lamps.current[bay * 2 + 1];
-      if (red) red.visible = !go;
-      if (green) green.visible = go;
-    });
+      if (red) red.visible = bay !== go;
+      if (green) green.visible = bay === go;
+    }
     if (entry.current) entry.current.rotation.z = open(t); // arm toward +X
     if (exit.current) exit.current.rotation.z = -open(t + 4); // arm toward −X
   });
+  const { can, islands, bays } = truck;
+  let armIdx = 0;
   return (
     <group>
-      {/* Asphalt: IN lane → two bays → U-turn → OUT lane; edge lines, nose, arrows */}
-      <mesh geometry={laneGeo} material={M.asphalt} position={[0, 0.1, 0]} receiveShadow />
-      <Batch items={EDGE_LINES} m={M.marking} cast={false} />
-      <Batch items={ARROWS} m={M.marking} cast={false} />
+      {/* Asphalt: IN lane → bays → U-turn → OUT lane; edge lines, nose, stop lines, arrows */}
+      <mesh geometry={truck.geo} material={M.asphalt} position={[0, 0.1, 0]} receiveShadow />
+      <Batch items={truck.lines} m={M.marking} cast={false} />
+      <Batch items={truck.arrows} m={M.marking} cast={false} />
+      <Batch items={truck.stripes} m={M.rubber} cast={false} />
       {/* Raised median between the IN side and the OUT lane, rounded nose at the front */}
-      <Box p={[MEDIAN_X, 0.125, (MEDIAN_Z1 - 1.5) / 2]} s={[MEDIAN_W, 0.03, MEDIAN_Z1 + 1.5]} m={M.curb} cast />
-      <Cyl p={[MEDIAN_X, 0.125, MEDIAN_Z1]} r={MEDIAN_W / 2} h={0.03} m={M.curb} seg={10} />
-      <Cyl p={[MEDIAN_X, Y0 + 0.05, MEDIAN_Z1 - 0.01]} r={0.016} h={0.1} m={M.yellow} seg={8} />
-      {/* Stop lines at the bays */}
-      <Box p={[LANE_A, 0.1135, CAN.z1 + 0.02]} s={[0.22, 0.002, 0.02]} m={M.marking} />
-      <Box p={[LANE_B, 0.1135, CAN.z1 + 0.02]} s={[0.22, 0.002, 0.02]} m={M.marking} />
+      <Box p={[truck.medianX, 0.125, (MEDIAN_Z1 - 1.5) / 2]} s={[MEDIAN_W, 0.03, MEDIAN_Z1 + 1.5]} m={M.curb} cast />
+      <Cyl p={[truck.medianX, 0.125, MEDIAN_Z1]} r={MEDIAN_W / 2} h={0.03} m={M.curb} seg={10} />
+      <Cyl p={[truck.medianX, Y0 + 0.05, MEDIAN_Z1 - 0.01]} r={0.016} h={0.1} m={M.yellow} seg={8} />
 
-      {/* Island: yellow curb (black stripes instanced), concrete top, dispensers */}
-      <Box p={[ISLAND.x, 0.135, 0]} s={[0.11, 0.045, ISLAND.z1 - ISLAND.z0]} m={M.yellow} cast />
-      <Box p={[ISLAND.x, 0.162, 0]} s={[0.09, 0.012, ISLAND.z1 - ISLAND.z0 - 0.02]} m={M.slab} />
-      {[-0.03, 0.03].map((z) => (
-        <group key={z}>
-          <Box p={[ISLAND.x, 0.22, z * 9]} s={[0.06, 0.11, 0.07]} m={M.steel} cast />
-          <Box p={[ISLAND.x - 0.031, 0.24, z * 9]} s={[0.003, 0.04, 0.05]} m={M.glass} />
-          <Box p={[ISLAND.x + 0.031, 0.24, z * 9]} s={[0.003, 0.04, 0.05]} m={M.glass} />
-        </group>
-      ))}
-      {/* Loading arm posts on the island, swinging yellow arms over each bay */}
-      {[-0.17, 0.17].map((z, pi) => (
-        <group key={z}>
-          <Box p={[ISLAND.x, 0.31, z]} s={[0.03, 0.4, 0.03]} m={M.yellow} cast />
-          {[-1, 1].map((side, si) => {
-            const idx = pi * 2 + si;
+      {islands.map((isl) => (
+        <group key={isl.x}>
+          {/* Island: yellow curb (black stripes instanced), concrete top, dispensers */}
+          <Box p={[isl.x, 0.135, 0]} s={[ISLAND_W, 0.045, ISLAND_Z.z1 - ISLAND_Z.z0]} m={M.yellow} cast />
+          <Box p={[isl.x, 0.162, 0]} s={[ISLAND_W - 0.02, 0.012, ISLAND_Z.z1 - ISLAND_Z.z0 - 0.02]} m={M.slab} />
+          {[-0.27, 0.27].map((z) => (
+            <group key={z}>
+              <Box p={[isl.x, 0.22, z]} s={[0.06, 0.11, 0.07]} m={M.steel} cast />
+              <Box p={[isl.x - 0.031, 0.24, z]} s={[0.003, 0.04, 0.05]} m={M.glass} />
+              <Box p={[isl.x + 0.031, 0.24, z]} s={[0.003, 0.04, 0.05]} m={M.glass} />
+            </group>
+          ))}
+          {/* Loading arm posts, a swinging yellow arm over each bay the island serves */}
+          {[-0.17, 0.17].map((z) => (
+            <group key={z}>
+              <Box p={[isl.x, 0.31, z]} s={[0.03, 0.4, 0.03]} m={M.yellow} cast />
+              {isl.bays.map((b) => {
+                const side = sideOf(isl.x, bays[b]);
+                const idx = armIdx++;
+                return (
+                  <group
+                    key={b}
+                    name="truckArm"
+                    position={[isl.x, 0.47, z]}
+                    userData={{ side }}
+                    ref={(el) => {
+                      armRefs.current[idx] = el;
+                    }}
+                  >
+                    <Box p={[side * 0.11, 0, 0]} s={[0.22, 0.02, 0.02]} m={M.yellow} cast />
+                    <Box p={[side * 0.2, -0.07, 0]} s={[0.014, 0.12, 0.014]} m={M.rubber} />
+                    <Box p={[side * 0.2, -0.14, 0]} s={[0.024, 0.024, 0.024]} m={M.yellow} />
+                  </group>
+                );
+              })}
+            </group>
+          ))}
+          {/* Canopy columns on the island ends, drop pipes to the arm posts */}
+          <Box p={[isl.x, (0.17 + CAN_Y) / 2, ISLAND_Z.z0 + 0.03]} s={[0.035, CAN_Y - 0.17, 0.035]} m={M.wall} cast />
+          <Box p={[isl.x, (0.17 + CAN_Y) / 2, ISLAND_Z.z1 - 0.03]} s={[0.035, CAN_Y - 0.17, 0.035]} m={M.wall} cast />
+          <Box p={[isl.x, (CAN_Y + 0.51) / 2, -0.17]} s={[0.02, CAN_Y - 0.51, 0.02]} m={M.pipe} />
+          <Box p={[isl.x, (CAN_Y + 0.51) / 2, 0.17]} s={[0.02, CAN_Y - 0.51, 0.02]} m={M.pipe} />
+          {/* Red / green light on the island nose: one head per bay, facing the waiting truck (−Z) */}
+          <Box p={[isl.x, 0.26, ISLAND_Z.z1 + 0.05]} s={[0.018, 0.3, 0.018]} m={M.frame} cast />
+          {isl.bays.map((b) => {
+            const side = sideOf(isl.x, bays[b]);
+            const hx = isl.x + side * 0.115;
             return (
-              <group
-                key={side}
-                name="truckArm"
-                position={[ISLAND.x, 0.47, z]}
-                ref={(el) => {
-                  armRefs.current[idx] = el;
-                }}
-              >
-                <Box p={[side * 0.11, 0, 0]} s={[0.22, 0.02, 0.02]} m={M.yellow} cast />
-                <Box p={[side * 0.2, -0.07, 0]} s={[0.014, 0.12, 0.014]} m={M.rubber} />
-                <Box p={[side * 0.2, -0.14, 0]} s={[0.024, 0.024, 0.024]} m={M.yellow} />
+              <group key={b}>
+                <Box p={[(isl.x + hx) / 2, 0.4, ISLAND_Z.z1 + 0.05]} s={[0.115, 0.014, 0.014]} m={M.frame} />
+                <group position={[hx, 0.37, ISLAND_Z.z1 + 0.05]}>
+                  <Box p={[0, 0, 0]} s={[0.035, 0.075, 0.03]} m={M.dark} cast />
+                  <Box p={[0, 0.042, -0.004]} s={[0.04, 0.006, 0.035]} m={M.dark} />
+                  {([
+                    [0.018, M.lampRed, GLOW.red],
+                    [-0.018, M.lampGreen, GLOW.green],
+                  ] as const).map(([dy, dim, glow], k) => (
+                    <group key={k} position={[0, dy, -0.016]}>
+                      <mesh material={dim} rotation={[Math.PI / 2, 0, 0]}>
+                        <cylinderGeometry args={[0.011, 0.011, 0.004, 10]} />
+                      </mesh>
+                      <mesh
+                        material={glow}
+                        position={[0, 0, -0.001]}
+                        rotation={[Math.PI / 2, 0, 0]}
+                        ref={(el) => {
+                          lamps.current[b * 2 + k] = el;
+                        }}
+                      >
+                        <cylinderGeometry args={[0.0115, 0.0115, 0.004, 10]} />
+                      </mesh>
+                    </group>
+                  ))}
+                </group>
               </group>
             );
           })}
@@ -882,45 +1054,42 @@ function TruckLane({ phase }: { phase: number }) {
       ))}
 
       {/* Canopy: corner columns, flat roof with dark fascia */}
-      {[CAN.x0 + 0.02, CAN.x1 - 0.02].map((x) =>
-        [CAN.z0 + 0.03, CAN.z1 - 0.03].map((z) => (
+      {[can.x0 + 0.02, can.x1 - 0.02].map((x) =>
+        [CAN_Z.z0 + 0.03, CAN_Z.z1 - 0.03].map((z) => (
           <group key={`${x}${z}`}>
-            <Box p={[x, (0.11 + CAN.y) / 2, z]} s={[0.035, CAN.y - 0.11, 0.035]} m={M.wall} cast />
+            <Box p={[x, (0.11 + CAN_Y) / 2, z]} s={[0.035, CAN_Y - 0.11, 0.035]} m={M.wall} cast />
             <Box p={[x, 0.13, z]} s={[0.06, 0.04, 0.06]} m={M.yellow} />
           </group>
         )),
       )}
-      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z0 + 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.wall} cast />
-      <Box p={[ISLAND.x, (0.17 + CAN.y) / 2, ISLAND.z1 - 0.03]} s={[0.035, CAN.y - 0.17, 0.035]} m={M.wall} cast />
-      <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.005, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0 + 0.04, 0.03, CAN.z1 - CAN.z0 + 0.04]} m={M.wallDark} cast />
-      <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.028, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0, 0.02, CAN.z1 - CAN.z0]} m={M.canopy} cast />
-      {/* Roof pipes + valves */}
-      {/* (header + far-lane branch: see Piping) near-lane branch off the header */}
-      <Joint p={[LANE_A, PIPE_Y, HEAD_Z]} r={0.022} m={M.rust} />
-      <PipeRun
-        pts={[
-          [LANE_A, PIPE_Y, HEAD_Z],
-          [LANE_A, PIPE_Y, 0.38],
-          [LANE_A, CAN.y + 0.02, 0.38],
-        ]}
-        r={0.02}
-        m={M.rust}
-      />
-      {/* Pipe supports on the roof */}
-      {[-0.05, 0.25].map((z) => (
-        <group key={z}>
-          <Box p={[LANE_A, CAN.y + 0.055, z]} s={[0.05, 0.03, 0.02]} m={M.frame} />
-          <Box p={[LANE_B, CAN.y + 0.055, z]} s={[0.05, 0.03, 0.02]} m={M.frame} />
+      <Box p={[(can.x0 + can.x1) / 2, CAN_Y + 0.005, 0]} s={[can.x1 - can.x0 + 0.04, 0.03, CAN_Z.z1 - CAN_Z.z0 + 0.04]} m={M.wallDark} cast />
+      <Box p={[(can.x0 + can.x1) / 2, CAN_Y + 0.028, 0]} s={[can.x1 - can.x0, 0.02, CAN_Z.z1 - CAN_Z.z0]} m={M.canopy} cast />
+      {/* Roof pipes: the header + last bay come from Piping; a branch off the header per other bay */}
+      {bays.slice(0, -1).map((bx) => (
+        <group key={bx}>
+          <Joint p={[bx, PIPE_Y, HEAD_Z]} r={0.022} m={M.rust} />
+          <PipeRun
+            pts={[
+              [bx, PIPE_Y, HEAD_Z],
+              [bx, PIPE_Y, 0.38],
+              [bx, CAN_Y + 0.02, 0.38],
+            ]}
+            r={0.02}
+            m={M.rust}
+          />
         </group>
       ))}
-      <Valve p={[LANE_A, PIPE_Y, 0.1]} axis="z" />
-      <Valve p={[LANE_B, PIPE_Y, -0.1]} axis="z" />
-      {/* Drop pipes from the roof to the arm posts */}
-      <Box p={[ISLAND.x, (CAN.y + 0.51) / 2, -0.17]} s={[0.02, CAN.y - 0.51, 0.02]} m={M.pipe} />
-      <Box p={[ISLAND.x, (CAN.y + 0.51) / 2, 0.17]} s={[0.02, CAN.y - 0.51, 0.02]} m={M.pipe} />
+      {bays.map((bx, i) => (
+        <group key={bx}>
+          {[-0.05, 0.25].map((z) => (
+            <Box key={z} p={[bx, CAN_Y + 0.055, z]} s={[0.05, 0.03, 0.02]} m={M.frame} />
+          ))}
+          <Valve p={[bx, PIPE_Y, i % 2 ? -0.1 : 0.1]} axis="z" />
+        </group>
+      ))}
       {/* Beacons: dark base + cap and an amber lens that is always there; the
           glowing light inside blinks */}
-      {BEACONS.map((b, i) => (
+      {truck.beacons.map((b, i) => (
         <group key={i}>
           <Cyl p={[b[0], b[1] - 0.015, b[2]]} r={0.022} h={0.012} m={M.dark} seg={8} />
           <Cyl p={[b[0], b[1], b[2]]} r={0.017} rTop={0.014} h={0.03} m={M.lens} seg={8} />
@@ -928,7 +1097,7 @@ function TruckLane({ phase }: { phase: number }) {
         </group>
       ))}
       <group name="beacons">
-        {BEACONS.map((b, i) => (
+        {truck.beacons.map((b, i) => (
           <mesh
             key={i}
             material={GLOW.beacon}
@@ -942,48 +1111,17 @@ function TruckLane({ phase }: { phase: number }) {
         ))}
       </group>
 
-      {/* Red / green light at the end of each bay: a post on the island nose with an
-          arm, one signal head per bay facing the waiting truck (−Z) */}
-      <Box p={[ISLAND.x, 0.26, ISLAND.z1 + 0.05]} s={[0.018, 0.3, 0.018]} m={M.frame} cast />
-      <Box p={[ISLAND.x, 0.4, ISLAND.z1 + 0.05]} s={[LANE_B - LANE_A - 0.12, 0.014, 0.014]} m={M.frame} />
-      {[LANE_A + 0.06, LANE_B - 0.06].map((x, bay) => (
-        <group key={x} position={[x, 0.37, ISLAND.z1 + 0.05]}>
-          <Box p={[0, 0, 0]} s={[0.035, 0.075, 0.03]} m={M.dark} cast />
-          <Box p={[0, 0.042, -0.004]} s={[0.04, 0.006, 0.035]} m={M.dark} />
-          {([
-            [0.018, M.lampRed, GLOW.red],
-            [-0.018, M.lampGreen, GLOW.green],
-          ] as const).map(([dy, dim, glow], k) => (
-            <group key={k} position={[0, dy, -0.016]}>
-              <mesh material={dim} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.011, 0.011, 0.004, 10]} />
-              </mesh>
-              <mesh
-                material={glow}
-                position={[0, 0, -0.001]}
-                rotation={[Math.PI / 2, 0, 0]}
-                ref={(el) => {
-                  lamps.current[bay * 2 + k] = el;
-                }}
-              >
-                <cylinderGeometry args={[0.0115, 0.0115, 0.004, 10]} />
-              </mesh>
-            </group>
-          ))}
-        </group>
-      ))}
-
       {/* Back edge: IN barrier (pivot left of the IN lane) + gatehouse, OUT barrier
-          (pivot at the lot edge); signs facing the road */}
+          (pivot right of the OUT lane); signs facing the road */}
       <Box p={[IN.x0 - 0.03, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
       <Box p={[IN.x0 - 0.03, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
       <group ref={entry} name="entryBarrier" position={[IN.x0 - 0.03, 0.22, -1.3]}>
         <Barrier dir={1} len={IN.x1 - IN.x0 + 0.02} />
       </group>
-      <Box p={[EXIT_POST_X, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[EXIT_POST_X, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={exit} name="exitBarrier" position={[EXIT_POST_X, 0.22, -1.3]}>
-        <Barrier dir={-1} len={EXIT_POST_X - MEDIAN_X - 0.04} />
+      <Box p={[truck.exitPostX, 0.17, -1.3]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
+      <Box p={[truck.exitPostX, 0.16, -1.3]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
+      <group ref={exit} name="exitBarrier" position={[truck.exitPostX, 0.22, -1.3]}>
+        <Barrier dir={-1} len={truck.exitPostX - truck.medianX - 0.04} />
       </group>
       <GateHouse />
       {/* IN: blue "straight ahead" sign */}
@@ -994,11 +1132,11 @@ function TruckLane({ phase }: { phase: number }) {
         <Box p={[0, 0, 0]} s={[0.035, 0.035, 0.004]} m={M.curb} />
       </group>
       {/* OUT: "no entry" disc on the median end, facing the road */}
-      <Box p={[MEDIAN_X, 0.25, -1.44]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <mesh material={M.red} position={[MEDIAN_X, 0.39, -1.45]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <Box p={[truck.medianX, 0.25, -1.44]} s={[0.012, 0.3, 0.012]} m={M.steel} />
+      <mesh material={M.red} position={[truck.medianX, 0.39, -1.45]} rotation={[Math.PI / 2, 0, 0]} castShadow>
         <cylinderGeometry args={[0.05, 0.05, 0.01, 12]} />
       </mesh>
-      <Box p={[MEDIAN_X, 0.39, -1.457]} s={[0.065, 0.014, 0.004]} m={M.curb} />
+      <Box p={[truck.medianX, 0.39, -1.457]} s={[0.065, 0.014, 0.004]} m={M.curb} />
       {/* Bollard where the IN lane splits */}
       <Cyl p={[IN.x0 - 0.05, Y0 + 0.05, SPLIT.z0 + 0.05]} r={0.018} h={0.1} m={M.yellow} seg={8} />
       <Cyl p={[IN.x0 - 0.05, Y0 + 0.07, SPLIT.z0 + 0.05]} r={0.019} h={0.02} m={M.rubber} seg={8} />
@@ -1111,14 +1249,9 @@ const JERSEY: Array<[number, number]> = [
   [0.5, -0.3],
 ];
 
-/** Hazard stripes (black) on the island sides and jersey barriers. */
+/** Hazard stripes (black) on the jersey barriers. */
 const STRIPES: Inst[] = (() => {
   const out: Inst[] = [];
-  for (const sx of [-1, 1]) {
-    for (let z = ISLAND.z0 + 0.04; z < ISLAND.z1 - 0.01; z += 0.08) {
-      out.push(rbox([ISLAND.x + sx * 0.056, 0.135, z], [0.003, 0.016, 0.06], [Math.PI / 4, 0, 0]));
-    }
-  }
   for (const [x, z] of JERSEY) {
     for (const sx of [-1, 1]) {
       for (const dz of [-0.07, 0, 0.07]) {
@@ -1180,4 +1313,15 @@ function Yard() {
 /** Instanced items shared by several parts (one draw call each). */
 function SharedBatches() {
   return <Batch items={STRIPES} m={M.rubber} cast={false} />;
+}
+
+/** Model viewer variants: the smallest and the biggest depot. */
+export function OilDepotMinPreview({ phase = 0 }: { phase?: number }) {
+  return <OilDepotModel phase={phase} truckBays={1} railTracks={1} />;
+}
+export function OilDepotMaxPreview({ phase = 0 }: { phase?: number }) {
+  return <OilDepotModel phase={phase} truckBays={MAX_TRUCK_BAYS} railTracks={MAX_RAIL_TRACKS} />;
+}
+export function OilDepotMixPreview({ phase = 0 }: { phase?: number }) {
+  return <OilDepotModel phase={phase} truckBays={3} railTracks={2} />;
 }

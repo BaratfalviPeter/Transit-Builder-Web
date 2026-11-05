@@ -213,3 +213,13 @@ Most 121×121. Kiadáskor választható méret: kicsi 121, közepes ~180, nagy ~
 - ~512 („óriás”, később): terep darabokra bontva + LOD + takarás, szimuláció Web Workerben.
 - A valódi korlát a járművek száma / útkeresés és a mentés mérete, nem a terep. Előtte mérés a
   felhasználó Macén (ideiglenesen nagyobb térkép, rajzolási hívások, sebesség).
+
+## Bővíthető épületek paraméteres modellel (megbeszélve, 2026-11)
+
+- A fejlesztés NEM külön ráilleszthető darab, hanem ugyanaz a modell nagyobb paraméterekkel (nincs varrat,
+  bármilyen keverés működik); a telek a bővítés irányába nő (szabad hely kell, pénzbe kerül).
+- Olajdepó: töltőállás 1–5 (kamion), vágány 1–3 — a modell kész (`OilDepotModel truckBays / railTracks`);
+  a játékban a kijelölő panelen „Fejlesztés” gombok (+1 állás / +1 vágány / +1 tartály).
+- Vonattöltés „előreállós”: a vonat kocsinként gördül a töltőkarok alá, a vágány hossza nem számít.
+- Később ugyanez a többi iparágra (garatok a bányánál, rakodók a fatelepnél).
+

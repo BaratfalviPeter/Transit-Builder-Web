@@ -76,6 +76,7 @@ const M = {
   pipe: std('#8f959c', { roughness: 0.5, metalness: 0.35 }),
   dark: std('#2a2c31', { roughness: 0.7 }),
   rubber: std('#1f2125', { roughness: 0.9 }),
+  lens: std('#a8641e', { roughness: 0.4 }),
   yellow: std('#e8b82e', { roughness: 0.5 }),
   red: std('#c23a2b', { roughness: 0.5 }),
   blue: std('#4f7fae', { roughness: 0.6 }),
@@ -193,6 +194,32 @@ function Collar({ p, r, axis }: { p: V3; r: number; axis: 'x' | 'y' | 'z' }) {
   );
 }
 
+/**
+ * A pipe along a polyline of axis-aligned points: straight runs, and a ball at
+ * every bend, so the pipe reads as bent rather than two cut ends crossing.
+ */
+function PipeRun({ pts, r, m }: { pts: V3[]; r: number; m: THREE.Material }) {
+  return (
+    <group>
+      {pts.slice(1).map((b, i) => (
+        <Pipe key={i} from={pts[i]} to={b} r={r} m={m} />
+      ))}
+      {pts.slice(1, -1).map((p, i) => (
+        <Joint key={`j${i}`} p={p} r={r} m={m} />
+      ))}
+    </group>
+  );
+}
+
+/** Ball fitting at a pipe bend / tee. */
+function Joint({ p, r, m }: { p: V3; r: number; m: THREE.Material }) {
+  return (
+    <mesh material={m} position={p} castShadow>
+      <sphereGeometry args={[r * 1.12, 12, 8]} />
+    </mesh>
+  );
+}
+
 // --- Model ------------------------------------------------------------------------
 
 export function OilDepotModel({
@@ -268,6 +295,9 @@ function RailSiding() {
 }
 
 const G = { xo: -1.47, xi: -1.02, z0: -0.85, z1: 0.55, top: 0.95, chord: 0.83 };
+/** Outer ends of the gantry: each leg is a pair of posts at z ± 0.05. */
+const GZA = G.z0 - 0.05;
+const GZB = G.z1 + 0.05;
 
 /** Lattice rods of the gantry: four lattice legs, two portal beams, two side trusses. */
 const GANTRY_RODS: Inst[] = (() => {
@@ -287,8 +317,8 @@ const GANTRY_RODS: Inst[] = (() => {
       }
     }
     // Side truss along Z: top + bottom chord, diagonals
-    r.push(rod([x, G.top, G.z0], [x, G.top, G.z1], 0.024));
-    r.push(rod([x, G.chord, G.z0], [x, G.chord, G.z1], 0.02));
+    r.push(rod([x, G.top, GZA - 0.012], [x, G.top, GZB + 0.012], 0.024));
+    r.push(rod([x, G.chord, GZA - 0.01], [x, G.chord, GZB + 0.01], 0.02));
     const panels = 5;
     for (let i = 0; i < panels; i++) {
       const za = G.z0 + ((G.z1 - G.z0) * i) / panels;
@@ -297,11 +327,13 @@ const GANTRY_RODS: Inst[] = (() => {
     }
   }
   // Portal cross beams + diagonals
-  for (const z of [G.z0, G.z1]) {
-    r.push(rod([G.xo, G.top, z], [G.xi, G.top, z], 0.024));
-    r.push(rod([G.xo, G.chord, z], [G.xi, G.chord, z], 0.02));
-    r.push(rod([G.xo, G.chord, z], [(G.xo + G.xi) / 2, G.top, z], 0.01));
-    r.push(rod([(G.xo + G.xi) / 2, G.top, z], [G.xi, G.chord, z], 0.01));
+  for (const zc of [G.z0, G.z1]) {
+    for (const z of [zc - 0.05, zc + 0.05]) {
+      r.push(rod([G.xo - 0.012, G.top, z], [G.xi + 0.012, G.top, z], 0.024));
+      r.push(rod([G.xo - 0.01, G.chord, z], [G.xi + 0.01, G.chord, z], 0.02));
+      r.push(rod([G.xo, G.chord, z], [(G.xo + G.xi) / 2, G.top, z], 0.01));
+      r.push(rod([(G.xo + G.xi) / 2, G.top, z], [G.xi, G.chord, z], 0.01));
+    }
   }
   // Top deck cross members (walkway joists)
   for (let i = 1; i < 5; i++) {
@@ -331,12 +363,16 @@ function LoadingGantry({ phase }: { phase: number }) {
         )),
       )}
       {/* Walkway grating + yellow handrail on top */}
-      <Box p={[-1.1, G.top + 0.022, (G.z0 + G.z1) / 2]} s={[0.08, 0.008, G.z1 - G.z0]} m={M.dark} />
-      <Box p={[-1.16, G.top + 0.09, (G.z0 + G.z1) / 2]} s={[0.008, 0.008, G.z1 - G.z0]} m={M.yellow} />
+      <Box p={[-1.1, G.top + 0.022, (GZA + GZB) / 2]} s={[0.08, 0.008, GZB - GZA]} m={M.dark} />
+      <Box p={[-1.16, G.top + 0.09, (GZA + GZB) / 2]} s={[0.008, 0.008, GZB - GZA]} m={M.yellow} />
+      {[GZA, (GZA + GZB) / 2, GZB].map((z) => (
+        <Box key={z} p={[-1.16, G.top + 0.055, z]} s={[0.008, 0.07, 0.008]} m={M.yellow} />
+      ))}
       {/* Center beam the arms hang from */}
-      <Box p={[RX, G.chord - 0.01, (G.z0 + G.z1) / 2]} s={[0.03, 0.03, G.z1 - G.z0]} m={M.girder} cast />
+      <Box p={[RX, G.chord - 0.01, (GZA + GZB) / 2]} s={[0.03, 0.03, GZB - GZA]} m={M.girder} cast />
       {/* Product pipe along the gantry top + drops to each arm */}
-      <Pipe from={[-1.1, G.top + 0.04, G.z0]} to={[-1.1, G.top + 0.04, G.z1]} r={0.02} m={M.pipe} />
+      <Pipe from={[-1.1, G.top + 0.04, GZA]} to={[-1.1, G.top + 0.04, GZB]} r={0.02} m={M.pipe} />
+      <Joint p={[-1.1, G.top + 0.04, MAN_Z]} r={0.022} m={M.pipe} />
       {ARM_Z.map((z) => (
         <Box key={z} p={[(-1.1 + RX) / 2, G.top + 0.04, z]} s={[-1.1 - RX, 0.024, 0.024]} m={M.pipe} />
       ))}
@@ -380,6 +416,14 @@ const RUST_PATCHES: Array<{ a: number; w: number; top: number; drip: number; off
 ];
 const tankTop = (h: number) => TANK_BASE + h;
 
+/** Posts holding the yellow roof railing ring of every tank. */
+const RAIL_POSTS: Inst[] = TANKS.flatMap((t) =>
+  Array.from({ length: 8 }, (_, i) => {
+    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    return { p: [t.x + Math.sin(a) * (TANK_R - 0.02), tankTop(t.h) + 0.04, t.z + Math.cos(a) * (TANK_R - 0.02)] as V3, s: [0.007, 0.07, 0.007] as V3 };
+  }),
+);
+
 /** Ladder rungs of all tanks (one instanced mesh). */
 const RUNGS: Inst[] = TANKS.flatMap((t) => {
   const out: Inst[] = [];
@@ -408,6 +452,7 @@ function TankFarm() {
         <Tank key={i} {...tk} seed={i} />
       ))}
       <Batch items={RUNGS} m={M.yellow} cast={false} />
+      <Batch items={RAIL_POSTS} m={M.yellow} cast={false} />
       {/* Catwalk bridges between the tank roofs */}
       <Catwalk a={[-0.64 + TANK_R - 0.03, tankTop(0.76) + 0.02, -1.12]} b={[-0.1 - TANK_R + 0.03, tankTop(0.76) + 0.02, -1.12]} />
       <Catwalk a={[-0.64 + TANK_R - 0.03, tankTop(0.7) + 0.02, -0.5]} b={[-0.1 - TANK_R + 0.03, tankTop(0.7) + 0.02, -0.5]} />
@@ -573,38 +618,64 @@ const MAN_Y = 0.18;
 function Piping() {
   return (
     <group>
-      {/* Incoming pipeline from the back edge, between the two tank columns */}
-      <Pipe from={[-0.37, 0.34, -1.5]} to={[-0.37, 0.34, -0.8]} r={0.035} m={M.rust} />
+      {/* Incoming pipeline from the back edge, between the two tank columns, then a
+          header between the tank rows with a branch into each tank */}
+      <Pipe from={[-0.37, 0.34, -1.5]} to={[-0.37, 0.34, -0.81]} r={0.035} m={M.rust} />
       <Collar p={[-0.37, 0.34, -1.47]} r={0.048} axis="z" />
       <Collar p={[-0.37, 0.34, -1.25]} r={0.048} axis="z" />
-      <Collar p={[-0.37, 0.34, -0.82]} r={0.048} axis="z" />
       <Box p={[-0.37, 0.205, -1.35]} s={[0.05, 0.21, 0.03]} m={M.frame} />
-      <Box p={[-0.37, 0.205, -0.85]} s={[0.05, 0.21, 0.03]} m={M.frame} />
+      <Pipe from={[-0.64, 0.34, -0.81]} to={[-0.1, 0.34, -0.81]} r={0.028} m={M.rust} />
+      <Joint p={[-0.37, 0.34, -0.81]} r={0.035} m={M.rust} />
+      {[-0.64, -0.1].map((x) => (
+        <group key={x}>
+          <Joint p={[x, 0.34, -0.81]} r={0.028} m={M.rust} />
+          <Pipe from={[x, 0.34, -0.89]} to={[x, 0.34, -0.73]} r={0.022} m={M.rust} />
+          <Collar p={[x, 0.34, -0.875]} r={0.034} axis="z" />
+          <Collar p={[x, 0.34, -0.745]} r={0.034} axis="z" />
+          <Box p={[x, 0.215, -0.81]} s={[0.04, 0.23, 0.03]} m={M.frame} />
+        </group>
+      ))}
       {/* Front tank outlets through the bund wall to the manifold */}
       {[-0.64, -0.1].map((x) => (
         <group key={x}>
           <Pipe from={[x, MAN_Y, -0.27]} to={[x, MAN_Y, MAN_Z]} r={0.022} m={M.pipe} />
+          <Joint p={[x, MAN_Y, MAN_Z]} r={0.025} m={M.pipe} />
           <Valve p={[x, MAN_Y, -0.16]} axis="z" />
         </group>
       ))}
       {/* Manifold along X: to the rail gantry (left) and the pump house (right) */}
-      <Pipe from={[-0.98, MAN_Y, MAN_Z]} to={[0.47, MAN_Y, MAN_Z]} r={0.025} m={M.pipe} />
+      {/* One run: gantry top → riser → manifold → pump house */}
+      <PipeRun
+        pts={[
+          [-1.1, G.top + 0.04, MAN_Z],
+          [-0.98, G.top + 0.04, MAN_Z],
+          [-0.98, MAN_Y, MAN_Z],
+          [0.47, MAN_Y, MAN_Z],
+          [0.47, MAN_Y, -0.86],
+        ]}
+        r={0.024}
+        m={M.pipe}
+      />
       <Valve p={[-0.85, MAN_Y, MAN_Z]} />
       <Valve p={[0.3, MAN_Y, MAN_Z]} />
       {[-0.8, -0.35, 0.1].map((x) => (
         <Box key={x} p={[x, 0.13, MAN_Z]} s={[0.03, 0.06, 0.05]} m={M.frame} />
       ))}
-      {/* Riser to the gantry top */}
-      <Pipe from={[-0.98, MAN_Y, MAN_Z]} to={[-0.98, G.top + 0.04, MAN_Z]} r={0.022} m={M.pipe} />
-      <Pipe from={[-1.1, G.top + 0.04, MAN_Z]} to={[-0.98, G.top + 0.04, MAN_Z]} r={0.022} m={M.pipe} />
-      {/* Manifold → pump house */}
-      <Pipe from={[0.47, MAN_Y, MAN_Z]} to={[0.47, MAN_Y, -0.88]} r={0.025} m={M.pipe} />
       <Valve p={[0.47, MAN_Y, -0.5]} axis="z" />
-      {/* Pump house → canopy roof: riser + overhead run */}
-      <Pipe from={[0.52, Y0, -0.82]} to={[0.52, 0.64, -0.82]} r={0.022} m={M.rust} />
-      <Pipe from={[0.52, 0.64, -0.82]} to={[0.52, 0.64, -0.38]} r={0.022} m={M.rust} />
-      <Collar p={[0.52, 0.64, -0.82]} r={0.03} axis="y" />
-      <Collar p={[0.52, 0.64, -0.38]} r={0.03} axis="y" />
+      {/* Pump house → canopy roof: riser + overhead run to the far lane */}
+      <PipeRun
+        pts={[
+          [0.52, Y0, -0.82],
+          [0.52, PIPE_Y, -0.82],
+          [0.52, PIPE_Y, HEAD_Z],
+          [LANE_B, PIPE_Y, HEAD_Z],
+          [LANE_B, PIPE_Y, 0.38],
+          [LANE_B, CAN.y + 0.02, 0.38],
+        ]}
+        r={0.022}
+        m={M.rust}
+      />
+      <Collar p={[0.52, 0.3, -0.82]} r={0.03} axis="y" />
       <Box p={[0.52, 0.37, -0.55]} s={[0.02, 0.54, 0.02]} m={M.frame} />
     </group>
   );
@@ -617,11 +688,15 @@ const LANE_A = 0.8;
 const LANE_B = 1.25;
 const ISLAND = { x: 1.03, z0: -0.36, z1: 0.36 };
 const CAN = { x0: 0.6, x1: 1.44, z0: -0.46, z1: 0.46, y: 0.55 };
+/** Canopy roof pipes: header along X at HEAD_Z, then one branch per lane. */
+const PIPE_Y = 0.64;
+const HEAD_Z = -0.3;
+/** Beacons on the canopy corners, clear of the pipes. */
 const BEACONS: V3[] = [
-  [0.7, CAN.y + 0.06, -0.4],
-  [1.34, CAN.y + 0.06, -0.4],
-  [0.7, CAN.y + 0.06, 0.4],
-  [1.34, CAN.y + 0.06, 0.4],
+  [0.67, CAN.y + 0.06, -0.41],
+  [1.37, CAN.y + 0.06, -0.41],
+  [0.67, CAN.y + 0.06, 0.41],
+  [1.37, CAN.y + 0.06, 0.41],
 ];
 
 /** White arrows on the asphalt, pointing +Z (shaft + two head bars). */
@@ -715,19 +790,37 @@ function TruckLane({ phase }: { phase: number }) {
       <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.005, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0 + 0.04, 0.03, CAN.z1 - CAN.z0 + 0.04]} m={M.wallDark} cast />
       <Box p={[(CAN.x0 + CAN.x1) / 2, CAN.y + 0.028, (CAN.z0 + CAN.z1) / 2]} s={[CAN.x1 - CAN.x0, 0.02, CAN.z1 - CAN.z0]} m={M.canopy} cast />
       {/* Roof pipes + valves */}
-      <Pipe from={[0.52, 0.64, -0.38]} to={[1.36, 0.64, -0.38]} r={0.022} m={M.rust} />
-      <Pipe from={[LANE_A, 0.625, -0.38]} to={[LANE_A, 0.625, 0.38]} r={0.018} m={M.rust} />
-      <Pipe from={[LANE_B, 0.625, -0.38]} to={[LANE_B, 0.625, 0.38]} r={0.018} m={M.rust} />
-      <Collar p={[LANE_A, 0.64, -0.38]} r={0.03} axis="y" />
-      <Collar p={[LANE_B, 0.64, -0.38]} r={0.03} axis="y" />
-      <Valve p={[LANE_A, 0.625, 0.1]} axis="z" />
-      <Valve p={[LANE_B, 0.625, -0.1]} axis="z" />
+      {/* (header + far-lane branch: see Piping) near-lane branch off the header */}
+      <Joint p={[LANE_A, PIPE_Y, HEAD_Z]} r={0.022} m={M.rust} />
+      <PipeRun
+        pts={[
+          [LANE_A, PIPE_Y, HEAD_Z],
+          [LANE_A, PIPE_Y, 0.38],
+          [LANE_A, CAN.y + 0.02, 0.38],
+        ]}
+        r={0.02}
+        m={M.rust}
+      />
+      {/* Pipe supports on the roof */}
+      {[-0.05, 0.25].map((z) => (
+        <group key={z}>
+          <Box p={[LANE_A, CAN.y + 0.055, z]} s={[0.05, 0.03, 0.02]} m={M.frame} />
+          <Box p={[LANE_B, CAN.y + 0.055, z]} s={[0.05, 0.03, 0.02]} m={M.frame} />
+        </group>
+      ))}
+      <Valve p={[LANE_A, PIPE_Y, 0.1]} axis="z" />
+      <Valve p={[LANE_B, PIPE_Y, -0.1]} axis="z" />
       {/* Drop pipes from the roof to the arm posts */}
       <Box p={[ISLAND.x, (CAN.y + 0.51) / 2, -0.17]} s={[0.02, CAN.y - 0.51, 0.02]} m={M.pipe} />
       <Box p={[ISLAND.x, (CAN.y + 0.51) / 2, 0.17]} s={[0.02, CAN.y - 0.51, 0.02]} m={M.pipe} />
-      {/* Beacons: dark bases (static) + blinking amber lights */}
+      {/* Beacons: dark base + cap and an amber lens that is always there; the
+          glowing light inside blinks */}
       {BEACONS.map((b, i) => (
-        <Cyl key={i} p={[b[0], b[1] - 0.015, b[2]]} r={0.022} h={0.012} m={M.dark} seg={8} />
+        <group key={i}>
+          <Cyl p={[b[0], b[1] - 0.015, b[2]]} r={0.022} h={0.012} m={M.dark} seg={8} />
+          <Cyl p={[b[0], b[1], b[2]]} r={0.017} rTop={0.014} h={0.03} m={M.lens} seg={8} />
+          <Cyl p={[b[0], b[1] + 0.018, b[2]]} r={0.016} h={0.008} m={M.dark} seg={8} />
+        </group>
       ))}
       <group name="beacons">
         {BEACONS.map((b, i) => (
@@ -739,7 +832,7 @@ function TruckLane({ phase }: { phase: number }) {
               beaconRefs.current[i] = el;
             }}
           >
-            <cylinderGeometry args={[0.014, 0.017, 0.03, 8]} />
+            <cylinderGeometry args={[0.0145, 0.0175, 0.031, 8]} />
           </mesh>
         ))}
       </group>

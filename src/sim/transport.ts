@@ -1567,45 +1567,70 @@ export class TransportSim {
         }
       }
     } else if (v.phase === 'out' && t.lane) {
-      if (this.heldUp(t, poses)) {
-        t.blocked += dt;
-        t.v = 0;
-        return;
-      }
-      t.blocked = 0;
-      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
-      t.v = Math.min(t.v + ACCEL * dt, cap);
-      t.s += dt * t.v;
+      if (!this.yardDrive(t, dt, map, poses)) return;
       if (t.s < t.lane.length) {
         this.updatePose(t, poses);
         return;
       }
-      // Out on the road at the far end: free the bay, head for the next stop
-      // — once the start of that route is clear.
-      const front = laneAt(t.lane, t.lane.length);
-      const next = (t.target + 1) % line.stops.length;
-      const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
-      if (route && route.length) {
-        const lane = this.laneOf(route, map);
-        const s0 = nearestS(lane, front, 1.2);
-        const ahead = { ...t, lane, s: s0, path: route } as Truck;
-        if (this.heldUp(ahead, poses)) {
-          t.s = t.lane.length;
-          t.v = 0;
-          t.blocked += dt;
-          t.waitFor = ahead.waitFor;
-          return;
-        }
-      }
-      this.leaveDepot(t);
-      this.setPath(t, route, map);
-      t.target = next;
-      t.state = t.path ? 'drive' : 'noroute';
-      t.timer = 2;
-      // Pick the new route up where the truck is (no jump back).
-      if (t.lane) t.s = nearestS(t.lane, front, 1.2);
+      // Out on the road at the far end: free the bay, head for the next stop.
+      if (!this.yardExit(t, dt, line, here, byId, map, poses)) return;
     }
     this.updatePose(t, poses);
+  }
+
+  /**
+   * One step along a yard path (a depot's / an oil depot's): held up by a truck
+   * ahead → stands (false); else speeds up toward YARD_SPEED (true).
+   */
+  private yardDrive(t: Truck, dt: number, map: TerrainMap, poses: Map<number, TruckPose>): boolean {
+    if (!t.lane || this.heldUp(t, poses)) {
+      t.blocked += dt;
+      t.v = 0;
+      return false;
+    }
+    t.blocked = 0;
+    const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
+    t.v = Math.min(t.v + ACCEL * dt, cap);
+    t.s += dt * t.v;
+    return true;
+  }
+
+  /**
+   * At the end of a yard path, out on the road: take the route to the next stop
+   * — once its start is clear (false: still waiting). Frees the bay, drops the visit.
+   */
+  private yardExit(
+    t: Truck,
+    dt: number,
+    line: Line,
+    here: Station,
+    byId: Map<number, Station>,
+    map: TerrainMap,
+    poses: Map<number, TruckPose>,
+  ): boolean {
+    if (!t.lane) return false;
+    const front = laneAt(t.lane, t.lane.length);
+    const next = (t.target + 1) % line.stops.length;
+    const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
+    if (route && route.length) {
+      const lane = this.laneOf(route, map);
+      const ahead = { ...t, lane, s: nearestS(lane, front, 1.2), path: route } as Truck;
+      if (this.heldUp(ahead, poses)) {
+        t.s = t.lane.length;
+        t.v = 0;
+        t.blocked += dt;
+        t.waitFor = ahead.waitFor;
+        return false;
+      }
+    }
+    this.leaveDepot(t);
+    this.setPath(t, route, map);
+    t.target = next;
+    t.state = t.path ? 'drive' : 'noroute';
+    t.timer = 2;
+    // Pick the new route up where the truck is (no jump back).
+    if (t.lane) t.s = nearestS(t.lane, front, 1.2);
+    return true;
   }
 
   /** Oil depot id → the truck driving out (one at a time: the bay lights take turns). */
@@ -1687,44 +1712,16 @@ export class TransportSim {
       v.phase = 'out';
       t.blocked = 0;
     } else if (v.phase === 'out' && t.lane) {
-      if (this.heldUp(t, poses)) {
-        t.blocked += dt;
-        t.v = 0;
-        return;
-      }
-      t.blocked = 0;
-      const cap = Math.max(Math.min(brakeCap(t.lane, t.s, YARD_SPEED), this.trafficCap(t, map, poses)), CREEP);
-      t.v = Math.min(t.v + ACCEL * dt, cap);
-      t.s += dt * t.v;
+      if (!this.yardDrive(t, dt, map, poses)) return;
       const bays = this.bayList(here.id);
       if (t.s > v.sP + 1.4 && bays[v.bay] === t.id) bays[v.bay] = null;
       if (t.s < t.lane.length) {
         this.updatePose(t, poses);
         return;
       }
-      // At the access road: head for the next stop once the start of that route is clear.
-      const front = laneAt(t.lane, t.lane.length);
-      const next = (t.target + 1) % line.stops.length;
-      const route = this.route(map, here, byId.get(line.stops[next]) ?? null);
-      if (route && route.length) {
-        const lane = this.laneOf(route, map);
-        const s0 = nearestS(lane, front, 1.2);
-        const ahead = { ...t, lane, s: s0, path: route } as Truck;
-        if (this.heldUp(ahead, poses)) {
-          t.s = t.lane.length;
-          t.v = 0;
-          t.blocked += dt;
-          t.waitFor = ahead.waitFor;
-          return;
-        }
-      }
+      // At the access road: on to the next stop (the way out is free again).
+      if (!this.yardExit(t, dt, line, here, byId, map, poses)) return;
       if (this.oilOut.get(here.id) === t.id) this.oilOut.delete(here.id);
-      this.leaveDepot(t);
-      this.setPath(t, route, map);
-      t.target = next;
-      t.state = t.path ? 'drive' : 'noroute';
-      t.timer = 2;
-      if (t.lane) t.s = nearestS(t.lane, front, 1.2);
     }
     this.updatePose(t, poses);
   }

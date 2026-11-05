@@ -772,6 +772,8 @@ const ISLAND_W = 0.11;
 const MEDIAN_W = 0.04;
 const MEDIAN_Z1 = 0.7;
 const OUT_W = 0.2;
+/** Concrete rim between the asphalt and the lot edge on the right (incl. the curb). */
+const EDGE_RIM = 0.06;
 /** IN lane at the back, before it splits. */
 const IN = { x0: 0.78, x1: 1.13 };
 /**
@@ -847,8 +849,10 @@ function truckLayout(n: number): TruckLayout {
   const medianL = Math.max(x, IN.x1 + 0.02) + 0.005;
   const medianX = medianL + MEDIAN_W / 2;
   const medianR = medianL + MEDIAN_W;
-  const laneX1 = medianR + OUT_W;
-  const lotX1 = Math.max(1.5, Math.ceil((laneX1 + 0.08) * 2 - 1e-6) / 2);
+  // The lot edge (whole 0.5 steps) leaves room for at least OUT_W; the OUT lane then takes
+  // all of it up to a narrow rim by the edge curb.
+  const lotX1 = Math.max(1.5, Math.ceil((medianR + OUT_W + 0.08) * 2 - 1e-6) / 2);
+  const laneX1 = lotX1 - EDGE_RIM;
   const can = { x0: LANE_X0 - 0.02, x1: medianL + 0.02 };
 
   // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines): the access road at

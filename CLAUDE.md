@@ -152,7 +152,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
-  J/P/M/0 panelek (M = Játék: mentés, új játék), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
+  J/P/M/0 panelek (M = Játék: mentés, új játék; a 0 a beírt karakter szerint is: magyar billentyűzeten
+  az 1 bal oldalán van, code 'Backquote'), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat
@@ -411,7 +412,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
 - Mergelve: #100 (sín bekötése váltó mellé, ötletek).
 - Mergelve: #101 (átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál).
-- Folyamatban (#102): a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
+- Mergelve: #102: a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).

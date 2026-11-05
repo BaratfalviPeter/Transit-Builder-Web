@@ -94,11 +94,15 @@ const SHORT: Partial<Record<ToolId, string>> = {
 
 const KEY_OF = Object.fromEntries(KEYS.map((k) => [k.tool, k.label])) as Record<ToolId, string>;
 
-const PANEL_KEYS: Array<{ code: string; label: string; panel: Panel; title: string; icon: string }> = [
+/**
+ * `key`: also match by the typed character — on a Hungarian keyboard the "0"
+ * is left of the "1" (code 'Backquote'), not where `Digit0` is.
+ */
+const PANEL_KEYS: Array<{ code: string; key?: string; label: string; panel: Panel; title: string; icon: string }> = [
   { code: 'KeyJ', label: 'J', panel: 'lines', title: 'Járatok', icon: '🗺️' },
   { code: 'KeyP', label: 'P', panel: 'economy', title: 'Pénzügyek', icon: '💰' },
   { code: 'KeyM', label: 'M', panel: 'game', title: 'Játék', icon: '⚙️' },
-  { code: 'Digit0', label: '0', panel: 'dev', title: 'Dev', icon: '🛠️' },
+  { code: 'Digit0', key: '0', label: '0', panel: 'dev', title: 'Dev', icon: '🛠️' },
 ];
 
 const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
@@ -223,7 +227,7 @@ export function GameUI() {
         game.setSpeed(game.getSpeed() === 3 ? 1 : 3);
         return;
       }
-      const pk = PANEL_KEYS.find((k) => k.code === e.code);
+      const pk = PANEL_KEYS.find((k) => k.code === e.code || (k.key !== undefined && e.key === k.key));
       if (pk) {
         toggle(pk.panel);
         return;

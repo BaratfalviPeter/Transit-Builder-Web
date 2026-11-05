@@ -152,7 +152,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
 - Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
-  J/P/M/0 panelek (M = Játék: mentés, új játék), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
+  J/P/M/0 panelek (M = Játék: mentés, új játék; a 0 a beírt karakter szerint is: magyar billentyűzeten
+  az 1 bal oldalán van, code 'Backquote'), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
 - Modell-segéd: `lowPoly.ts` (`box`/`cyl`/rock részek → `buildParts` anyagonként összevont
   geometria; '#rrggbb' = csúcsszínes 'fixed', név = saját anyag). Erre épül a kamion, a vonat

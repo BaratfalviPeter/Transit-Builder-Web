@@ -19,3 +19,6 @@ pnpm-debug.log*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Modell-renderek (scripts/render-model.mjs)
+renders/

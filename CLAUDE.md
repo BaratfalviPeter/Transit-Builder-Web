@@ -350,8 +350,17 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   - A 2×-es `deviceScaleFactor` itt túl lassú (screenshot timeout); 1×-en tesztelj.
   - Valódi FPS itt nem mérhető (nincs GPU); a rajzolási hívások száma igen
     (Dev fül, `.dev__perf`).
-- Modellnéző: `/?model=Mine` (Mine, LumberMill, PowerPlant, Factory, OilRig,
-  StationModel, TruckStopModel, Truck, Train, Loco, Wagons, Depot, Crossing).
+- Modellnéző: `/?model=MineModel&view=iso&ui=0` (id a `VIEWER_MODELS`-ből, `src/dev/ModelViewer.tsx`:
+  MineModel, LumberMillModel, PowerPlantModel, FactoryModel, OilRigModel, StationModel, TruckStopModel,
+  Truck, Train, Loco, Wagons, Depot, Crossing; view = iso | front | side | back | top; ui=0 = panel
+  nélkül; kész: `body[data-viewer-ready="<id>:<view>"]`; ismeretlen id → csendben az első modell).
+- MODELLKÉSZÍTŐ FOLYAMAT (a felhasználó hozta, 2026-11): `/new-model <Név>Model <ref/kép.png> [leírás]`
+  (`.claude/commands/new-model.md`) → `model-builder` ágens (TSX + regisztráció a nézőben) ↔
+  `model-reviewer` ágens (csak a képeket nézi), max. 4 kör. Stílus: `docs/model-style.md` (paletta,
+  méretek, elemszám a meglévő modellekből mérve). Renderelés: `node scripts/render-model.mjs <id>
+  [round-N] [baseUrl]` → `renders/<id>/<round>/*.png` (gitignore), jelzi, ha üres a kép vagy rossz az id.
+  Playwright devDependency PONTOSAN 1.56.1 (a felhős gép előtelepített böngészőjéhez illik; Macen
+  egyszer `npx playwright install chromium` kell).
 - Szimulációs tesztek a scratchpadban: `run.sh` (depot.ts + traffic.ts esbuilddel; near = ütközés,
   stuck = beragadás), `speedtest.ts` (hirtelen fékezések száma).
 - Ne `git checkout`-olj egész mappát a teszt után, mert a saját módosításaidat is visszaállítja.

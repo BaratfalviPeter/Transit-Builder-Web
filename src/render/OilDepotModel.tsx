@@ -772,6 +772,8 @@ const ISLAND_W = 0.11;
 const MEDIAN_W = 0.04;
 const MEDIAN_Z1 = 0.7;
 const OUT_W = 0.2;
+/** Concrete rim between the asphalt and the lot edge on the right (incl. the curb). */
+const EDGE_RIM = 0.06;
 /** IN lane at the back, before it splits. */
 const IN = { x0: 0.78, x1: 1.13 };
 /**
@@ -847,8 +849,10 @@ function truckLayout(n: number): TruckLayout {
   const medianL = Math.max(x, IN.x1 + 0.02) + 0.005;
   const medianX = medianL + MEDIAN_W / 2;
   const medianR = medianL + MEDIAN_W;
-  const laneX1 = medianR + OUT_W;
-  const lotX1 = Math.max(1.5, Math.ceil((laneX1 + 0.08) * 2 - 1e-6) / 2);
+  // The lot edge (whole 0.5 steps) leaves room for at least OUT_W; the OUT lane then takes
+  // all of it up to a narrow rim by the edge curb.
+  const lotX1 = Math.max(1.5, Math.ceil((medianR + OUT_W + 0.08) * 2 - 1e-6) / 2);
+  const laneX1 = lotX1 - EDGE_RIM;
   const can = { x0: LANE_X0 - 0.02, x1: medianL + 0.02 };
 
   // Asphalt outline ([x, z]), shrunk by `inset` (for the edge lines): the access road at
@@ -871,14 +875,16 @@ function truckLayout(n: number): TruckLayout {
       [STUB.c - STUB.h + i, CONN.z0 - 0.1],
     ];
   };
-  // The median island, grown by `grow` (for its edge lines).
-  const island = (g: number): Array<[number, number]> => [
-    [STUB.c - g, CONN.z1 - g],
-    [medianR + g, CONN.z1 - g],
-    [medianR + g, MEDIAN_Z1 + g],
-    [medianL - g, MEDIAN_Z1 + g],
-    [medianL - g, SPLIT.z1],
+  // The median: a thin curb wall from the access road's center line diagonally up to the
+  // canopy's back corner (parallel to the IN lane's split), then straight on between the
+  // bays and the OUT lane. Only a wall — the asphalt round it stays wide for turning.
+  // `g` grows it (for its edge lines).
+  const wallLine: Array<[number, number]> = [
+    [STUB.c, CONN.z1],
+    [medianX, SPLIT.z1],
+    [medianX, MEDIAN_Z1],
   ];
+  const island = (g: number) => thickLine(wallLine, MEDIAN_W / 2 + g);
   const toV = (pts: Array<[number, number]>) => pts.map(([px, pz]) => new THREE.Vector2(px, -pz));
   const shape = new THREE.Shape(toV(outline(0)));
   shape.holes.push(new THREE.Path(toV(island(0))));
@@ -947,6 +953,33 @@ function truckLayout(n: number): TruckLayout {
   return { bays, islands, in: IN, medianL, medianX, laneX1, outX, medianGeo, lotX1, can, beacons, geo, lines, arrows, stripes };
 }
 
+/** A polygon around a polyline, `half` to either side (mitred corners, square ends). */
+function thickLine(pts: Array<[number, number]>, half: number): Array<[number, number]> {
+  const n = pts.length;
+  const dir = (i: number) => {
+    const [ax, az] = pts[i];
+    const [bx, bz] = pts[i + 1];
+    const l = Math.hypot(bx - ax, bz - az);
+    return [(bx - ax) / l, (bz - az) / l] as [number, number];
+  };
+  const side = (sgn: number) =>
+    pts.map(([x, z], i) => {
+      if (i === 0 || i === n - 1) {
+        const [dx, dz] = dir(i === 0 ? 0 : n - 2);
+        return [x - dz * half * sgn, z + dx * half * sgn] as [number, number];
+      }
+      // Mitre: along the bisector of the two normals.
+      const [ax, az] = dir(i - 1);
+      const [bx, bz] = dir(i);
+      const nx = -(az + bz);
+      const nz = ax + bx;
+      const nl = Math.hypot(nx, nz);
+      const k = half / Math.max(0.2, (nx / nl) * -az + (nz / nl) * ax);
+      return [x + (nx / nl) * k * sgn, z + (nz / nl) * k * sgn] as [number, number];
+    });
+  return [...side(1), ...side(-1).reverse()];
+}
+
 /** Side (−1 / +1) of an island a bay lies on. */
 const sideOf = (islandX: number, bayX: number) => (bayX < islandX ? -1 : 1);
 
@@ -995,7 +1028,7 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
       {/* Raised median between the IN side and the OUT lane, rounded nose at the front */}
       <mesh geometry={truck.medianGeo} material={M.curb} position={[0, 0.11, 0]} castShadow receiveShadow />
       <Cyl p={[truck.medianX, Y0 + 0.05, MEDIAN_Z1 - 0.02]} r={0.016} h={0.1} m={M.yellow} seg={8} />
-      <Cyl p={[STUB.c + 0.03, Y0 + 0.05, CONN.z1 + 0.03]} r={0.016} h={0.1} m={M.yellow} seg={8} />
+      <Cyl p={[STUB.c + 0.02, Y0 + 0.05, CONN.z1]} r={0.016} h={0.1} m={M.yellow} seg={8} />
 
       {islands.map((isl) => (
         <group key={isl.x}>

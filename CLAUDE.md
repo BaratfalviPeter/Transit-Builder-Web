@@ -411,7 +411,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
 - Mergelve: #100 (sín bekötése váltó mellé, ötletek).
 - Mergelve: #101 (átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál).
-- Folyamatban (#102): a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
+- Mergelve: #102: a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).

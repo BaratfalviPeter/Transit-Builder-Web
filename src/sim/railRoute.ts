@@ -417,11 +417,20 @@ function latticeSnap(net: RailNet, s: NetSnap, cx: number, cz: number): NetSnap 
   const near = latticeSnaps(net, s, cx, cz, 1.5)[0];
   if (near) return near;
   // Too close to a switch (or the piece between two switches is too short):
-  // the nearest place a switch may go, on any track within SNAP_SHIFT — not a refusal.
+  // the nearest place a switch may go within SNAP_SHIFT — not a refusal. Only
+  // on this track or the ones meeting it at its ends (across the switch),
+  // never a parallel track nearby (the end would jump about).
+  const own = net.edges.find((q) => q.id === s.edge);
+  const ends = own ? [[own.pts[0], own.pts[1]], [own.pts[own.pts.length - 2], own.pts[own.pts.length - 1]]] : [];
+  const touches = (e: (typeof net.edges)[number]) =>
+    e.id === s.edge ||
+    ends.some(([x, z]) =>
+      [[e.pts[0], e.pts[1]], [e.pts[e.pts.length - 2], e.pts[e.pts.length - 1]]].some(([a, b]) => Math.hypot(a - x, b - z) < 0.01),
+    );
   let best: NetSnap | null = null;
   let bd = Infinity;
   for (const e of net.edges) {
-    if (e.structure !== undefined) continue;
+    if (e.structure !== undefined || !touches(e)) continue;
     const q = latticeSnaps(net, { ...s, edge: e.id }, cx, cz, SNAP_SHIFT)[0];
     if (!q) continue;
     const d = Math.hypot(q.x - cx, q.z - cz);
@@ -783,12 +792,12 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
   // way, the wrong side of a fork): try the other places a switch may go
   // near the cursor, nearest first — the first that works wins.
   const net = map.railNet ?? EMPTY_NET;
-  if (!snapToNet(net, b.x, b.z)) return plan;
-  const cands: NetSnap[] = [];
-  for (const e of net.edges) {
-    if (e.structure !== undefined) continue;
-    for (const q of latticeSnaps(net, { edge: e.id, along: 0, x: b.x, z: b.z, tx: 1, tz: 0, kind: 'mid' }, b.x, b.z, SNAP_SHIFT)) cands.push(q);
-  }
+  const hit = snapToNet(net, b.x, b.z);
+  if (!hit) return plan;
+  // Only on the track under the cursor (a switch slid along it), and only a
+  // route about as short as the way to the cursor — no big loop round.
+  const cands = latticeSnaps(net, { ...hit, kind: 'mid' }, b.x, b.z, SNAP_SHIFT);
+  const reach = Math.hypot(b.x - a.x, b.z - a.z) * ALT_DETOUR + ALT_ADD;
   cands.sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z));
   const tried = new Set<string>();
   for (const c of cands) {
@@ -797,13 +806,16 @@ export function planRail(map: TerrainMap, a: { x: number; z: number }, b: { x: n
     tried.add(k);
     if (tried.size > JOIN_TRIES) break;
     const alt = planRailTo(map, a, { x: c.x, z: c.z });
-    if (!alt.blocked) return alt;
+    if (!alt.blocked && alt.length <= reach) return alt;
   }
   return plan;
 }
 const DETOUR_WHY = 'Útban van valami — csak nagy kerülővel menne';
 /** Other join spots planRail tries when the one under the cursor needs a big detour. */
 const JOIN_TRIES = 5;
+/** …accepted only if the route is at most this × the way to the cursor + ALT_ADD cells. */
+const ALT_DETOUR = 1.3;
+const ALT_ADD = 6;
 
 function planRailTo(map: TerrainMap, a: { x: number; z: number }, b: { x: number; z: number }): RailPlan {
   const net = map.railNet ?? EMPTY_NET;

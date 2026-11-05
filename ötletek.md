@@ -151,3 +151,65 @@ a növekedést (mint most az áram).
   1 sávos, ezért ez külön, nagyobb lépés (sávváltás, előzés).
 - Felújítás: a meglévő útra ráhúzva a jobb típus.
 - Sorrend: földút + főút + felújítás → autópálya → (később) járműkopás / szerviz.
+
+## Iparági rakodók a peron helyett (a felhasználó választotta: A irány, 2026-11)
+
+Gond: a 6 széles gyár mellé tett 12 hosszú peron furán néz ki. Körzetes (vonzáskörzet) rendszer NEM kell.
+
+- Minden iparágnak **saját, a modellbe épített rakodója** van: bánya = szénsiló garattal, fatelep =
+  rönkdaru, gyár = rakodórámpák, erőmű = szénbuktató, olajfúró = töltőkar.
+- A játékos csak a sínt / utat vezeti a rakodó alá, nincs külön kilógó peron.
+- A vonat a rakodó alatt **lassan áthalad, és kocsinként tölt** (mint a valódi szénrakodóknál); a sín
+  a telken túl is mehet (iparvágány), így mindegy, hány kocsis a vonat.
+- A kamion a telekre hajt be a saját rakodóállásához (mint a raktárnál).
+- A mikro nézettel összeillik: a rakodó maga a kapu, kint és bent ugyanaz a pont.
+- Nyitott kérdés: fix oldal (a modell része) vagy választható oldal. Kidolgozás: előbb egy iparággal
+  (pl. bánya) mintának.
+- Kiegészítésnek később: futószalag / csővezeték egy szabadon lerakott állomáshoz (nagy hálózatokhoz).
+- **Bővíthető rakodó** (a felhasználó ötlete, jóváhagyva): 1. szinten 1 garat / töltőcső = egyszerre
+  1 kocsi; pénzért 2–3 garat egymás mellett = ennyi kocsi tölt egyszerre (kamionnál 1–3 rakodóállás).
+  A rakodó a TÖLTÉS sebessége, az ipari szint a TERMELÉS — két külön fejlesztés. Nyitott: a garatsor a
+  telken belül marad (max. 3) vagy kilóghat.
+- **Rakodótábla**: a vonat úgy áll meg, hogy az első kocsi a garat alá kerüljön, onnan kocsinként
+  gördül tovább. Előbb automatikusan (a rakodó része); később lerakható tábla, ha egy vonalon több
+  rakodó is van (pl. szén + fa ugyanarra a vonatra).
+
+## Technika: motor, kiadás, teljesítmény (megbeszélve, 2026-11)
+
+- **Marad a web** (nincs Godot / Unity: minden újraírandó lenne). Béta weben; kiadáskor asztali
+  csomag **Electronnal** (ugyanaz a Chromium, amin tesztelünk; a Tauri Macen Safari, Windowson Edge
+  motorral futna). Electronban levehetők a böngészős fékek (háttér-lassítás, GPU-tiltólista, erősebb
+  GPU kérése), több RAM állítható; nehéz számítás natív (C++ / Rust) modulba tehető.
+- **Sorrend:** 1) béta tartalom (rakodók, úttípusok…) → 2) **szimuláció Web Workerbe** (külön magon;
+  ez hozza a legtöbbet, ha a sok jármű lassít, a böngészőben is működik) → 3) **könyvtárfrissítés +
+  WebGPU** kiadás előtt.
+- **WebGPU-próba KÜLÖN ÁGON** (pl. `claude/webgpu-proba`, draft PR; a `main` nem sérül, ha elromlik,
+  eldobjuk). Lépések, külön commitokban: (1) React 18 → 19, R3F 8 → 9, drei 9 → 10, three r169 →
+  legújabb (2026-11: React 19.3, R3F 9.8, drei 10.7, three r187 — mind stabil), még WebGL-lel,
+  ugyanúgy kell kinéznie; (2) felhőárnyék (`cloudShadows.ts`, `onBeforeCompile`) átírása TSL-re;
+  (3) `three/webgpu` renderelő bekapcsolása (magától WebGL2-re vált, ha nincs WebGPU); a besütött
+  árnyék (`shadowMap.needsUpdate`) ellenőrzése. A szimulációhoz (`src/sim/`) nem kell nyúlni.
+  Tesztelni a felhasználó Macén kell (itt nincs GPU). Az (1) lépés önmagában is előbb jöhet.
+
+## Olaj a partra: csővezeték + olajterminál (megbeszélve, 2026-11)
+
+Most a fúrótoronyhoz nem építhető megálló (`stations.ts`), az olaj a tóban ragad.
+- Új eszköz: **Cső**. A vízen **víz alatt** fut (csak bóják / halvány vonal jelzi, élethű: a tengeri
+  fúrókból is a mederben megy a cső), a partra érve a föld alatt (jelzőoszlopok), utat / sínt alatta
+  keresztez (nincs ütközés).
+- A parton **olajterminál** (tartálypark) — ennek van rakodója: tartálykocsis vonat / tartálykamion
+  viszi tovább (finomítóba, később városba).
+- **Bővíthető cső**: vékony = kevés olaj / s, vastagabb = több (mint a garatok a rakodónál).
+- Csak folyadékra (olaj, később üzemanyag a finomítóból); a szilárd árut nem váltja ki.
+- Nyitott: a cső csak a terminálig, vagy közvetlenül a finomítóig is húzható.
+- Később: **kikötő + tankhajó** külön szállítási módként, ha lesz nagyobb víz (folyó / tenger).
+
+## Térképméret (becslés, mérés nélkül, 2026-11)
+
+Most 121×121. Kiadáskor választható méret: kicsi 121, közepes ~180, nagy ~256.
+- ~180: szinte semmi teendő (árnyék finomítása).
+- ~256: árnyék régiókra bontva (most egyetlen árnyéktérkép fedi a térképet, `SHADOW_EXTENT`), mentés
+  tömörítve / IndexedDB (a localStorage kb. 5 MB), a sín-tervező `MAX_EXPAND` emelése.
+- ~512 („óriás”, később): terep darabokra bontva + LOD + takarás, szimuláció Web Workerben.
+- A valódi korlát a járművek száma / útkeresés és a mentés mérete, nem a terep. Előtte mérés a
+  felhasználó Macén (ideiglenesen nagyobb térkép, rajzolási hívások, sebesség).

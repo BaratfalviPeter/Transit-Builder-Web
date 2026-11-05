@@ -32,8 +32,8 @@ Low poly 3D modellező vagy, aki React Three Fiber TSX komponenseket ír a Trans
    Ismeretlen id-nél a néző csendben az első modellt (MineModel) mutatja — a render script ezt jelzi.
 4. NE kösd be a játékba (`src/render/Industries.tsx` `switch (type)` + új `CellType` a
    `src/sim/terrain.ts`-ben), csak ha a hívó kifejezetten kéri.
-5. Típusellenőrzés: `npx tsc --noEmit -p tsconfig.app.json` (a sima `npx tsc --noEmit` és az
-   `npm run typecheck` a gyökér tsconfig miatt SEMMIT nem ellenőriz), és javítsd a hibákat.
+5. Típusellenőrzés: `npm run typecheck` (= `tsc --noEmit -p tsconfig.app.json`; a sima
+   `npx tsc --noEmit` a gyökér tsconfig miatt SEMMIT nem ellenőriz), és javítsd a hibákat.
 
 ## Javító kör
 - Kapsz egy hibalistát a reviewertől. Csak azt javítsd, amit a lista kér; a jó részekhez ne nyúlj.

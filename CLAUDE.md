@@ -336,7 +336,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
     localStorage-ban tárolódik.
 
 ## Tesztelés a felhős gépen
-- `npx tsc --noEmit -p tsconfig.app.json` és `npm run build` (a `-p .` NEM ellenőriz semmit: a gyökér tsconfig csak hivatkozás)
+- `npm run typecheck` (= `npx tsc --noEmit -p tsconfig.app.json`) és `npm run build` (a `-p .` / sima `tsc --noEmit` NEM ellenőriz semmit: a gyökér tsconfig csak hivatkozás)
 - Dev szerver: `npx vite --port 5173` a háttérben. Leállítás: `pkill -f "[v]ite --port 5173"`
   (a szögletes zárójel kell, különben a saját shellt is kilövi).
 - Headless böngésző: Playwright (`require('playwright')`), indítás ezzel:
@@ -407,7 +407,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #99 (ipari szintek simított mérése; új játéknál a bemutató és a feladatlista elölről).
 - Mergelve: #100 (sín bekötése váltó mellé, ötletek).
 - Mergelve: #101 (átlós S-ív, a bekötés a kurzor körüli más pontokat is kipróbál).
-- Folyamatban (#102): a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el.
+- Folyamatban (#102): a bekötés csak ugyanazon a vágányon csúszik, nagy kört nem fogad el; modellkészítő
+  folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`).
 - Ötletnek félretéve (`ötletek.md`, a felhasználó kérte): városkártya ne takarja a menüt, mentés
   letöltése / betöltése fájlként, automatikus grafikai fokozat.
 - Félretéve (a felhasználó nem biztos benne): járművek fejlődése az évek során.

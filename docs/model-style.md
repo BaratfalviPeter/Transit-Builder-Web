@@ -83,8 +83,7 @@ használd, ne újat:
 
 ## Példák
 A meglévő modellek közül ezeket kell mintának tekinteni:
-<!-- TODO (a felhasználó jóváhagyására vár): javaslat: src/render/LumberMillModel.tsx -->
-- `src/render/LumberMillModel.tsx` — fő minta (javasolt): tiszta felépítés (alrészek külön
+- `src/render/LumberMillModel.tsx` — FŐ MINTA (a felhasználó jóváhagyta): tiszta felépítés (alrészek külön
   függvényekben: `Ground`, `Barn`, `Crane`, `Stacks`…), közös `M` anyagok, InstancedMesh a sok
   egyforma elemre, animált daru, ~320 mesh.
 - Segédek: `src/render/PowerPlantModel.tsx` (`Box`, `Pipe`, `Elbow`, `Steam`), `src/render/lowPoly.ts`.

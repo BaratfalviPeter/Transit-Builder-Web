@@ -133,6 +133,37 @@ export function oilToWorld(st: Station, u: number, v: number): [number, number] 
   }
 }
 
+/** World grid coords → local (u, v) in cells (the inverse of oilToWorld). */
+export function oilFromWorld(st: Station, x: number, z: number): [number, number] {
+  const { w, h } = oilSize(st);
+  const x0 = st.anchor[0] - 0.5;
+  const z0 = st.anchor[1] - 0.5;
+  switch (st.rot ?? 0) {
+    case 1:
+      return [z - z0, x0 + h - x];
+    case 2:
+      return [x0 + w - x, z0 + h - z];
+    case 3:
+      return [z0 + w - z, x - x0];
+    default:
+      return [x - x0, z - z0];
+  }
+}
+
+/** World grid coords → design coords (the model's x, z). */
+export function oilWorldToDesign(st: Station, x: number, z: number): [number, number] {
+  const { layout } = oilSize(st);
+  const [u, v] = oilFromWorld(st, x, z);
+  return [u / 2 + layout.lotX0, v / 2 - 1.5];
+}
+
+/**
+ * The barriers' catchment (design units): a truck with a point in the IN
+ * (left) half or the OUT (right) half of the access road, from a little
+ * outside the lot to just past the barrier line, has that barrier up.
+ */
+export const GATE_ZONE = { z0: -2.15, z1: -1.1 };
+
 /** Design coords (the model's x, z) → world grid coords. */
 export function oilDesignToWorld(st: Station, x: number, z: number): [number, number] {
   const { layout } = oilSize(st);
@@ -274,6 +305,8 @@ function polyLength(pts: Array<[number, number]>): number {
 /** Right-lane offset of a road (cells → design units) and the trucks' stop line in a bay. */
 const LANE_OFF = 0.1;
 const STOP_Z = 0.4;
+/** Where the way out ends (design z): ~a truck's length straight past the last bend. */
+const EXIT_END_Z = -1.72;
 
 /**
  * Bay i's path through the depot (design units → world): in by the access road's
@@ -307,7 +340,9 @@ export function oilBayPath(st: Station, bay: number): { pts: Array<[number, numb
   // Over to the access road's right half and out.
   d.push(...corner([ox, CONN.z1], [ox, (CONN.z0 + CONN.z1) / 2], [(ox + outRoadX) / 2, (CONN.z0 + CONN.z1) / 2]));
   d.push(...corner([(ox + outRoadX) / 2, (CONN.z0 + CONN.z1) / 2], [outRoadX, (CONN.z0 + CONN.z1) / 2], [outRoadX, CONN.z0 - 0.02]));
-  d.push([outRoadX, -1.25]);
+  // On straight out past the lot edge, so the trailer is in line again when the
+  // truck takes over its road route (else it would snap straight).
+  d.push([outRoadX, EXIT_END_Z]);
   const sOut = polyLength(d.slice(0, d.length - 1));
   const pts = d.map(([x, z]) => oilDesignToWorld(st, x, z));
   // Design units → cells (×2).

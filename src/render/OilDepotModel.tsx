@@ -68,6 +68,19 @@ export interface OilDepotModelProps {
   railTracks?: number;
   /** In the game the tracks are the rail network's (drawn by the game): leave them out. */
   noTracks?: boolean;
+  /**
+   * In the game: what the barriers and bay lights show (read every frame) —
+   * barriers up while a truck is at them, a bay green while free. Without it
+   * (the model viewer) they cycle on a timer.
+   */
+  status?: () => OilDepotStatus;
+}
+
+export interface OilDepotStatus {
+  entry: boolean;
+  exit: boolean;
+  /** Per bay: free (green) or taken (red). */
+  free: boolean[];
 }
 
 export { MAX_RAIL_TRACKS, MAX_TRUCK_BAYS };
@@ -273,6 +286,7 @@ export function OilDepotModel({
   truckBays = 2,
   railTracks = 1,
   noTracks = false,
+  status,
 }: OilDepotModelProps) {
   const bays = Math.max(1, Math.min(MAX_TRUCK_BAYS, Math.round(truckBays)));
   const tracks = Math.max(1, Math.min(MAX_RAIL_TRACKS, Math.round(railTracks)));
@@ -290,7 +304,7 @@ export function OilDepotModel({
         <TankFarm />
         <PumpHouse phase={phase} />
         <Piping truck={truck} />
-        <TruckLane truck={truck} phase={phase} />
+        <TruckLane truck={truck} phase={phase} status={status} />
         <Office />
         <Yard />
         <SharedBatches />
@@ -978,7 +992,7 @@ function thickLine(pts: Array<[number, number]>, half: number): Array<[number, n
 /** Side (−1 / +1) of an island a bay lies on. */
 const sideOf = (islandX: number, bayX: number) => (bayX < islandX ? -1 : 1);
 
-function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
+function TruckLane({ truck, phase, status }: { truck: TruckLayout; phase: number; status?: () => OilDepotStatus }) {
   const armRefs = useRef<Array<THREE.Group | null>>([]);
   const beaconRefs = useRef<Array<THREE.Mesh | null>>([]);
   const entry = useRef<THREE.Group>(null);
@@ -986,7 +1000,9 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
   /** Per bay: [red lamp, green lamp] glow meshes. */
   const lamps = useRef<Array<THREE.Mesh | null>>([]);
   const n = truck.bays.length;
-  useFrame((state) => {
+  /** The barriers' current lift (0 down … 1 up), eased toward their target. */
+  const lift = useRef({ entry: 0, exit: 0 });
+  useFrame((state, dt) => {
     const t = state.clock.getElapsedTime() + phase;
     armRefs.current.forEach((g, i) => {
       if (g) g.rotation.y = Number(g.userData.side ?? 1) * (0.15 + Math.sin(t * 0.5 + i) * 0.12);
@@ -1000,16 +1016,28 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
       const up = Math.min(1, Math.max(0, c < 4 ? c / 0.8 : (4.8 - c) / 0.8));
       return up * 1.35;
     };
-    // Bay lights: the bays take turns to leave, green for one at a time (4 s each).
+    const s = status?.();
+    // Bay lights: in the game green while the bay is free; else they take turns (4 s each).
     const go = Math.floor(((t % (4 * n)) + 4 * n) % (4 * n) / 4);
     for (let bay = 0; bay < n; bay++) {
       const red = lamps.current[bay * 2];
       const green = lamps.current[bay * 2 + 1];
-      if (red) red.visible = bay !== go;
-      if (green) green.visible = bay === go;
+      const on = s ? (s.free[bay] ?? true) : bay === go;
+      if (red) red.visible = !on;
+      if (green) green.visible = on;
     }
-    if (entry.current) entry.current.rotation.z = open(t); // arm toward +X
-    if (exit.current) exit.current.rotation.z = -open(t + 4); // arm toward −X
+    if (s) {
+      // Up while a truck is at the barrier, eased (about half a second either way).
+      const k = Math.min(1, dt * 5);
+      const L = lift.current;
+      L.entry += ((s.entry ? 1 : 0) - L.entry) * k;
+      L.exit += ((s.exit ? 1 : 0) - L.exit) * k;
+      if (entry.current) entry.current.rotation.z = L.entry * 1.35; // arm toward +X
+      if (exit.current) exit.current.rotation.z = -L.exit * 1.35; // arm toward −X
+    } else {
+      if (entry.current) entry.current.rotation.z = open(t);
+      if (exit.current) exit.current.rotation.z = -open(t + 4);
+    }
   });
   const { can, islands, bays } = truck;
   let armIdx = 0;

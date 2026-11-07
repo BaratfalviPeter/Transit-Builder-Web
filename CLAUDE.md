@@ -341,7 +341,11 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   vízen, oszlopok a szárazföldön). KAMION: a megálló cellája a bejárat (`stopCells`), érkezéskor `pickBay`
   (szabad állás) → `tickOilDepot`: wait → in (`oilBayPath`: a bejárat bal felén be, az állás stopvonaláig) →
   load (teli rakomány: `oilWaits`) → out (egyszerre egy kamion hajt ki: `oilOut`; körbe a fordulón, a bejárat
-  jobb felén ki) → a következő megálló útja. A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
+  jobb felén ki) → a következő megálló útja. A kihajtó út a telek után még egyenesen folytatódik (`EXIT_END_Z`
+  −1,72), hogy a pótkocsi kiegyenesedjen, mire a kamion átvált a közúti útvonalra (különben „teleportált”).
+  SOROMPÓK / LÁMPÁK a játék állapotából (`TransportSim.oilDepotStatus` → `OilDepotModel status`): a sorompó fent,
+  amíg kamion van a saját sávfelében (`GATE_ZONE`, `oilWorldToDesign`), az állás lámpája zöld, ha szabad, piros,
+  ha foglalt (a modellnézőben időzítve). A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
   talajjal egy szintben, nincs lépcső az útról), a kamion az aszfalton gurul (`Transport.tsx` `OIL_SLAB` =
   `OIL_DRIVE_TOP` × 2). A töltőtető (`CAN_Y` 0,42) a tartálykamionhoz méretezve (a felhasználó jelezte, hogy a
   kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már

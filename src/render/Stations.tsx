@@ -136,6 +136,7 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
 /** An oil depot: the model (batched), its tank stock as a label. */
 function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number; st: Station; batch: boolean }) {
   const prod = useInteriorStore().production;
+  const sim = useTransport();
   const { pos: lot, rotY, scale } = lotPose(map, cellSize, st, oilCenter(st));
   // Sunk so the slab is flush with the ground (the trucks drive straight on).
   const pos: [number, number, number] = [lot[0], lot[1] - OIL_GAME_SINK * scale, lot[2]];
@@ -151,6 +152,7 @@ function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: num
           railTracks={st.tracks ?? 1}
           phase={st.id * 0.7}
           noTracks
+          status={() => sim.oilDepotStatus(st)}
         />
       </StaticBatch>
       <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.6, pos[2]]} center style={{ pointerEvents: 'none' }}>

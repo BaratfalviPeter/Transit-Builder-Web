@@ -130,6 +130,17 @@ const GLOW = {
 
 /** Top of the base slab. */
 const Y0 = 0.1;
+/** Thickness of the asphalt on the slab (the truck lanes). */
+const ASPHALT = 0.012;
+/**
+ * In the game the model is sunk by this much (design units) so that its slab
+ * is (almost) flush with the ground — the trucks drive on from the road with no
+ * step. What stays above the ground: SLAB_SHOW (clear of the terrain surface).
+ */
+const SLAB_SHOW = 0.01;
+export const OIL_GAME_SINK = Y0 - SLAB_SHOW;
+/** Height of the truck lanes' top above the ground in the game (design units). */
+export const OIL_DRIVE_TOP = SLAB_SHOW + ASPHALT;
 
 // --- Instancing helper ----------------------------------------------------------
 
@@ -765,7 +776,7 @@ function Piping({ truck }: { truck: TruckLayout }) {
         m={M.rust}
       />
       <Collar p={[0.52, 0.3, -0.82]} r={0.03} axis="y" />
-      <Box p={[0.52, 0.37, -0.55]} s={[0.02, 0.54, 0.02]} m={M.frame} />
+      <Box p={[0.52, (Y0 + PIPE_Y) / 2, -0.55]} s={[0.02, PIPE_Y - Y0, 0.02]} m={M.frame} />
     </group>
   );
 }
@@ -781,9 +792,12 @@ function Piping({ truck }: { truck: TruckLayout }) {
  *   - at the front, the bays turn round a rounded U into the OUT lane, which
  *     runs back past the canopy to the exit.
  */
-const CAN_Y = 0.55;
+/** Canopy roof height: ~1.4× a tanker's height clear above the asphalt (a truck is 0.165 high). */
+const CAN_Y = 0.42;
+/** Pivot height of the swinging loading arms (under the canopy). */
+const ARM_Y = CAN_Y - 0.08;
 /** Canopy roof pipes: header along X at HEAD_Z, then one branch per bay. */
-const PIPE_Y = 0.64;
+const PIPE_Y = CAN_Y + 0.09;
 const HEAD_Z = -0.3;
 /**
  * Where the median wall bends from its diagonal to straight along the canopy: the
@@ -866,7 +880,7 @@ function truckLayout(n: number): TruckLayout {
   const toV = (pts: Array<[number, number]>) => pts.map(([px, pz]) => new THREE.Vector2(px, -pz));
   const shape = new THREE.Shape(toV(outline(0)));
   shape.holes.push(new THREE.Path(toV(island(0))));
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: false });
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: ASPHALT, bevelEnabled: false });
   geo.rotateX(-Math.PI / 2);
   const medianGeo = new THREE.ExtrudeGeometry(new THREE.Shape(toV(island(0))), { depth: 0.03, bevelEnabled: false });
   medianGeo.rotateX(-Math.PI / 2);
@@ -1022,7 +1036,7 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
           {/* Loading arm posts, a swinging yellow arm over each bay the island serves */}
           {[-0.17, 0.17].map((z) => (
             <group key={z}>
-              <Box p={[isl.x, 0.31, z]} s={[0.03, 0.4, 0.03]} m={M.yellow} cast />
+              <Box p={[isl.x, (0.11 + ARM_Y + 0.04) / 2, z]} s={[0.03, ARM_Y - 0.07, 0.03]} m={M.yellow} cast />
               {isl.bays.map((b) => {
                 const side = sideOf(isl.x, bays[b]);
                 const idx = armIdx++;
@@ -1030,15 +1044,15 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
                   <group
                     key={b}
                     name="truckArm"
-                    position={[isl.x, 0.47, z]}
+                    position={[isl.x, ARM_Y, z]}
                     userData={{ side }}
                     ref={(el) => {
                       armRefs.current[idx] = el;
                     }}
                   >
                     <Box p={[side * 0.11, 0, 0]} s={[0.22, 0.02, 0.02]} m={M.yellow} cast />
-                    <Box p={[side * 0.2, -0.07, 0]} s={[0.014, 0.12, 0.014]} m={M.rubber} />
-                    <Box p={[side * 0.2, -0.14, 0]} s={[0.024, 0.024, 0.024]} m={M.yellow} />
+                    <Box p={[side * 0.2, -0.03, 0]} s={[0.014, 0.05, 0.014]} m={M.rubber} />
+                    <Box p={[side * 0.2, -0.06, 0]} s={[0.024, 0.024, 0.024]} m={M.yellow} />
                   </group>
                 );
               })}
@@ -1047,17 +1061,17 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
           {/* Canopy columns on the island ends, drop pipes to the arm posts */}
           <Box p={[isl.x, (0.17 + CAN_Y) / 2, ISLAND_Z.z0 + 0.03]} s={[0.035, CAN_Y - 0.17, 0.035]} m={M.wall} cast />
           <Box p={[isl.x, (0.17 + CAN_Y) / 2, ISLAND_Z.z1 - 0.03]} s={[0.035, CAN_Y - 0.17, 0.035]} m={M.wall} cast />
-          <Box p={[isl.x, (CAN_Y + 0.51) / 2, -0.17]} s={[0.02, CAN_Y - 0.51, 0.02]} m={M.pipe} />
-          <Box p={[isl.x, (CAN_Y + 0.51) / 2, 0.17]} s={[0.02, CAN_Y - 0.51, 0.02]} m={M.pipe} />
+          <Box p={[isl.x, (CAN_Y + ARM_Y + 0.04) / 2, -0.17]} s={[0.02, CAN_Y - ARM_Y - 0.04, 0.02]} m={M.pipe} />
+          <Box p={[isl.x, (CAN_Y + ARM_Y + 0.04) / 2, 0.17]} s={[0.02, CAN_Y - ARM_Y - 0.04, 0.02]} m={M.pipe} />
           {/* Red / green light on the island nose: one head per bay, facing the waiting truck (−Z) */}
-          <Box p={[isl.x, 0.26, ISLAND_Z.z1 + 0.05]} s={[0.018, 0.3, 0.018]} m={M.frame} cast />
+          <Box p={[isl.x, 0.225, ISLAND_Z.z1 + 0.05]} s={[0.018, 0.23, 0.018]} m={M.frame} cast />
           {isl.bays.map((b) => {
             const side = sideOf(isl.x, bays[b]);
             const hx = isl.x + side * 0.115;
             return (
               <group key={b}>
-                <Box p={[(isl.x + hx) / 2, 0.4, ISLAND_Z.z1 + 0.05]} s={[0.115, 0.014, 0.014]} m={M.frame} />
-                <group position={[hx, 0.37, ISLAND_Z.z1 + 0.05]}>
+                <Box p={[(isl.x + hx) / 2, 0.33, ISLAND_Z.z1 + 0.05]} s={[0.115, 0.014, 0.014]} m={M.frame} />
+                <group position={[hx, 0.3, ISLAND_Z.z1 + 0.05]}>
                   <Box p={[0, 0, 0]} s={[0.035, 0.075, 0.03]} m={M.dark} cast />
                   <Box p={[0, 0.042, -0.004]} s={[0.04, 0.006, 0.035]} m={M.dark} />
                   {([
@@ -1147,23 +1161,23 @@ function TruckLane({ truck, phase }: { truck: TruckLayout; phase: number }) {
 
       {/* Back edge: one two-way access road; a barrier on each half (IN on the left,
           OUT on the right), the gatehouse by the IN side, a sign facing the road */}
-      <Box p={[STUB.c - STUB.h - 0.03, 0.17, -1.4]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[STUB.c - STUB.h - 0.03, 0.16, -1.4]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={entry} name="entryBarrier" position={[STUB.c - STUB.h - 0.03, 0.22, -1.4]}>
+      <Box p={[STUB.c - STUB.h - 0.03, 0.145, -1.4]} s={[0.035, 0.07, 0.035]} m={M.steel} cast />
+      <Box p={[STUB.c - STUB.h - 0.03, 0.12, -1.4]} s={[0.045, 0.025, 0.045]} m={M.yellow} />
+      <group ref={entry} name="entryBarrier" position={[STUB.c - STUB.h - 0.03, 0.17, -1.4]}>
         <Barrier dir={1} len={STUB.h + 0.01} />
       </group>
-      <Box p={[STUB.c + STUB.h + 0.03, 0.17, -1.4]} s={[0.04, 0.12, 0.04]} m={M.steel} cast />
-      <Box p={[STUB.c + STUB.h + 0.03, 0.16, -1.4]} s={[0.05, 0.03, 0.05]} m={M.yellow} />
-      <group ref={exit} name="exitBarrier" position={[STUB.c + STUB.h + 0.03, 0.22, -1.4]}>
+      <Box p={[STUB.c + STUB.h + 0.03, 0.145, -1.4]} s={[0.035, 0.07, 0.035]} m={M.steel} cast />
+      <Box p={[STUB.c + STUB.h + 0.03, 0.12, -1.4]} s={[0.045, 0.025, 0.045]} m={M.yellow} />
+      <group ref={exit} name="exitBarrier" position={[STUB.c + STUB.h + 0.03, 0.17, -1.4]}>
         <Barrier dir={-1} len={STUB.h + 0.01} />
       </group>
       <GateHouse />
       {/* Blue "oil depot / trucks this way" sign */}
-      <Box p={[STUB.c - STUB.h - 0.08, 0.25, -1.46]} s={[0.012, 0.3, 0.012]} m={M.steel} />
-      <Box p={[STUB.c - STUB.h - 0.08, 0.38, -1.468]} s={[0.12, 0.12, 0.01]} m={M.blue} cast />
-      <Box p={[STUB.c - STUB.h - 0.08, 0.365, -1.475]} s={[0.018, 0.06, 0.004]} m={M.curb} />
-      <group position={[STUB.c - STUB.h - 0.08, 0.41, -1.475]} rotation={[0, 0, Math.PI / 4]}>
-        <Box p={[0, 0, 0]} s={[0.035, 0.035, 0.004]} m={M.curb} />
+      <Box p={[STUB.c - STUB.h - 0.08, 0.2, -1.46]} s={[0.012, 0.2, 0.012]} m={M.steel} />
+      <Box p={[STUB.c - STUB.h - 0.08, 0.28, -1.468]} s={[0.08, 0.08, 0.01]} m={M.blue} cast />
+      <Box p={[STUB.c - STUB.h - 0.08, 0.27, -1.475]} s={[0.012, 0.04, 0.004]} m={M.curb} />
+      <group position={[STUB.c - STUB.h - 0.08, 0.3, -1.475]} rotation={[0, 0, Math.PI / 4]}>
+        <Box p={[0, 0, 0]} s={[0.024, 0.024, 0.004]} m={M.curb} />
       </group>
       {/* Bollard where the IN lane splits */}
       <Cyl p={[IN.x0 - 0.05, Y0 + 0.05, SPLIT.z0 + 0.05]} r={0.018} h={0.1} m={M.yellow} seg={8} />

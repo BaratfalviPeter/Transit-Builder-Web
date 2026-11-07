@@ -463,8 +463,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
 - Mergelve: #108 (OLAJ A JÁTÉKBAN 1. rész: depó lerakása, csővezeték, kamionos rakodás, erőmű), #109 (a depó
   telke a talajjal egy szintben, alacsonyabb töltőtető).
-- Folyamatban (#110): OLAJ 2. rész — vasúti rakodás (előreállós, kocsinként), 3. rész — bővítés (állás /
-  vágány). Utána: 4. finomító.
+- Mergelve: #110 (OLAJ 2. rész — vasúti rakodás, előreállós, kocsinként; 3. rész — bővítés: állás / vágány).
+- Folyamatban: olajdepó-javítások (sima kifordulás, valódi sorompók / lámpák, fal melletti útvonal) + vontatott
+  pótkocsi. Utána: 4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

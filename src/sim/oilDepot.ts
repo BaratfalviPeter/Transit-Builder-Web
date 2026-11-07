@@ -38,6 +38,13 @@ export const CONN = { z0: -1.3, z1: -1.0 };
 export const ISLAND_Z = { z0: -0.36, z1: 0.36 };
 export const CAN_Z = { z0: -0.46, z1: 0.46 };
 export const SPLIT = { z0: -1.0, z1: -0.62 };
+/**
+ * The median wall runs from the access road's centre line (STUB.c, CONN.z1)
+ * diagonally to (medianX, WALL_BEND_Z), then straight on along the canopy.
+ * The bend: the straight piece before the canopy is twice what the split's end
+ * would give (the user asked).
+ */
+export const WALL_BEND_Z = SPLIT.z1 - (CAN_Z.z0 - SPLIT.z1 + 0.03);
 /** Front edge of the turning area. */
 export const FRONT_Z = 1.44;
 /** Rail track pitch and the first track's center (one track per 0.5 = one cell). */
@@ -305,6 +312,8 @@ function polyLength(pts: Array<[number, number]>): number {
 /** Right-lane offset of a road (cells → design units) and the trucks' stop line in a bay. */
 const LANE_OFF = 0.1;
 const STOP_Z = 0.4;
+/** How far the way in to a right-hand bay keeps off the median wall's diagonal (design units). */
+const WALL_CLEAR = 0.17;
 /** Where the way out ends (design z): ~a truck's length straight past the last bend. */
 const EXIT_END_Z = -1.72;
 
@@ -324,10 +333,24 @@ export function oilBayPath(st: Station, bay: number): { pts: Array<[number, numb
   // From / to the access road cell's centre (where a truck's road route ends / starts).
   const d: Array<[number, number]> = [[inX, -1.25]];
   d.push([inX, -1.2]);
-  // Into the bay's line, as an S from the IN lane.
-  const midZ = (SPLIT.z0 + SPLIT.z1) / 2;
-  d.push(...corner([inX, -1.2], [inX, midZ], [(inX + bx) / 2, midZ]));
-  d.push(...corner([(inX + bx) / 2, midZ], [bx, midZ], [bx, SPLIT.z1 + 0.05]));
+  if (bx <= inX + 0.02) {
+    // Into the bay's line (to the left, away from the wall), as an S from the IN lane.
+    const midZ = (SPLIT.z0 + SPLIT.z1) / 2;
+    d.push(...corner([inX, -1.2], [inX, midZ], [(inX + bx) / 2, midZ]));
+    d.push(...corner([(inX + bx) / 2, midZ], [bx, midZ], [bx, SPLIT.z1 + 0.05]));
+  } else {
+    // A bay to the right, over the median wall's diagonal: keep clear of it — up,
+    // then along it (WALL_CLEAR off), then turn into the bay.
+    const slope = (WALL_BEND_Z - CONN.z1) / Math.max(0.05, L.medianX - STUB.c);
+    const along = (x: number) => CONN.z1 + (x - STUB.c) * slope + WALL_CLEAR;
+    const k = Math.min(0.12, (bx - inX) / 2);
+    const q1: [number, number] = [inX + k, along(inX + k)];
+    const q2: [number, number] = [bx - k, along(bx - k)];
+    d.push(...corner([inX, -1.2], [inX, along(inX)], q1));
+    if (q2[0] > q1[0] + 1e-3) d.push(q2);
+    const up = Math.max(SPLIT.z1 + 0.05, along(bx) + 0.14);
+    d.push(...corner(q2, [bx, along(bx)], [bx, up]));
+  }
   d.push([bx, STOP_Z]);
   const sStop = polyLength(d);
   // Round the U: up to the front, across, back down the OUT lane.

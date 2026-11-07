@@ -52,6 +52,7 @@ import {
   SPLIT,
   STUB,
   TRACK_PITCH,
+  WALL_BEND_Z,
   oilLayout,
 } from '../sim/oilDepot';
 
@@ -817,11 +818,6 @@ const ARM_Y = CAN_Y - 0.08;
 /** Canopy roof pipes: header along X at HEAD_Z, then one branch per bay. */
 const PIPE_Y = CAN_Y + 0.09;
 const HEAD_Z = -0.3;
-/**
- * Where the median wall bends from its diagonal to straight along the canopy: the
- * straight piece before the canopy is twice what the split's end would give (the user asked).
- */
-const WALL_BEND_Z = SPLIT.z1 - (CAN_Z.z0 - SPLIT.z1 + 0.03);
 /** The turning area's corner radius. */
 const TURN_R = 0.24;
 

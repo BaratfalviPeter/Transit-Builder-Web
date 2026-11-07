@@ -437,8 +437,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
-- Folyamatban (#108): az elválasztó fal törése hátrébb; OLAJ A JÁTÉKBAN 1. rész (depó lerakása, csővezeték,
-  kamionos rakodás, erőmű). Utána: 2. vasúti rakodás, 3. bővítés (állás / vágány), 4. finomító.
+- Mergelve: #108 (OLAJ A JÁTÉKBAN 1. rész: depó lerakása, csővezeték, kamionos rakodás, erőmű), #109 (a depó
+  telke a talajjal egy szintben, alacsonyabb töltőtető). Utána: 2. vasúti rakodás, 3. bővítés (állás / vágány),
+  4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

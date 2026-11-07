@@ -8,8 +8,8 @@
  * back. So a line's end station needs a LOOP (a balloon loop, or the whole
  * line a circle): without one there is simply no route back.
  *
- * A stop is a straight platform segment: a rail station's track, or one of a
- * depot's two tracks. A train stops with its front at the far end of the
+ * A stop is a straight platform segment: a rail station's track, one of a
+ * depot's two tracks, or an oil depot's loading track. A train stops with its front at the far end of the
  * segment (in its travel sense), so its whole body is on the platform.
  *
  * A path is a list of edge pieces (RailSeg) plus their polyline (a Lane, so
@@ -25,6 +25,7 @@ import { EMPTY_NET, LineWalker, railIndex, TRACK_HALF, type RailNet } from './ra
 import { CellType, type TerrainMap } from './terrain';
 import { stationGeom, stopKind, type Station } from './stations';
 import { depotTracks, isDepot } from './depot';
+import { isOilDepot, oilTracks } from './oilDepot';
 import { laneAt, type Lane } from './lane';
 import { signalFaces, signalsOf } from './signals';
 
@@ -148,6 +149,7 @@ export function locate(net: RailNet, x: number, z: number, dx: number, dz: numbe
 /** The platform segments [ax, az, bx, bz] of a rail stop (none for a truck stop). */
 export function platforms(st: Station): number[][] {
   if (isDepot(st)) return depotTracks(st);
+  if (isOilDepot(st)) return oilTracks(st);
   if (stopKind(st) !== 'rail') return [];
   return [stationGeom(st.anchor, st.side, st.ext).trackPts];
 }

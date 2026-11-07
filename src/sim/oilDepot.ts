@@ -1,7 +1,8 @@
 /**
  * The oil depot (olajdepó) — a player-built terminal on land: the oil rig's
  * pipeline (see pipes.ts) fills its tanks, and tanker trucks load it at the
- * U-shaped truck loading area (later also trains under the rail gantry).
+ * U-shaped truck loading area, and trains under the rail gantry (wagon by
+ * wagon: the train pulls forward one car at a time, see transport.ts).
  *
  * A depot is a Station with kind 'oil', at `anchor` = the lot's min corner,
  * turned by `rot` (0…3, quarter turns), sized by its truck bays / rail tracks
@@ -142,6 +143,24 @@ export function oilCells(st: Station): Array<{ x: number; z: number; lx: number;
       out.push({ x: Math.round(x), z: Math.round(z), lx, lz });
     }
   return out;
+}
+
+/** Track ends sit this far in from the lot's front / back edge (design units: a half cell). */
+const TRACK_END_Z = 1.25;
+
+/**
+ * The rail tracks through the lot, along it (design z), as platform segments
+ * [ax, az, bx, bz] (world grid coords, cell centres at both ends): rail-network
+ * edges, and the stops' platforms a train pulls up at (see rail.ts).
+ */
+export function oilTracks(st: Station): number[][] {
+  return oilSize(st).layout.tracks.map((x) => [...oilDesignToWorld(st, x, -TRACK_END_Z), ...oilDesignToWorld(st, x, TRACK_END_Z)]);
+}
+
+/** Is local column `lx` under a rail track? */
+export function oilTrackColumn(st: Station, lx: number): boolean {
+  const { layout } = oilSize(st);
+  return layout.tracks.some((x) => Math.floor((x - layout.lotX0) * 2) === lx);
 }
 
 /** Local column of the access road cell (back row). */

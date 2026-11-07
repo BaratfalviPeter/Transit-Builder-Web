@@ -66,6 +66,8 @@ export interface OilDepotModelProps {
   truckBays?: number;
   /** Rail loading tracks under the gantry, 1–3 (default 1): the rail side widens (−X). */
   railTracks?: number;
+  /** In the game the tracks are the rail network's (drawn by the game): leave them out. */
+  noTracks?: boolean;
 }
 
 export { MAX_RAIL_TRACKS, MAX_TRUCK_BAYS };
@@ -270,6 +272,7 @@ export function OilDepotModel({
   phase = 0,
   truckBays = 2,
   railTracks = 1,
+  noTracks = false,
 }: OilDepotModelProps) {
   const bays = Math.max(1, Math.min(MAX_TRUCK_BAYS, Math.round(truckBays)));
   const tracks = Math.max(1, Math.min(MAX_RAIL_TRACKS, Math.round(railTracks)));
@@ -282,7 +285,7 @@ export function OilDepotModel({
       {/* The lot is centered on the origin whatever its width. */}
       <group position={[-(x0 + x1) / 2, 0, 0]}>
         <Ground x0={x0} x1={x1} />
-        <RailSiding rail={rail} />
+        <RailSiding rail={rail} noTracks={noTracks} />
         <LoadingGantry rail={rail} phase={phase} />
         <TankFarm />
         <PumpHouse phase={phase} />
@@ -339,11 +342,11 @@ function Ground({ x0, x1 }: { x0: number; x1: number }) {
 // --- Rail siding + loading gantry ------------------------------------------------------
 
 /** Gantry fixed parts: inner legs on the platform edge, z span, heights. */
-const G = { xi: -1.02, z0: -0.85, z1: 0.55, top: 0.95, chord: 0.83 };
+const G = { xi: -1.02, z0: -0.7, z1: 0.7, top: 0.95, chord: 0.83 };
 /** Outer ends of the gantry: each leg is a pair of posts at z ± 0.05. */
 const GZA = G.z0 - 0.05;
 const GZB = G.z1 + 0.05;
-const ARM_Z = [-0.55, -0.15, 0.25];
+const ARM_Z = [-0.4, 0, 0.4];
 
 interface RailLayout {
   /** Track center lines, from the platform outward (−X). */
@@ -409,18 +412,19 @@ function railLayout(n: number): RailLayout {
   return { tracks, walks, legs, lotX0, rods: r, sleepers };
 }
 
-function RailSiding({ rail }: { rail: RailLayout }) {
+function RailSiding({ rail, noTracks }: { rail: RailLayout; noTracks: boolean }) {
   return (
     <group>
-      {rail.tracks.map((x) => (
-        <group key={x}>
-          <Box p={[x, 0.12, 0]} s={[0.22, 0.04, 3]} m={M.ballast} />
-          {[-0.0375, 0.0375].map((dx) => (
-            <Box key={dx} p={[x + dx, 0.164, 0]} s={[0.012, 0.018, 3]} m={M.rail} cast />
-          ))}
-        </group>
-      ))}
-      <Batch items={rail.sleepers} m={M.sleeper} cast={false} />
+      {!noTracks &&
+        rail.tracks.map((x) => (
+          <group key={x}>
+            <Box p={[x, 0.12, 0]} s={[0.22, 0.04, 3]} m={M.ballast} />
+            {[-0.0375, 0.0375].map((dx) => (
+              <Box key={dx} p={[x + dx, 0.164, 0]} s={[0.012, 0.018, 3]} m={M.rail} cast />
+            ))}
+          </group>
+        ))}
+      {!noTracks && <Batch items={rail.sleepers} m={M.sleeper} cast={false} />}
       {/* Platform on the lot side with a yellow safety line */}
       <Box p={[-1.06, 0.15, 0]} s={[0.2, 0.1, 2.4]} m={M.slab} cast />
       <Box p={[-1.148, 0.201, 0]} s={[0.016, 0.003, 2.4]} m={M.yellow} />

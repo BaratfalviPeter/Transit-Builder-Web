@@ -45,7 +45,7 @@ export function LinesPanel() {
   };
   const stations = map.stations ?? [];
   const truckStops = stations.filter((s) => s.kind === 'truck' || s.kind === 'depot' || s.kind === 'oil').length;
-  const railStops = stations.filter((s) => stopKind(s) === 'rail' || s.kind === 'depot').length;
+  const railStops = stations.filter((s) => stopKind(s) === 'rail' || s.kind === 'depot' || s.kind === 'oil').length;
 
   const draft = snap.draft;
   const kind = snap.draftKind;
@@ -109,7 +109,7 @@ export function LinesPanel() {
       {draft && (
         <div className="lines__draft">
           <div className="lines__draft-title">
-            {kind === 'truck' ? 'Új kamionjárat — kattints a rakodókra / raktárakra / olajdepókra sorban' : 'Új vonatjárat — kattints a vasútállomásokra / raktárakra sorban'}
+            {kind === 'truck' ? 'Új kamionjárat — kattints a rakodókra / raktárakra / olajdepókra sorban' : 'Új vonatjárat — kattints a vasútállomásokra / raktárakra / olajdepókra sorban'}
           </div>
           <ol className="lines__stops">
             {draft.map((id, i) => (

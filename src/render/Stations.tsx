@@ -150,6 +150,7 @@ function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: num
           truckBays={st.bays ?? 2}
           railTracks={st.tracks ?? 1}
           phase={st.id * 0.7}
+          noTracks
         />
       </StaticBatch>
       <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.6, pos[2]]} center style={{ pointerEvents: 'none' }}>

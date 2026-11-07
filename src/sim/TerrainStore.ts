@@ -10,7 +10,7 @@
  */
 
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
-import { oilCells, oilDepotProblem, oilStub, oilTrackColumn, oilTracks } from './oilDepot';
+import { OIL_START_BAYS, OIL_START_TRACKS, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
 import { pipeCellOk } from './pipes';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import { nextSignalMode, signalIndexNear, signalSpot } from './signals';
@@ -374,7 +374,7 @@ export class TerrainStore {
     if (oilDepotProblem(this.map, x0, z0, rot)) return false;
     const stations = this.map.stations ?? [];
     const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
-    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: 2, tracks: 1 };
+    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: OIL_START_BAYS, tracks: OIL_START_TRACKS };
     const [sx, sz] = oilStub(st);
     const cells = this.map.cells.slice();
     let roads = 0;
@@ -391,6 +391,30 @@ export class TerrainStore {
     for (const pts of oilTracks(st)) net = addEdge(net, pts);
     this.setRailNet(net, null);
     return true;
+  }
+
+  /**
+   * Grow oil depot `id` to `bays` truck bays / `tracks` rail tracks (see
+   * oilGrown): the new cells → Station (track cells → Rail), new tracks →
+   * rail-network edges. Returns the grown depot, or null if not allowed.
+   */
+  upgradeOilDepot(id: number, bays: number, tracks: number): Station | null {
+    const st = this.map.stations?.find((s) => s.id === id);
+    if (!st || st.kind !== 'oil' || oilUpgradeProblem(this.map, st, bays, tracks)) return null;
+    const next = oilGrown(st, bays, tracks);
+    const n = this.map.size;
+    const had = new Set(oilCells(st).map((c) => c.x * n + c.z));
+    const cells = this.map.cells.slice();
+    for (const { x, z, lx } of oilCells(next)) {
+      if (had.has(x * n + z)) continue;
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      cells[x][z] = oilTrackColumn(next, lx) ? CellType.Empty : CellType.Station;
+    }
+    this.commit({ cells, stations: (this.map.stations ?? []).map((s) => (s.id === id ? next : s)) }, true);
+    let net = this.map.railNet ?? EMPTY_NET;
+    for (const pts of oilTracks(next).slice(oilTracks(st).length)) net = addEdge(net, pts);
+    this.setRailNet(net, null);
+    return next;
   }
 
   /**

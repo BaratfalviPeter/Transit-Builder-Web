@@ -341,8 +341,10 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   vízen, oszlopok a szárazföldön). KAMION: a megálló cellája a bejárat (`stopCells`), érkezéskor `pickBay`
   (szabad állás) → `tickOilDepot`: wait → in (`oilBayPath`: a bejárat bal felén be, az állás stopvonaláig) →
   load (teli rakomány: `oilWaits`) → out (egyszerre egy kamion hajt ki: `oilOut`; körbe a fordulón, a bejárat
-  jobb felén ki) → a következő megálló útja. A depó telkén a kamion a betonlapon gurul (`Transport.tsx`
-  `OIL_SLAB`), az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
+  jobb felén ki) → a következő megálló útja. A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
+  talajjal egy szintben, nincs lépcső az útról), a kamion az aszfalton gurul (`Transport.tsx` `OIL_SLAB` =
+  `OIL_DRIVE_TOP` × 2). A töltőtető (`CAN_Y` 0,42) a tartálykamionhoz méretezve (a felhasználó jelezte, hogy a
+  kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
   tartalmazta az olajat), később a finomító. Teszt: a böngészőben `__tb` hookkal (depó a parthoz, cső, út az
   erőműig, járat) — kb. $1200 / forduló.
 - Teljesítmény:

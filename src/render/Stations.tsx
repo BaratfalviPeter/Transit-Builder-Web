@@ -39,7 +39,7 @@ import { CELL_STYLE } from './terrainStyle';
 import { StationModel } from './StationModel';
 import { TruckStopModel } from './TruckStopModel';
 import { DepotDynamic, DepotModel } from './DepotModel';
-import { OilDepotModel } from './OilDepotModel';
+import { OIL_GAME_SINK, OilDepotModel } from './OilDepotModel';
 import { StaticBatch } from './StaticBatch';
 import { useDev } from '../dev/modelEditorStore';
 import './stations.css';
@@ -136,7 +136,9 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
 /** An oil depot: the model (batched), its tank stock as a label. */
 function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number; st: Station; batch: boolean }) {
   const prod = useInteriorStore().production;
-  const { pos, rotY, scale } = lotPose(map, cellSize, st, oilCenter(st));
+  const { pos: lot, rotY, scale } = lotPose(map, cellSize, st, oilCenter(st));
+  // Sunk so the slab is flush with the ground (the trucks drive straight on).
+  const pos: [number, number, number] = [lot[0], lot[1] - OIL_GAME_SINK * scale, lot[2]];
   const oil = Math.floor(prod.stationStock(st.id).oil ?? 0);
   return (
     <group>

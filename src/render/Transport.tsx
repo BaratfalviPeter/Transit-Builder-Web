@@ -11,6 +11,7 @@ import { Html, Line as DreiLine } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 import {
+  INDUSTRY_MODEL_SCALE,
   CellType,
   isDepot,
   isOilDepot,
@@ -35,6 +36,7 @@ import { groundAtGrid } from './railGeometry';
 import { DECK_LIFT, GHOST } from './Structures';
 import { CELL_STYLE } from './terrainStyle';
 import { TANK_COLORS, Tractor, Trailer, truckColors, type TruckColors } from './TruckModel';
+import { OIL_DRIVE_TOP } from './OilDepotModel';
 import './transport.css';
 
 /** Height (world) of the grey veil over the map. */
@@ -50,8 +52,8 @@ const LINE_GAP = 0.42;
 type Cell = [number, number];
 /** Top of the road coat above the ground (cells): the trucks drive on it. */
 const ROAD_TOP = 0.026;
-/** A truck's height over the ground on an oil depot's slab (the model's slab + asphalt, ×2). */
-const OIL_SLAB = 0.224;
+/** A truck's height over the ground on an oil depot's lot (its asphalt, the model sunk into the ground). */
+const OIL_SLAB = OIL_DRIVE_TOP * INDUSTRY_MODEL_SCALE;
 
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -100,7 +102,7 @@ function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: Tr
     }
     tr.visible = tl.visible = true;
     const deck = span ? (span.kind === 'bridge' ? FLAT_TOP + span.level + DECK_LIFT + 0.008 : FLAT_TOP + floorOf(map, span) + ROAD_TOP) : null;
-    // On an oil depot's lot the trucks drive on its slab (0.112 design units = 0.224 cells up).
+    // On an oil depot's lot the trucks drive on its asphalt (a hair above the road's).
     const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + (oilLot.has(Math.round(x) * map.size + Math.round(z)) ? OIL_SLAB : ROAD_TOP);
     const gh = ground(p.x, p.z);
     const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;

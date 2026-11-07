@@ -135,7 +135,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   `tickAt`/`tickGap`). Új renderelő kódban NE a nyers `pose()`/`t.s`-t használd.
 - Kamionok: csuklós (`TruckModel.tsx`: `Tractor` / `Trailer` (`kind` 'box' | 'tank': ponyvás vagy tartályos pótkocsi,
   ugyanazzal az alvázzal / kerekekkel; a tartály szín a `TruckColors.tank`, `TANK_COLORS`; a játékban még nincs használva), origó a nyeregnél, 5 háló /
-  kamion), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
+  kamion). A PÓTKOCSI VONTATVA (`Transport.tsx` `trailerYaw`, csak a rajz): a tengelyét a nyereg húzza (traktrix), így
+  kanyarban levágja az ívet, utána beáll; tolatáskor / ugrásnál a sáv szerinti póz, max. kilengés `MAX_SWING` 1,25 rad
+  (a szimuláció ütközésvizsgálata a sáv szerinti pózt használja), sávpálya `buildLane` (jobb sáv 0,2, kanyarív), `pose` → nyereg, vontató- és
   pótkocsi-irány. KRESZ a `transport.ts`-ben: `heldUp` (követés, jobbkéz), `junctionWait`
   (kereszteződés-foglalás), `startBlocked` (kihajtás), `breakDeadlocks` (csak valódi körnél).
   Terhelési teszt: hub + 10 járat, ütközés ≈ 0 (1–2 kamion/járat).
@@ -341,7 +343,13 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   vízen, oszlopok a szárazföldön). KAMION: a megálló cellája a bejárat (`stopCells`), érkezéskor `pickBay`
   (szabad állás) → `tickOilDepot`: wait → in (`oilBayPath`: a bejárat bal felén be, az állás stopvonaláig) →
   load (teli rakomány: `oilWaits`) → out (egyszerre egy kamion hajt ki: `oilOut`; körbe a fordulón, a bejárat
-  jobb felén ki) → a következő megálló útja. A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
+  jobb felén ki) → a következő megálló útja. A kihajtó út a telek után még egyenesen folytatódik (`EXIT_END_Z`
+  −1,72), hogy a pótkocsi kiegyenesedjen, mire a kamion átvált a közúti útvonalra (különben „teleportált”).
+  SOROMPÓK / LÁMPÁK a játék állapotából (`TransportSim.oilDepotStatus` → `OilDepotModel status`): a sorompó fent,
+  amíg kamion van a saját sávfelében (`GATE_ZONE`, `oilWorldToDesign`), az állás lámpája zöld, ha szabad, piros,
+  ha foglalt (a modellnézőben időzítve).
+  A jobb oldali (a fal átlója fölötti) állásokhoz a behajtó út a faltól `WALL_CLEAR` (0,17) távolságra, vele
+  párhuzamosan megy, utána fordul be (a fal adatai: `WALL_BEND_Z` az `oilDepot.ts`-ben, a modell is ezt használja). A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
   talajjal egy szintben, nincs lépcső az útról), a kamion az aszfalton gurul (`Transport.tsx` `OIL_SLAB` =
   `OIL_DRIVE_TOP` × 2). A töltőtető (`CAN_Y` 0,42) a tartálykamionhoz méretezve (a felhasználó jelezte, hogy a
   kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
@@ -455,8 +463,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
 - Mergelve: #108 (OLAJ A JÁTÉKBAN 1. rész: depó lerakása, csővezeték, kamionos rakodás, erőmű), #109 (a depó
   telke a talajjal egy szintben, alacsonyabb töltőtető).
-- Folyamatban (#110): OLAJ 2. rész — vasúti rakodás (előreállós, kocsinként), 3. rész — bővítés (állás /
-  vágány). Utána: 4. finomító.
+- Mergelve: #110 (OLAJ 2. rész — vasúti rakodás, előreállós, kocsinként; 3. rész — bővítés: állás / vágány).
+- Folyamatban: olajdepó-javítások (sima kifordulás, valódi sorompók / lámpák, fal melletti útvonal) + vontatott
+  pótkocsi. Utána: 4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

@@ -11,6 +11,7 @@ import { Html, Line as DreiLine } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MapControls as MapControlsImpl } from 'three-stdlib';
 import {
+  type TruckPose,
   INDUSTRY_MODEL_SCALE,
   CellType,
   isDepot,
@@ -60,6 +61,44 @@ const GHOST_BOX = new THREE.BoxGeometry(1, 1, 1);
 
 // ---------------------------------------------------------------- trucks
 
+/** The trailer may swing at most this far off the tractor's heading (no jackknife). */
+const MAX_SWING = 1.25;
+
+/**
+ * The trailer's heading, dragged like a real one: its axle is pulled straight
+ * toward the fifth wheel (a tractrix), so in a bend it cuts inside the
+ * tractor's track and swings back in line after it. Backing up (or a jump —
+ * a new route, just shown) puts it back on the lane: the simulation's pose.
+ */
+function trailerYaw(
+  drag: { current: { ax: number; az: number; hx: number; hz: number } | null },
+  p: TruckPose,
+  backing: boolean,
+): number {
+  const L = TRAILER_AXLE;
+  const onLane = () => {
+    drag.current = { ax: p.x - Math.cos(p.trailerYaw) * L, az: p.z + Math.sin(p.trailerYaw) * L, hx: p.x, hz: p.z };
+    return p.trailerYaw;
+  };
+  const d = drag.current;
+  if (!d || backing) return onLane();
+  const mx = p.x - d.hx, mz = p.z - d.hz;
+  const dx = p.x - d.ax, dz = p.z - d.az;
+  // Jumped, or the hitch moves back toward the axle: off the drag.
+  if (Math.hypot(mx, mz) > 0.6 || mx * dx + mz * dz < -1e-4) return onLane();
+  let yaw = Math.atan2(-dz, dx);
+  // Not round past the tractor (a jackknife): clamp the swing.
+  let rel = yaw - p.yaw;
+  rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+  if (Math.abs(rel) > MAX_SWING) yaw = p.yaw + Math.sign(rel) * MAX_SWING;
+  else yaw = p.yaw + rel;
+  d.ax = p.x - Math.cos(yaw) * L;
+  d.az = p.z + Math.sin(yaw) * L;
+  d.hx = p.x;
+  d.hz = p.z;
+  return yaw;
+}
+
 /** One articulated truck, placed every frame from the simulation. */
 function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: TruckColors; tank: boolean; map: TerrainMap; cellSize: number }) {
   const sim = useTransport();
@@ -67,6 +106,12 @@ function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: Tr
   const tractor = useRef<THREE.Group>(null);
   const trailer = useRef<THREE.Group>(null);
   const ghost = useRef<THREE.Mesh>(null);
+  /**
+   * The trailer, dragged by the fifth wheel (not on the lane): its axle `a`
+   * and the hitch `h` it was pulled from last frame. Null: start again from
+   * the lane (just shown, out of a tunnel).
+   */
+  const drag = useRef<{ ax: number; az: number; hx: number; hz: number } | null>(null);
   const half = (map.size - 1) / 2;
   const oilLot = useMemo(() => {
     const set = new Set<number>();
@@ -91,6 +136,7 @@ function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: Tr
     if (ghostMesh) ghostMesh.visible = hidden;
     if (span && hidden) {
       // In a tunnel: a see-through stand-in instead of the truck.
+      drag.current = null;
       tr.visible = tl.visible = false;
       g.position.set((p.x - half) * cellSize, (FLAT_TOP + floorOf(map, span)) * cellSize, (p.z - half) * cellSize);
       if (ghostMesh) {
@@ -105,11 +151,12 @@ function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: Tr
     // On an oil depot's lot the trucks drive on its asphalt (a hair above the road's).
     const ground = (x: number, z: number) => deck ?? groundAtGrid(map, x, z) + (oilLot.has(Math.round(x) * map.size + Math.round(z)) ? OIL_SLAB : ROAD_TOP);
     const gh = ground(p.x, p.z);
-    const ax = p.x - Math.cos(p.trailerYaw) * TRAILER_AXLE, az = p.z + Math.sin(p.trailerYaw) * TRAILER_AXLE;
+    const ty = trailerYaw(drag, p, t.depot?.phase === 'back');
+    const ax = p.x - Math.cos(ty) * TRAILER_AXLE, az = p.z + Math.sin(ty) * TRAILER_AXLE;
     // Both parts pivot at the fifth wheel; they pitch with the ground.
     g.position.set((p.x - half) * cellSize, gh * cellSize, (p.z - half) * cellSize);
     tr.rotation.set(0, p.yaw, Math.atan2(ground(p.front[0], p.front[1]) - gh, TRUCK_HITCH));
-    tl.rotation.set(0, p.trailerYaw, Math.atan2(gh - ground(ax, az), TRAILER_AXLE));
+    tl.rotation.set(0, ty, Math.atan2(gh - ground(ax, az), TRAILER_AXLE));
   });
   return (
     <group ref={root} scale={cellSize} visible={false}>

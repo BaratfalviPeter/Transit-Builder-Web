@@ -72,7 +72,7 @@ import {
   isDepot,
   type DepotDir,
 } from './depot';
-import { isOilDepot, oilBayPath, oilCenter, oilLayout, oilStub } from './oilDepot';
+import { GATE_ZONE, STUB, isOilDepot, oilBayPath, oilCenter, oilLayout, oilStub, oilWorldToDesign } from './oilDepot';
 import { FIXED_PRODUCTION, type ProductionSim } from './production';
 
 /** Pays a delivery (to the game's money), booked to the line that made it. */
@@ -1642,6 +1642,28 @@ export class TransportSim {
     // Pick the new route up where the truck is (no jump back).
     if (t.lane) t.s = nearestS(t.lane, front, 1.2);
     return true;
+  }
+
+  /**
+   * What an oil depot's model shows (see OilDepotModel): each barrier up while a
+   * truck is at it (in its half of the access road), each bay's light green
+   * while the bay is free (come in), red while a truck has it.
+   */
+  oilDepotStatus(st: Station): { entry: boolean; exit: boolean; free: boolean[] } {
+    let entry = false, exit = false;
+    for (const t of this.trucks) {
+      const p = this.drawPose(t);
+      if (!p) continue;
+      for (const [x, z] of [p.front, [p.x, p.z], p.rear] as Array<[number, number]>) {
+        const [dx, dz] = oilWorldToDesign(st, x, z);
+        if (dz < GATE_ZONE.z0 || dz > GATE_ZONE.z1) continue;
+        if (dx >= STUB.c - STUB.h - 0.03 && dx < STUB.c) entry = true;
+        else if (dx >= STUB.c && dx <= STUB.c + STUB.h + 0.03) exit = true;
+      }
+    }
+    const bays = this.bays.get(st.id);
+    const free = oilLayout(st.bays ?? 2).bays.map((_, i) => !bays || bays[i] === null || bays[i] === undefined);
+    return { entry, exit, free };
   }
 
   /** Oil depot id → the truck driving out (one at a time: the bay lights take turns). */

@@ -9,6 +9,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
+  isOilDepot,
   CAR_GAP,
   CAR_LEN,
   interiorAt,
@@ -64,16 +65,31 @@ function useTrackHeights(map: TerrainMap) {
 }
 
 /** What each wagon shows: its type and whether it is loaded. */
-function wagonLoads(t: Train, last: WagonKind[]): Array<{ kind: WagonKind; loaded: boolean }> {
+function wagonLoads(t: Train, last: WagonKind[], empty: WagonKind = 'box'): Array<{ kind: WagonKind; loaded: boolean }> {
   const items = (Object.keys(t.cargo) as Item[]).filter((i) => (t.cargo[i] ?? 0) > 0).sort((a, b) => (t.cargo[b] ?? 0) - (t.cargo[a] ?? 0));
   const out: Array<{ kind: WagonKind; loaded: boolean }> = [];
   for (const it of items) for (let k = Math.ceil((t.cargo[it] ?? 0) / WAGON_CAPACITY); k > 0 && out.length < t.wagons; k--) out.push({ kind: WAGON_FOR[it], loaded: true });
-  while (out.length < t.wagons) out.push({ kind: last[out.length] ?? 'box', loaded: false });
+  while (out.length < t.wagons) out.push({ kind: empty === 'tank' ? 'tank' : (last[out.length] ?? empty), loaded: false });
   out.forEach((w, i) => (last[i] = w.kind));
   return out;
 }
 
-function TrainView({ id, color, stripe, map, height }: { id: number; color: string; stripe: string; map: TerrainMap; height: (edge: number, along: number) => number }) {
+function TrainView({
+  id,
+  color,
+  stripe,
+  tank,
+  map,
+  height,
+}: {
+  id: number;
+  color: string;
+  stripe: string;
+  /** Its line serves an oil depot: tank wagons (empty too). */
+  tank: boolean;
+  map: TerrainMap;
+  height: (edge: number, along: number) => number;
+}) {
   const edgeOn = (edge: number) => map.railNet?.edges.find((e) => e.id === edge)?.structure;
   const sim = useTransport();
   const root = useRef<THREE.Group>(null);
@@ -81,7 +97,8 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
   /** Each car's see-through stand-in while it is in a tunnel. */
   const ghosts = useRef<Array<THREE.Mesh | null>>([]);
   const last = useRef<WagonKind[]>([]);
-  const [loads, setLoads] = useState(() => wagonLoads({ cargo: {}, wagons: 0 } as unknown as Train, last.current));
+  const empty: WagonKind = tank ? 'tank' : 'box';
+  const [loads, setLoads] = useState(() => wagonLoads({ cargo: {}, wagons: 0 } as unknown as Train, last.current, empty));
   const sig = useRef('');
   const half = (map.size - 1) / 2;
   useFrame(() => {
@@ -126,10 +143,10 @@ function TrainView({ id, color, stripe, map, height }: { id: number; color: stri
         }
       }
     });
-    const s = t.wagons + ':' + (Object.keys(t.cargo) as Item[]).map((i) => `${i}${Math.ceil((t.cargo[i] ?? 0) / WAGON_CAPACITY)}`).join();
+    const s = empty + t.wagons + ':' + (Object.keys(t.cargo) as Item[]).map((i) => `${i}${Math.ceil((t.cargo[i] ?? 0) / WAGON_CAPACITY)}`).join();
     if (s !== sig.current) {
       sig.current = s;
-      setLoads(wagonLoads(t, last.current));
+      setLoads(wagonLoads(t, last.current, empty));
     }
   });
   return (
@@ -162,10 +179,20 @@ export function Trains({ map, cellSize }: { map: TerrainMap; cellSize: number })
   const snap = useTransportSnapshot(); // re-render on fleet / line changes
   const height = useTrackHeights(map);
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
+  const oilStops = new Set((map.stations ?? []).filter(isOilDepot).map((s) => s.id));
+  const tankLines = new Set(snap.lines.filter((l) => l.stops.some((id) => oilStops.has(id))).map((l) => l.id));
   return (
     <group scale={cellSize}>
       {sim.allTrains().map((t) => (
-        <TrainView key={t.id} id={t.id} color={LOCO_COLORS[t.id % LOCO_COLORS.length]} stripe={colors.get(t.lineId) ?? '#888'} map={map} height={height} />
+        <TrainView
+          key={t.id}
+          id={t.id}
+          color={LOCO_COLORS[t.id % LOCO_COLORS.length]}
+          stripe={colors.get(t.lineId) ?? '#888'}
+          tank={tankLines.has(t.lineId)}
+          map={map}
+          height={height}
+        />
       ))}
     </group>
   );

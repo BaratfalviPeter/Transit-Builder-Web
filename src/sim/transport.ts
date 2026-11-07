@@ -302,6 +302,12 @@ const TRAIN_DECEL = 1.6;
 const TRAIN_A_LAT = 4;
 /** Seconds a train stands at a stop (un)loading. */
 const TRAIN_STOP_TIME = 4;
+/**
+ * Seconds a wagon fills under an oil depot's gantry before the train pulls
+ * forward by one car (CAR_PITCH) for the next ("előreállós" loading).
+ */
+const OIL_WAGON_TIME = 2.5;
+const CAR_PITCH = CAR_LEN + CAR_GAP;
 /** A level crossing closes for trucks when a train's front is this close (cells). */
 const CROSSING_CLOSE = 8;
 /** Seconds a train may wait for the track before its line shows a warning. */
@@ -335,6 +341,11 @@ export interface Train {
   holds: Map<string, number>;
   /** Level crossings on its path: road cell → [enter, leave] path distances of the front. */
   crossings: Map<number, [number, number]>;
+  /**
+   * At an oil depot: the wagon (0 = first) under the gantry now. The train pulls
+   * forward one car at a time to fill them all; unset elsewhere.
+   */
+  fill?: number;
 }
 
 /** A recent payment (shown as a floating "+$" over the stop). */
@@ -1694,7 +1705,7 @@ export class TransportSim {
         return;
       }
       // Full load: top up until full (while a later stop takes the oil).
-      if (this.oilWaits(t, line, here, byId, map)) {
+      if (this.oilWaits(t, TRUCK_CAPACITY, line, here, byId, map)) {
         this.serveStop(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn);
         t.timer = 1;
         this.updatePose(t, poses);
@@ -1726,12 +1737,12 @@ export class TransportSim {
     this.updatePose(t, poses);
   }
 
-  /** Full load at an oil depot: not full yet, and a later stop takes oil. */
-  private oilWaits(t: Truck, line: Line, here: Station, byId: Map<number, Station>, map: TerrainMap): boolean {
+  /** Full load at an oil depot: not full yet (up to `cap`), and a later stop takes oil. */
+  private oilWaits(t: Pick<Truck, 'cargo'>, cap: number, line: Line, here: Station, byId: Map<number, Station>, map: TerrainMap): boolean {
     if (!line.fullLoad) return false;
     let load = 0;
     for (const n of Object.values(t.cargo)) load += n ?? 0;
-    if (load >= TRUCK_CAPACITY) return false;
+    if (load >= cap) return false;
     return line.stops.some((id) => {
       if (id === here.id) return false;
       const st = byId.get(id);
@@ -1926,7 +1937,7 @@ export class TransportSim {
       }
       // Nearing a signal (or a spot it waits at): ask for the next block in
       // time to run on; at a red one, try a free way round, else wait.
-      if (t.limit < path.length && t.limit - t.s < (t.v * t.v) / (2 * TRAIN_DECEL) + 1.5) {
+      if (t.fill === undefined && t.limit < path.length && t.limit - t.s < (t.v * t.v) / (2 * TRAIN_DECEL) + 1.5) {
         const nb = this.nextBlock(map, path, t.limit + SIGNAL_STOP, t.len);
         if (this.canReserve(t, nb.need)) {
           this.reserve(t, nb.need);
@@ -1954,6 +1965,11 @@ export class TransportSim {
         t.v = 0;
         t.state = 'stop';
         t.timer = TRAIN_STOP_TIME;
+      } else if (t.fill !== undefined && t.s >= t.limit - 1e-3) {
+        // Pulled forward by a car at the oil depot: the next wagon fills.
+        t.v = 0;
+        t.state = 'stop';
+        t.timer = OIL_WAGON_TIME;
       }
     }
   }
@@ -2041,6 +2057,16 @@ export class TransportSim {
     const to = byId.get(line.stops[nextI]);
     if (!here || !to) return 'noroute';
     if (this.waitForLoad(t, t.wagons * WAGON_CAPACITY, line, here, byId, map, prod, earn)) return 'load';
+    // An oil depot fills the wagon under its gantry (full load: until it's full),
+    // then the train pulls forward one car for the next — off on its way after the last.
+    const oil = isOilDepot(here);
+    const k = oil ? Math.min(t.fill ?? 0, t.wagons - 1) : 0;
+    if (oil) {
+      const cap = (k + 1) * WAGON_CAPACITY;
+      this.serveStop(t, cap, line, here, byId, map, prod, earn);
+      if (this.oilWaits(t, cap, line, here, byId, map)) return 'load';
+    }
+    const creep = oil && k < t.wagons - 1;
     // Take on the line's train length here — a longer train only if the
     // track behind is there and free for its extra wagons.
     const want = line.wagons ?? DEFAULT_WAGONS;
@@ -2075,14 +2101,21 @@ export class TransportSim {
     const keep = clipPath(path, cut, t.s);
     const s0 = t.s - cut;
     const go = (np: RailPath, need: Map<string, number>, limit: number) => {
-      this.serveStop(t, t.wagons * WAGON_CAPACITY, line, here, byId, map, prod, earn);
-      for (const [k, u] of t.holds) t.holds.set(k, u - cut);
+      if (!creep) this.serveStop(t, t.wagons * WAGON_CAPACITY, line, here, byId, map, prod, earn);
+      for (const [key, u] of t.holds) t.holds.set(key, u - cut);
       t.path = np;
       t.s = s0;
-      t.limit = limit;
       this.reserve(t, need);
       t.crossings = pathCells(map, np, 0, np.length).roads;
-      t.target = nextI;
+      if (creep) {
+        // On along the way out by one car: the next wagon under the gantry.
+        t.fill = k + 1;
+        t.limit = Math.min(limit, s0 + CAR_PITCH);
+      } else {
+        t.fill = undefined;
+        t.limit = limit;
+        t.target = nextI;
+      }
       return 'go' as const;
     };
     // With signals: also round the taken edges of the nearest route's first block.

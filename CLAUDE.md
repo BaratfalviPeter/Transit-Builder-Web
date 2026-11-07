@@ -347,6 +347,22 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
   tartalmazta az olajat), később a finomító. Teszt: a böngészőben `__tb` hookkal (depó a parthoz, cső, út az
   erőműig, járat) — kb. $1200 / forduló.
+  VASÚTI RAKODÁS (2. rész): a depó vágánya (`oilTracks`: a telek bal oszlopa, hosszában, a két szélső cella
+  közepéig) a lerakáskor rail-hálózati él (a cellái Rail, `oilTrackColumn`), ez a megálló peronja
+  (`rail.ts platforms`); bontáskor `cutAtCell`. A játék rajzolja a sínt (`OilDepotModel noTracks`). ELŐREÁLLÓS
+  TÖLTÉS (`transport.ts`): a vonat a peron végén áll meg (az 1. kocsi a töltőhíd közepén, a híd a telek közepén:
+  `G` z ±0,7), `departTrain` az olajdepóban a `Train.fill`-edik kocsit tölti (`serveStop` (k+1)×30-ig, teli
+  rakománynál `oilWaits` vár), majd a következő megálló felé foglalt úton `CAR_PITCH`-nyit előregurul
+  (`limit`), megáll (`OIL_WAGON_TIME` 2,5 s), és így tovább; az utolsó kocsi után a szokásos indulás. Az
+  olajdepós járatok vonatai tartálykocsikkal járnak (`Trains.tsx` `tank`). Vonatjárat megállója lehet olajdepó
+  (hálózati nézet, Járatok panel). Teszt: scratchpad `oiltrain.ts` (súlyzó-pálya, depó + erőmű, 3 kocsi:
+  kocsinként 30, ~$5700 / forduló; `full` = csak tele induljon).
+  BŐVÍTÉS (3. rész): kijelöléssel (Kijelölés eszköz → a depóra kattintva) `OilDepotPanel` (`IndustryPanel.tsx`):
+  „+1 töltőállás” ($2500, max. 5) és „+1 vágány” ($4000, max. 3). `TerrainStore.upgradeOilDepot` →
+  `oilGrown` (nagyobb modell; a telek a kamionos oldalon +X, a vasútin −X felé szélesedik, az anchor úgy
+  mozdul, hogy a meglévő részek a helyükön maradjanak — a kijelölés az új anchorra áll), az új cellák szabad,
+  sík szárazföldek kellenek (`oilUpgradeProblem`); az új vágány rail-él. Fenntartás: +40 / állás, +60 / vágány
+  az alap (2 / 1) fölött. Teszt: scratchpad `oilup.ts` (4 forgatás, a bejárat és a régi vágány nem mozdul).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
     A szerkesztő alatt kikapcsol.
@@ -437,8 +453,10 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   folyamat (ágensek, `/new-model`, `docs/model-style.md`, példamodell: `LumberMillModel.tsx`); első modell vele:
   `OilDepotModel.tsx` (olajdepó: tartálypark, vasúti töltőhíd bal oldalt, egyirányú áthajtós kamiontöltő
   −Z → +Z, 2 kör; csak a modellnézőben, a játékba még nincs bekötve; ref: `ref/oil-depot.jpg`).
-- Folyamatban (#108): az elválasztó fal törése hátrébb; OLAJ A JÁTÉKBAN 1. rész (depó lerakása, csővezeték,
-  kamionos rakodás, erőmű). Utána: 2. vasúti rakodás, 3. bővítés (állás / vágány), 4. finomító.
+- Mergelve: #108 (OLAJ A JÁTÉKBAN 1. rész: depó lerakása, csővezeték, kamionos rakodás, erőmű), #109 (a depó
+  telke a talajjal egy szintben, alacsonyabb töltőtető).
+- Folyamatban (#110): OLAJ 2. rész — vasúti rakodás (előreállós, kocsinként), 3. rész — bővítés (állás /
+  vágány). Utána: 4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

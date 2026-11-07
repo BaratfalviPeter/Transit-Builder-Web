@@ -1,7 +1,8 @@
 /**
  * The oil depot (olajdepó) — a player-built terminal on land: the oil rig's
  * pipeline (see pipes.ts) fills its tanks, and tanker trucks load it at the
- * U-shaped truck loading area (later also trains under the rail gantry).
+ * U-shaped truck loading area, and trains under the rail gantry (wagon by
+ * wagon: the train pulls forward one car at a time, see transport.ts).
  *
  * A depot is a Station with kind 'oil', at `anchor` = the lot's min corner,
  * turned by `rot` (0…3, quarter turns), sized by its truck bays / rail tracks
@@ -97,6 +98,12 @@ export function oilLayout(bays = 2, tracks = 1): OilLayout {
 // ---------------------------------------------------------------- the lot in the world
 
 export const OIL_DEPOT_PRICE = 9000;
+/** Upgrades (see oilGrown): one more truck loading bay / rail loading track. */
+export const OIL_BAY_PRICE = 2500;
+export const OIL_TRACK_PRICE = 4000;
+/** What a new depot starts with. */
+export const OIL_START_BAYS = 2;
+export const OIL_START_TRACKS = 1;
 /** Units the tanks hold. */
 export const OIL_DEPOT_CAPACITY = 400;
 export const OIL_H = 6;
@@ -144,6 +151,24 @@ export function oilCells(st: Station): Array<{ x: number; z: number; lx: number;
   return out;
 }
 
+/** Track ends sit this far in from the lot's front / back edge (design units: a half cell). */
+const TRACK_END_Z = 1.25;
+
+/**
+ * The rail tracks through the lot, along it (design z), as platform segments
+ * [ax, az, bx, bz] (world grid coords, cell centres at both ends): rail-network
+ * edges, and the stops' platforms a train pulls up at (see rail.ts).
+ */
+export function oilTracks(st: Station): number[][] {
+  return oilSize(st).layout.tracks.map((x) => [...oilDesignToWorld(st, x, -TRACK_END_Z), ...oilDesignToWorld(st, x, TRACK_END_Z)]);
+}
+
+/** Is local column `lx` under a rail track? */
+export function oilTrackColumn(st: Station, lx: number): boolean {
+  const { layout } = oilSize(st);
+  return layout.tracks.some((x) => Math.floor((x - layout.lotX0) * 2) === lx);
+}
+
 /** Local column of the access road cell (back row). */
 export function stubColumn(st: Station): number {
   const { layout } = oilSize(st);
@@ -165,6 +190,43 @@ export function oilCenter(st: Station): [number, number] {
 /** The oil depot covering (x, z), or null. */
 export function oilDepotAt(map: TerrainMap, x: number, z: number): Station | null {
   for (const s of map.stations ?? []) if (isOilDepot(s) && oilCells(s).some((c) => c.x === x && c.z === z)) return s;
+  return null;
+}
+
+/**
+ * The depot grown to `bays` truck bays / `tracks` rail tracks: a bigger model in
+ * place of the old one (the lot widens — the truck side one way, the rail side
+ * the other), its anchor moved so that what was there stays where it was.
+ */
+export function oilGrown(st: Station, bays: number, tracks: number): Station {
+  const next: Station = { ...st, bays, tracks };
+  const [ox, oz] = oilDesignToWorld(st, 0, 0);
+  const [nx, nz] = oilDesignToWorld(next, 0, 0);
+  return { ...next, anchor: [st.anchor[0] + Math.round(ox - nx), st.anchor[1] + Math.round(oz - nz)] };
+}
+
+/** Why the depot can't grow to `bays` / `tracks` — Hungarian — or null. */
+export function oilUpgradeProblem(map: TerrainMap, st: Station, bays: number, tracks: number): string | null {
+  if (bays > MAX_TRUCK_BAYS) return `Legfeljebb ${MAX_TRUCK_BAYS} töltőállás lehet`;
+  if (tracks > MAX_RAIL_TRACKS) return `Legfeljebb ${MAX_RAIL_TRACKS} vágány lehet`;
+  const next = oilGrown(st, bays, tracks);
+  const n = map.size;
+  const had = new Set(oilCells(st).map((c) => c.x * n + c.z));
+  // The new cells: free, flat land at the lot's level.
+  const level = cornerHeightAt(map, st.anchor[0], st.anchor[1]);
+  for (const { x, z } of oilCells(next)) {
+    if (had.has(x * n + z)) continue;
+    if (x < 0 || z < 0 || x >= n - 1 || z >= n - 1) return 'Kilógna a térképről';
+    const t = map.cells[x][z];
+    if (t !== CellType.Empty && t !== CellType.Forest) return 'Nincs mellette elég szabad hely (sík, üres szárazföld kell)';
+    for (const [cx, cz] of [
+      [x, z],
+      [x + 1, z],
+      [x, z + 1],
+      [x + 1, z + 1],
+    ])
+      if (cornerHeightAt(map, cx, cz) !== level) return 'Mellette nem sík a terep';
+  }
   return null;
 }
 

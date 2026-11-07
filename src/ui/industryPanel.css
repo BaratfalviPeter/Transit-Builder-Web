@@ -81,3 +81,10 @@
   color: var(--ui-dim);
   font-size: 12px;
 }
+.ind__roles button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ind__warn {
+  color: #f87171;
+}

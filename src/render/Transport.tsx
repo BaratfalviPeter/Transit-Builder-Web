@@ -309,7 +309,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
         const depot = isDepot(s);
         const oil = isOilDepot(s);
         const truck = stopKind(s) === 'truck' || depot || oil;
-        const rail = stopKind(s) === 'rail' || depot;
+        const rail = stopKind(s) === 'rail' || depot || oil;
         // Lit: stops of the kind being drafted (else the truck ones, as before).
         const lit = snap.draft ? (snap.draftKind === 'rail' ? rail : truck) : true;
         const [cx, cz] = stopCenter(s);

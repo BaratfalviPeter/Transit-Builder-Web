@@ -6,6 +6,16 @@
  */
 
 import {
+  MAX_RAIL_TRACKS,
+  MAX_TRUCK_BAYS,
+  OIL_BAY_PRICE,
+  OIL_DEPOT_CAPACITY,
+  OIL_TRACK_PRICE,
+  isOilDepot,
+  oilUpgradeProblem,
+  selection,
+  useGame,
+  useGameSnapshot,
   FIXED_PRODUCTION,
   INDUSTRY_ICON,
   INDUSTRY_NAME,
@@ -47,6 +57,8 @@ export function IndustryPanel({ anchor }: { anchor: readonly [number, number] })
   const terrain = useTerrainStore();
   const prod = useInteriorStore().production;
   useProductionVersion();
+  const oil = (map.stations ?? []).find((s) => isOilDepot(s) && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1]);
+  if (oil) return <OilDepotPanel st={oil} />;
   const type = map.cells[anchor[0]][anchor[1]];
   const fixed = FIXED_PRODUCTION[type];
   const makes = fixed?.makes ?? fixed?.turns?.to;
@@ -138,3 +150,71 @@ export function IndustryPanel({ anchor }: { anchor: readonly [number, number] })
     </div>
   );
 }
+
+/**
+ * An oil depot's panel: its tanks, and its upgrades — one more truck loading
+ * bay / rail loading track at a time (the model is swapped for a bigger one;
+ * the lot widens, so there must be free flat land beside it).
+ */
+function OilDepotPanel({ st }: { st: Station }) {
+  const map = useTerrainMap();
+  const terrain = useTerrainStore();
+  const game = useGame();
+  useGameSnapshot(); // the money (can we afford it)
+  const prod = useInteriorStore().production;
+  useProductionVersion();
+  const bays = st.bays ?? 2;
+  const tracks = st.tracks ?? 1;
+  const oil = Math.floor(prod.stationStock(st.id).oil ?? 0);
+  const grow = (b: number, t: number, price: number) => {
+    if (oilUpgradeProblem(map, st, b, t) || !game.canAfford(price)) return;
+    const next = terrain.upgradeOilDepot(st.id, b, t);
+    if (!next) return;
+    game.spend(price);
+    selection.set([next.anchor[0], next.anchor[1]]); // the lot's corner moved
+  };
+  const rows = [
+    { label: '🚚 Töltőállás (kamion)', n: bays, max: MAX_TRUCK_BAYS, price: OIL_BAY_PRICE, b: bays + 1, t: tracks },
+    { label: '🚆 Vágány (vonat)', n: tracks, max: MAX_RAIL_TRACKS, price: OIL_TRACK_PRICE, b: bays, t: tracks + 1 },
+  ];
+  return (
+    <div className="ind">
+      <div className="ind__title">🛢️ Olajdepó</div>
+      <div className="ind__row">
+        <span>Tartályok</span>
+        <span className={oil >= OIL_DEPOT_CAPACITY ? 'ind__warn' : 'ind__dim'}>
+          🛢️ {oil} / {OIL_DEPOT_CAPACITY}
+        </span>
+      </div>
+      <div className="ind__head">Bővítés</div>
+      {rows.map((r) => {
+        const full = r.n >= r.max;
+        const why = full ? null : oilUpgradeProblem(map, st, r.b, r.t);
+        const poor = !full && !why && !game.canAfford(r.price);
+        return (
+          <div key={r.label} className="ind__stop">
+            <div className="ind__row">
+              <span>{r.label}</span>
+              <span className="ind__dots">
+                {'●'.repeat(r.n)}
+                <span className="ind__dots--off">{'●'.repeat(r.max - r.n)}</span>
+              </span>
+            </div>
+            <div className="ind__roles">
+              <button type="button" disabled={full || !!why || poor} onClick={() => grow(r.b, r.t, r.price)}>
+                {full ? 'Elérte a maximumot' : `+ 1 · $${r.price.toLocaleString('hu-HU')}`}
+              </button>
+            </div>
+            {why && <div className="ind__dim">{why}</div>}
+            {poor && <div className="ind__dim">Nincs elég pénz</div>}
+          </div>
+        );
+      })}
+      <div className="panel__hint">
+        Több töltőállásnál egyszerre több kamion tölthet, több vágánynál egyszerre több vonat (a vágányokat váltóval kösd össze). A telek kiszélesedik: a kamionos
+        oldal az egyik, a vasúti a másik irányba, ott szabad, sík terület kell.
+      </div>
+    </div>
+  );
+}
+

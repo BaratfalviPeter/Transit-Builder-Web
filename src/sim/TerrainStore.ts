@@ -10,7 +10,7 @@
  */
 
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
-import { oilCells, oilDepotProblem, oilStub } from './oilDepot';
+import { OIL_START_BAYS, OIL_START_TRACKS, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
 import { pipeCellOk } from './pipes';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import { nextSignalMode, signalIndexNear, signalSpot } from './signals';
@@ -367,26 +367,54 @@ export class TerrainStore {
 
   /**
    * Build an oil depot (see oilDepot.ts) with its lot's min corner at (x0, z0),
-   * turned `rot`: Station cells, the access road cell → Road. False if not allowed.
+   * turned `rot`: Station cells, the access road cell → Road, the loading track →
+   * a rail-network edge (its cells Rail). False if not allowed.
    */
   buildOilDepot(x0: number, z0: number, rot: DepotRot): boolean {
     if (oilDepotProblem(this.map, x0, z0, rot)) return false;
     const stations = this.map.stations ?? [];
     const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
-    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: 2, tracks: 1 };
+    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: OIL_START_BAYS, tracks: OIL_START_TRACKS };
     const [sx, sz] = oilStub(st);
     const cells = this.map.cells.slice();
     let roads = 0;
-    for (const { x, z } of oilCells(st)) {
+    for (const { x, z, lx } of oilCells(st)) {
       if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
       const road = x === sx && z === sz;
       if (road && cells[x][z] !== CellType.Road) roads++;
-      cells[x][z] = road ? CellType.Road : CellType.Station;
+      // Track cells: bare ground, the rail edge below makes them Rail.
+      cells[x][z] = road ? CellType.Road : oilTrackColumn(st, lx) ? CellType.Empty : CellType.Station;
     }
     this.commit({ cells, stations: stations.concat(st) }, true);
     this.roadCount += roads;
-    this.emit();
+    let net = this.map.railNet ?? EMPTY_NET;
+    for (const pts of oilTracks(st)) net = addEdge(net, pts);
+    this.setRailNet(net, null);
     return true;
+  }
+
+  /**
+   * Grow oil depot `id` to `bays` truck bays / `tracks` rail tracks (see
+   * oilGrown): the new cells → Station (track cells → Rail), new tracks →
+   * rail-network edges. Returns the grown depot, or null if not allowed.
+   */
+  upgradeOilDepot(id: number, bays: number, tracks: number): Station | null {
+    const st = this.map.stations?.find((s) => s.id === id);
+    if (!st || st.kind !== 'oil' || oilUpgradeProblem(this.map, st, bays, tracks)) return null;
+    const next = oilGrown(st, bays, tracks);
+    const n = this.map.size;
+    const had = new Set(oilCells(st).map((c) => c.x * n + c.z));
+    const cells = this.map.cells.slice();
+    for (const { x, z, lx } of oilCells(next)) {
+      if (had.has(x * n + z)) continue;
+      if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
+      cells[x][z] = oilTrackColumn(next, lx) ? CellType.Empty : CellType.Station;
+    }
+    this.commit({ cells, stations: (this.map.stations ?? []).map((s) => (s.id === id ? next : s)) }, true);
+    let net = this.map.railNet ?? EMPTY_NET;
+    for (const pts of oilTracks(next).slice(oilTracks(st).length)) net = addEdge(net, pts);
+    this.setRailNet(net, null);
+    return next;
   }
 
   /**
@@ -503,14 +531,17 @@ export class TerrainStore {
     if (st.kind === 'oil') {
       const cells = this.map.cells.slice();
       let roads = 0;
-      for (const { x, z } of oilCells(st)) {
+      for (const { x, z, lx } of oilCells(st)) {
+        if (oilTrackColumn(st, lx)) continue; // the track: cut below
         if (cells[x] === this.map.cells[x]) cells[x] = cells[x].slice();
         if (cells[x][z] === CellType.Road) roads++;
         cells[x][z] = CellType.Empty;
       }
       this.commit({ cells, stations: (this.map.stations ?? []).filter((s) => s.id !== id) }, true);
       this.roadCount -= roads;
-      this.emit();
+      let net = this.map.railNet ?? EMPTY_NET;
+      for (const { x, z, lx } of oilCells(st)) if (oilTrackColumn(st, lx)) net = cutAtCell(net, x, z);
+      this.setRailNet(net, null);
       return;
     }
     if (st.kind === 'depot') {

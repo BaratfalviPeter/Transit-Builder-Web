@@ -34,6 +34,11 @@ export * from './pipes';
 export {
   OIL_DEPOT_PRICE,
   OIL_DEPOT_CAPACITY,
+  OIL_BAY_PRICE,
+  OIL_TRACK_PRICE,
+  MAX_TRUCK_BAYS,
+  MAX_RAIL_TRACKS,
+  oilUpgradeProblem,
   isOilDepot,
   oilCells,
   oilCenter,

@@ -313,7 +313,9 @@ function polyLength(pts: Array<[number, number]>): number {
 const LANE_OFF = 0.1;
 const STOP_Z = 0.4;
 /** How far the way in to a right-hand bay keeps off the median wall's diagonal (design units). */
-const WALL_CLEAR = 0.17;
+const WALL_CLEAR = 0.3;
+/** How far left of the IN lane a truck for a right-hand bay passes the wall's start (design units). */
+const TIP_CLEAR = 0.05;
 /** Where the way out ends (design z): ~a truck's length straight past the last bend. */
 const EXIT_END_Z = -1.72;
 
@@ -343,10 +345,14 @@ export function oilBayPath(st: Station, bay: number): { pts: Array<[number, numb
     // then along it (WALL_CLEAR off), then turn into the bay.
     const slope = (WALL_BEND_Z - CONN.z1) / Math.max(0.05, L.medianX - STUB.c);
     const along = (x: number) => CONN.z1 + (x - STUB.c) * slope + WALL_CLEAR;
-    const k = Math.min(0.12, (bx - inX) / 2);
-    const q1: [number, number] = [inX + k, along(inX + k)];
+    // Past the wall's start (on the access road's centre line) a little further
+    // left first, so the trailer, cutting the bend, stays off it.
+    const x0 = inX - TIP_CLEAR;
+    d.push(...corner([inX, -1.2], [inX, -1.12], [x0, -1.04], 4));
+    const k = Math.min(0.12, (bx - x0) / 2);
+    const q1: [number, number] = [x0 + k, along(x0 + k)];
     const q2: [number, number] = [bx - k, along(bx - k)];
-    d.push(...corner([inX, -1.2], [inX, along(inX)], q1));
+    d.push(...corner([x0, -1.04], [x0, along(x0)], q1));
     if (q2[0] > q1[0] + 1e-3) d.push(q2);
     const up = Math.max(SPLIT.z1 + 0.05, along(bx) + 0.14);
     d.push(...corner(q2, [bx, along(bx)], [bx, up]));

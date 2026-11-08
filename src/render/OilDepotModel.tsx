@@ -52,6 +52,7 @@ import {
   SPLIT,
   STUB,
   TRACK_PITCH,
+  FIRST_TRACK_X,
   WALL_BEND_Z,
   oilLayout,
 } from '../sim/oilDepot';
@@ -324,14 +325,18 @@ export function oilDepotBounds(truckBays = 2, railTracks = 1): { x0: number; x1:
 
 // --- Ground ----------------------------------------------------------------------
 
+/** Where the front / back edge curbs start: just clear of the first track's ballast. */
+const RAIL_CLEAR_X = FIRST_TRACK_X + 0.18;
+
 function Ground({ x0, x1 }: { x0: number; x1: number }) {
   const w = x1 - x0;
   const cx = (x0 + x1) / 2;
   const joints: number[] = [];
   for (let j = Math.ceil((x0 + 0.01) * 2) / 2; j < x1 - 0.01; j += 0.5) joints.push(j);
-  // Back edge curb: open only where the two-way access road leaves the lot.
+  // Back edge curb: open only where the two-way access road leaves the lot
+  // (and the tracks: it starts clear of the first track's ballast, ±0.156 at its foot).
   const back: Array<[number, number]> = [
-    [-1.19, STUB.c - STUB.h],
+    [RAIL_CLEAR_X, STUB.c - STUB.h],
     [STUB.c + STUB.h, x1],
   ].filter(([a, b]) => b - a > 0.04) as Array<[number, number]>;
   return (
@@ -349,7 +354,7 @@ function Ground({ x0, x1 }: { x0: number; x1: number }) {
       {back.map(([a, b]) => (
         <Box key={a} p={[(a + b) / 2, 0.13, -1.48]} s={[b - a, 0.06, 0.04]} m={M.curb} />
       ))}
-      <Box p={[(-1.19 + x1) / 2, 0.13, 1.48]} s={[x1 + 1.19, 0.06, 0.04]} m={M.curb} />
+      <Box p={[(RAIL_CLEAR_X + x1) / 2, 0.13, 1.48]} s={[x1 - RAIL_CLEAR_X, 0.06, 0.04]} m={M.curb} />
     </group>
   );
 }

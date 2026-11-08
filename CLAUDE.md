@@ -348,7 +348,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   SOROMPÓK / LÁMPÁK a játék állapotából (`TransportSim.oilDepotStatus` → `OilDepotModel status`): a sorompó fent,
   amíg kamion van a saját sávfelében (`GATE_ZONE`, `oilWorldToDesign`), az állás lámpája zöld, ha szabad, piros,
   ha foglalt (a modellnézőben időzítve).
-  A jobb oldali (a fal átlója fölötti) állásokhoz a behajtó út a faltól `WALL_CLEAR` (0,17) távolságra, vele
+  A jobb oldali (a fal átlója fölötti) állásokhoz a behajtó út a fal eleje mellett `TIP_CLEAR`-rel balra, a faltól `WALL_CLEAR` (0,3) távolságra, vele
   párhuzamosan megy, utána fordul be (a fal adatai: `WALL_BEND_Z` az `oilDepot.ts`-ben, a modell is ezt használja). A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
   talajjal egy szintben, nincs lépcső az útról), a kamion az aszfalton gurul (`Transport.tsx` `OIL_SLAB` =
   `OIL_DRIVE_TOP` × 2). A töltőtető (`CAN_Y` 0,42) a tartálykamionhoz méretezve (a felhasználó jelezte, hogy a
@@ -468,7 +468,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   pótkocsi).
 - Mergelve: #112 (a vasúti oldal peronja / járdái keskenyebbek: a játék sínjének ágyazata talpa ±0,156, teteje
   ±0,11 tervezési egység; járda 0,15 széles).
-- Folyamatban: a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik (`RAIL_CLEAR_X`). Utána: 4. finomító.
+- Mergelve: #113 (a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik: `RAIL_CLEAR_X`).
+- Folyamatban: a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik (`TIP_CLEAR` 0,05), a faltól 0,3-ra
+  (`WALL_CLEAR`) halad (a vontatott pótkocsi levágja az ívet). Utána: 4. finomító.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

@@ -378,7 +378,7 @@ interface RailLayout {
 function railLayout(n: number): RailLayout {
   const { tracks, lotX0 } = oilLayout(2, n);
   const walks = tracks.slice(0, -1).map((x) => x - TRACK_PITCH / 2);
-  const xo = tracks[n - 1] - 0.17;
+  const xo = tracks[n - 1] - 0.2;
   const legs = [G.xi, ...walks, xo];
   // Legs stand on the platform / walkways (raised), the outermost (last) on the slab.
   const r: Inst[] = [];
@@ -441,21 +441,21 @@ function RailSiding({ rail, noTracks }: { rail: RailLayout; noTracks: boolean })
         ))}
       {!noTracks && <Batch items={rail.sleepers} m={M.sleeper} cast={false} />}
       {/* Platform on the lot side with a yellow safety line */}
-      <Box p={[-1.06, 0.15, 0]} s={[0.2, 0.1, 2.4]} m={M.slab} cast />
-      <Box p={[-1.148, 0.201, 0]} s={[0.016, 0.003, 2.4]} m={M.yellow} />
+      <Box p={[-1.02, 0.15, 0]} s={[0.12, 0.1, 2.4]} m={M.slab} cast />
+      <Box p={[-1.07, 0.201, 0]} s={[0.012, 0.003, 2.4]} m={M.yellow} />
       {/* Walkways between neighbouring tracks (gantry legs stand on them) */}
       {rail.walks.map((x) => (
         <group key={x}>
-          <Box p={[x, 0.15, (GZA + GZB) / 2]} s={[0.22, 0.1, GZB - GZA + 0.3]} m={M.slab} cast />
-          <Box p={[x - 0.1, 0.201, (GZA + GZB) / 2]} s={[0.012, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
-          <Box p={[x + 0.1, 0.201, (GZA + GZB) / 2]} s={[0.012, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
+          <Box p={[x, 0.15, (GZA + GZB) / 2]} s={[0.15, 0.1, GZB - GZA + 0.3]} m={M.slab} cast />
+          <Box p={[x - 0.065, 0.201, (GZA + GZB) / 2]} s={[0.01, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
+          <Box p={[x + 0.065, 0.201, (GZA + GZB) / 2]} s={[0.01, 0.003, GZB - GZA + 0.3]} m={M.yellow} />
         </group>
       ))}
       {/* Small hut at the platform end */}
-      <Box p={[-1.04, 0.28, 1.0]} s={[0.12, 0.16, 0.14]} m={M.girder} cast />
-      <Box p={[-1.04, 0.33, 1.0]} s={[0.124, 0.018, 0.144]} m={M.yellow} />
-      <Box p={[-1.04, 0.37, 1.0]} s={[0.15, 0.02, 0.17]} m={M.roof} cast />
-      <Box p={[-1.04, 0.28, 0.928]} s={[0.05, 0.1, 0.006]} m={M.door} />
+      <Box p={[-1.02, 0.28, 1.0]} s={[0.1, 0.16, 0.14]} m={M.girder} cast />
+      <Box p={[-1.02, 0.33, 1.0]} s={[0.104, 0.018, 0.144]} m={M.yellow} />
+      <Box p={[-1.02, 0.37, 1.0]} s={[0.12, 0.02, 0.17]} m={M.roof} cast />
+      <Box p={[-1.02, 0.28, 0.928]} s={[0.05, 0.1, 0.006]} m={M.door} />
     </group>
   );
 }

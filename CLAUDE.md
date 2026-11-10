@@ -352,8 +352,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   párhuzamosan megy, utána fordul be (a fal adatai: `WALL_BEND_Z` az `oilDepot.ts`-ben, a modell is ezt használja). A depó modellje a játékban `OIL_GAME_SINK`-kel lesüllyesztve (a betonlap a
   talajjal egy szintben, nincs lépcső az útról), a kamion az aszfalton gurul (`Transport.tsx` `OIL_SLAB` =
   `OIL_DRIVE_TOP` × 2). A töltőtető (`CAN_Y` 0,42) a tartálykamionhoz méretezve (a felhasználó jelezte, hogy a
-  kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: az erőmű (ACCEPTS már
-  tartalmazta az olajat), később a finomító. Teszt: a böngészőben `__tb` hookkal (depó a parthoz, cső, út az
+  kamion túl kicsinek tűnt), a sorompó és a tábla kisebb, az olajdepót kiszolgáló járatok tartályos pótkocsit kapnak. Átvevő: CSAK a
+  finomító (az erőmű 2026-11 óta nem vesz át olajat, csak szenet — a felhasználó kérte). Teszt: a böngészőben `__tb` hookkal (depó a parthoz, cső, út az
   erőműig, járat) — kb. $1200 / forduló.
   VASÚTI RAKODÁS (2. rész): a depó vágánya (`oilTracks`: a telek bal oszlopa, hosszában, a két szélső cella
   közepéig) a lerakáskor rail-hálózati él (a cellái Rail, `oilTrackColumn`), ez a megálló peronja
@@ -390,8 +390,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   finomító → kamion → város, a bot kamiont vesz, ha torlódik, oszlopot, ha a finomítóban áll az olaj). Előtte 2 év
   alatt sem térült meg (~28 000 $ befektetés, ±0 $/hó). Most: hosszabb utakon (13 / 29 mező) átlag +2158 $/hó, 2 év
   alatt +23 600 $ a befektetés után; nagyon rövid utakon (11 / 12) épp megtérül. A régi lánc (`bot.ts`) nem változott
-  (5-ös térkép 891. nap, 4-es 650. nap). Megjegyzés: az 5. szintű fúró olaja egyedül kb. 4800 lakosnyi áramot adna
-  az erőműben (2,4/s × 1000 MW).
+  (5-ös térkép 891. nap, 4-es 650. nap).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
     A szerkesztő alatt kikapcsol.
@@ -492,7 +491,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #113 (a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik: `RAIL_CLEAR_X`).
 - Mergelve: #114 (a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik, `TIP_CLEAR`, a faltól 0,3-ra halad).
 - Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
-- Folyamatban: gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300).
+- Folyamatban (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
+  az erőmű nem vesz át olajat.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

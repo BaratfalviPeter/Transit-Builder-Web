@@ -77,7 +77,7 @@ export function CityLabel({ map, cellSize }: { map: TerrainMap; cellSize: number
             </div>
           );
         })}
-        <div className="citycard__row" title="Áram: az erőművek automatikusan ellátják a várost, ha szenet (vagy olajat) kapnak">
+        <div className="citycard__row" title="Áram: az erőművek automatikusan ellátják a várost, ha szenet kapnak">
           <span className="citycard__item">⚡ Áram</span>
           <span className="citycard__bar">
             <span

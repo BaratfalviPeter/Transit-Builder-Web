@@ -46,7 +46,8 @@ export const ITEMS: Record<Item, { label: string; icon: string; color: string; v
 /** What each industry takes in through its gates (and pays for on delivery). */
 export const ACCEPTS: Partial<Record<CellType, Item[]>> = {
   [CellType.Factory]: ['plank'],
-  [CellType.PowerPlant]: ['ore', 'crushed', 'oil'],
+  // Coal only: the oil goes to a refinery (oilDepot.ts) — petrol for the city.
+  [CellType.PowerPlant]: ['ore', 'crushed'],
   // The city (its stops on the city square's sides): paid by its demand
   // (CityDevelopment.ts), not stocked.
   [CellType.CityCenter]: ['goods', 'plank', 'fuel'],

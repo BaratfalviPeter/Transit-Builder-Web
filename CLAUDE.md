@@ -374,7 +374,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - FINOMÍTÓ (4. rész, 2026-11; a felhasználó képet adott hozzá): `Station kind 'refinery'` UGYANAZON A TELKEN, mint az
   olajdepó (közös alap: `isOilLot` = 'oil' | 'refinery'; lerakás, kamionos U-sáv, vágány + előreállós töltés,
   bővítés, sorompók — minden az olajdepó kódja). Különbség: középen lepárlóoszlopok (`OilDepotModel plant="refinery"
-  units`, 1–3, `COLUMNS`) + fáklyatorony lobogó lánggal (`Flare`) + csőhíd, a tartálypark helyett. Eszköz 🏭
+  units`, 1–3, `COLUMNS`; pódiumok, csonkok, szigetelt láb) + mindig: sztripper-oszlop, kemence két kéménnyel
+  és füsttel (`Furnace`), hőcserélők (`Exchangers`), reflux tartály, szivattyúk, kétszintes csőhíd (`PipeRack`), fáklyatorony
+  rácsos lábbal, lánggal, kerítéssel (`Flare`) — a tartálypark helyett (a felhasználó kérte, hogy részletesebb legyen). Eszköz 🏭
   (`refinery`, $15 000, fenntartás 500 + 150 / további oszlop). Működés: kamionnal / vonattal hozott OLAJAT vesz át
   (`lotAccepts`, `stopAccepts` a transport.ts-ben, fizet érte), `ProductionSim.tickRefineries` benzinné alakítja
   (`REFINERY_RATE` 0,6/s oszloponként), a BENZIN (`Item 'fuel'`, ⛽, érték 28) a városba megy (`ACCEPTS[CityCenter]`,

@@ -15,7 +15,7 @@ import {
   INDUSTRY_MODEL_SCALE,
   CellType,
   isDepot,
-  isOilDepot,
+  isOilLot,
   oilCells,
   stopLabel,
   stopCenter,
@@ -115,7 +115,7 @@ function TruckView({ id, colors, tank, map, cellSize }: { id: number; colors: Tr
   const half = (map.size - 1) / 2;
   const oilLot = useMemo(() => {
     const set = new Set<number>();
-    for (const st of map.stations ?? []) if (isOilDepot(st)) for (const c of oilCells(st)) set.add(c.x * map.size + c.z);
+    for (const st of map.stations ?? []) if (isOilLot(st)) for (const c of oilCells(st)) set.add(c.x * map.size + c.z);
     return set;
   }, [map]);
   useFrame(() => {
@@ -171,8 +171,8 @@ export function Trucks({ map, cellSize }: { map: TerrainMap; cellSize: number })
   const sim = useTransport();
   const snap = useTransportSnapshot(); // re-render on fleet / line changes
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
-  // Lines that serve an oil depot run tanker trucks.
-  const oilIds = new Set((map.stations ?? []).filter(isOilDepot).map((s) => s.id));
+  // Lines that serve an oil depot / refinery run tanker trucks.
+  const oilIds = new Set((map.stations ?? []).filter(isOilLot).map((s) => s.id));
   const tanker = new Set(snap.lines.filter((l) => l.stops.some((id) => oilIds.has(id))).map((l) => l.id));
   return (
     <group>
@@ -354,7 +354,7 @@ export function NetworkView({ map, cellSize }: { map: TerrainMap; cellSize: numb
       {/* Stops */}
       {stops.map((s) => {
         const depot = isDepot(s);
-        const oil = isOilDepot(s);
+        const oil = isOilLot(s);
         const truck = stopKind(s) === 'truck' || depot || oil;
         const rail = stopKind(s) === 'rail' || depot || oil;
         // Lit: stops of the kind being drafted (else the truck ones, as before).

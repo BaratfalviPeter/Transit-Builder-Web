@@ -19,7 +19,8 @@ import {
   depotExit,
   type DepotRot,
   isDepot,
-  isOilDepot,
+  isOilLot,
+  isRefinery,
   OIL_DEPOT_CAPACITY,
   oilCells,
   oilCenter,
@@ -72,7 +73,7 @@ export function Stations({ map, cellSize }: { map: TerrainMap; cellSize: number 
     <group>
       {(map.stations ?? []).map((s) => {
         if (isDepot(s)) return <Depot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
-        if (isOilDepot(s)) return <OilDepot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
+        if (isOilLot(s)) return <OilDepot key={s.id} map={map} cellSize={cellSize} st={s} batch={batch} />;
         const { pos, rot } = placement(map, cellSize, s.anchor, s.side);
         const total = prod.stationTotal(s.id);
         const stock = prod.stationStock(s.id);
@@ -133,14 +134,17 @@ function Depot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number
   );
 }
 
-/** An oil depot: the model (batched), its tank stock as a label. */
+/** An oil depot or a refinery (same lot): the model (batched), its stock as a label. */
 function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: number; st: Station; batch: boolean }) {
   const prod = useInteriorStore().production;
   const sim = useTransport();
   const { pos: lot, rotY, scale } = lotPose(map, cellSize, st, oilCenter(st));
   // Sunk so the slab is flush with the ground (the trucks drive straight on).
   const pos: [number, number, number] = [lot[0], lot[1] - OIL_GAME_SINK * scale, lot[2]];
-  const oil = Math.floor(prod.stationStock(st.id).oil ?? 0);
+  const refinery = isRefinery(st);
+  const oil = Math.floor((refinery ? prod.inboundStock(st.id).oil : prod.stationStock(st.id).oil) ?? 0);
+  const fuel = Math.floor(prod.stationStock(st.id).fuel ?? 0);
+  const full = refinery ? fuel >= OIL_DEPOT_CAPACITY : oil >= OIL_DEPOT_CAPACITY;
   return (
     <group>
       <StaticBatch enabled={batch}>
@@ -153,11 +157,13 @@ function OilDepot({ map, cellSize, st, batch }: { map: TerrainMap; cellSize: num
           phase={st.id * 0.7}
           noTracks
           status={() => sim.oilDepotStatus(st)}
+          plant={refinery ? 'refinery' : 'depot'}
+          units={st.units ?? 1}
         />
       </StaticBatch>
       <Html zIndexRange={[10, 0]} position={[pos[0], pos[1] + cellSize * 2.6, pos[2]]} center style={{ pointerEvents: 'none' }}>
-        <div className={'station-tip station-stock' + (oil >= OIL_DEPOT_CAPACITY ? ' is-bad' : '')}>
-          🛢️ {oil}/{OIL_DEPOT_CAPACITY}
+        <div className={'station-tip station-stock' + (full ? ' is-bad' : '')}>
+          {refinery ? `🛢️ ${oil} → ⛽ ${fuel}/${OIL_DEPOT_CAPACITY}` : `🛢️ ${oil}/${OIL_DEPOT_CAPACITY}`}
         </div>
       </Html>
     </group>
@@ -309,8 +315,8 @@ export function DepotPlacement({ map, cellSize, x0, z0, rot, problem, cost, canA
 }
 
 /** The oil depot tool's preview: the lot (the access road cell in orange) and a tip. */
-export function OilDepotPlacement({ map, cellSize, x0, z0, rot, problem, cost, canAfford }: LotPlacementProps) {
-  const st: Station = { id: 0, anchor: [x0, z0], side: 'S', kind: 'oil', rot };
+export function OilDepotPlacement({ map, cellSize, x0, z0, rot, problem, cost, canAfford, refinery = false }: LotPlacementProps & { refinery?: boolean }) {
+  const st: Station = { id: 0, anchor: [x0, z0], side: 'S', kind: refinery ? 'refinery' : 'oil', rot };
   const [sx, sz] = oilStub(st);
   return (
     <LotPreview
@@ -320,7 +326,7 @@ export function OilDepotPlacement({ map, cellSize, x0, z0, rot, problem, cost, c
       cells={oilCells(st).map(({ x, z }) => ({ x, z, color: x === sx && z === sz ? '#f0a03a' : '#c9b37a' }))}
       labels={[{ at: [sx, sz], text: '⇅ bejárat (ide jön az út)' }]}
       center={oilCenter(st)}
-      tip={`🛢️ Olajdepó · $${cost} · Q: forgatás`}
+      tip={`${refinery ? '🏭 Finomító' : '🛢️ Olajdepó'} · $${cost} · Q: forgatás`}
       reason={problem ?? (canAfford ? null : 'Nincs elég pénz')}
     />
   );

@@ -55,6 +55,7 @@ const ICON: Record<ToolId, string> = {
   truckstop: '🚚',
   depot: '🏬',
   oildepot: '🛢️',
+  refinery: '🏭',
   pipe: '〰️',
   signal: '🚥',
   yield: '🔻',
@@ -111,7 +112,7 @@ const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
   { title: '', tools: ['select'] },
   { title: 'Terep', tools: ['raise', 'lower', 'bulldoze'] },
   { title: 'Építés', tools: ['road', 'rail', 'bridge', 'tunnel', 'signal', 'station', 'truckstop', 'depot'] },
-  { title: 'Olaj', tools: ['pipe', 'oildepot'] },
+  { title: 'Olaj', tools: ['pipe', 'oildepot', 'refinery'] },
   { title: 'Forgalom', tools: ['yield', 'stop', 'light', 'roundabout'] },
 ];
 
@@ -126,6 +127,7 @@ const HINT: Record<ToolId, string> = {
   signal: 'Vasúti jelző — kattints a sínre: arra az oldalra kerül, ahol a kurzor van, és az ott (jobb kéz felől) haladó vonatoknak szól · újra kattintva megfordul · Bontás (B): leszedi · váltótól legyen 1–2 cella távolságra',
   station: 'Vasútállomás — egy ipar telkének oldalára kattints · Q: peronhossz (6 / 8 / 10 / 12 cella; a hosszú vonatnak) · a vágány mindkét végét bekötheted (pl. hurokba)',
   truckstop: 'Kamionrakodó — egy ipar telkének oldalára kattints (úthoz csatlakozik)',
+  refinery: 'Finomító — 7×6 sík terület · Q: forgatás · hátul a bejárati út (narancs mező) · kamionnal / vonattal hozz bele olajat, a benzint vidd a városba',
   oildepot: 'Olajdepó — 7×6 sík terület · Q: forgatás · hátul egy kétirányú bejárati út (a narancs mező) — oda kösd az utat · csővel kösd össze az olajfúróval',
   pipe: 'Olajvezeték — húzd a fúrótól az olajdepóig (víz alatt is) · a fizetés a legközelebbi parttól számít · Bontás (B): leszedi',
   depot: 'Raktár — 6×6 sík terület · Q: forgatás · a behajtóhoz ÉS a kihajtóhoz is kell út · amit egy járat lerak, egy másik továbbviszi',

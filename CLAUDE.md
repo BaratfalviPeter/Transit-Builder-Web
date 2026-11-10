@@ -371,6 +371,19 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   mozdul, hogy a meglévő részek a helyükön maradjanak — a kijelölés az új anchorra áll), az új cellák szabad,
   sík szárazföldek kellenek (`oilUpgradeProblem`); az új vágány rail-él. Fenntartás: +40 / állás, +60 / vágány
   az alap (2 / 1) fölött. Teszt: scratchpad `oilup.ts` (4 forgatás, a bejárat és a régi vágány nem mozdul).
+- FINOMÍTÓ (4. rész, 2026-11; a felhasználó képet adott hozzá): `Station kind 'refinery'` UGYANAZON A TELKEN, mint az
+  olajdepó (közös alap: `isOilLot` = 'oil' | 'refinery'; lerakás, kamionos U-sáv, vágány + előreállós töltés,
+  bővítés, sorompók — minden az olajdepó kódja). Különbség: középen lepárlóoszlopok (`OilDepotModel plant="refinery"
+  units`, 1–3, `COLUMNS`) + fáklyatorony lobogó lánggal (`Flare`) + csőhíd, a tartálypark helyett. Eszköz 🏭
+  (`refinery`, $15 000, fenntartás 500 + 150 / további oszlop). Működés: kamionnal / vonattal hozott OLAJAT vesz át
+  (`lotAccepts`, `stopAccepts` a transport.ts-ben, fizet érte), `ProductionSim.tickRefineries` benzinné alakítja
+  (`REFINERY_RATE` 0,6/s oszloponként), a BENZIN (`Item 'fuel'`, ⛽, érték 28) a városba megy (`ACCEPTS[CityCenter]`,
+  `DEMAND.fuel` 30 + 1,5/szint). A város NÖVEKEDÉSE csak az áru + deszka ellátottságától függ (`GROWTH_ITEMS`), a
+  benzin gyorsítja (`FUEL_BONUS` 0,5 × ellátottság). Panel (`OilDepotPanel`): beérkezett olaj, benzin, „+1
+  lepárlóoszlop” ($6000, max. 3) + állás / vágány. A vonat a finomítóban csak akkor gurul kocsinként, ha ott tölt
+  is (`lotGives`). A megállók rajza a megállólista változására is frissül (`StationsM`). Csak benzin van; a többi
+  melléktermék (fűtőolaj, dízel, kerozin, bitumen) az `ötletek.md`-ben. Modellnéző: Refinery, RefineryMax. Teszt:
+  scratchpad `refine.ts` (vonat: depó → finomító), `refcity.ts` (kamion: finomító → város).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
     A szerkesztő alatt kikapcsol.
@@ -398,7 +411,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
     (Dev fül, `.dev__perf`).
 - Modellnéző: `/?model=MineModel&view=iso&ui=0` (id a `VIEWER_MODELS`-ből, `src/dev/ModelViewer.tsx`:
   MineModel, LumberMillModel, PowerPlantModel, FactoryModel, OilRigModel, StationModel, TruckStopModel,
-  Truck, Tanker, Train, Loco, Wagons, Depot, Crossing, OilDepotModel; view = iso | front | side | back | top; ui=0 = panel
+  Truck, Tanker, Train, Loco, Wagons, Depot, Crossing, OilDepotModel, Refinery, RefineryMax; view = iso | front | side | back | top; ui=0 = panel
   nélkül; kész: `body[data-viewer-ready="<id>:<view>"]`; ismeretlen id → csendben az első modell).
 - MODELLKÉSZÍTŐ FOLYAMAT (a felhasználó hozta, 2026-11): `/new-model <Név>Model <ref/kép.png> [leírás]`
   (`.claude/commands/new-model.md`) → `model-builder` ágens (TSX + regisztráció a nézőben) ↔
@@ -469,8 +482,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #112 (a vasúti oldal peronja / járdái keskenyebbek: a játék sínjének ágyazata talpa ±0,156, teteje
   ±0,11 tervezési egység; járda 0,15 széles).
 - Mergelve: #113 (a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik: `RAIL_CLEAR_X`).
-- Folyamatban: a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik (`TIP_CLEAR` 0,05), a faltól 0,3-ra
-  (`WALL_CLEAR`) halad (a vontatott pótkocsi levágja az ívet). Utána: 4. finomító.
+- Mergelve: #114 (a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik, `TIP_CLEAR`, a faltól 0,3-ra halad).
+- Folyamatban: OLAJ 4. rész — finomító (benzin a városba), a depóval közös telek-alapon.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

@@ -33,6 +33,12 @@ export * from './selection';
 export * from './pipes';
 export {
   OIL_DEPOT_PRICE,
+  REFINERY_PRICE,
+  REFINERY_UNIT_PRICE,
+  REFINERY_RATE,
+  MAX_REFINERY_UNITS,
+  isOilLot,
+  isRefinery,
   OIL_DEPOT_CAPACITY,
   OIL_BAY_PRICE,
   OIL_TRACK_PRICE,

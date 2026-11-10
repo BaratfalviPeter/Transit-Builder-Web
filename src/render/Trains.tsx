@@ -9,7 +9,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
-  isOilDepot,
+  isOilLot,
   CAR_GAP,
   CAR_LEN,
   interiorAt,
@@ -179,7 +179,7 @@ export function Trains({ map, cellSize }: { map: TerrainMap; cellSize: number })
   const snap = useTransportSnapshot(); // re-render on fleet / line changes
   const height = useTrackHeights(map);
   const colors = new Map(snap.lines.map((l) => [l.id, l.color]));
-  const oilStops = new Set((map.stations ?? []).filter(isOilDepot).map((s) => s.id));
+  const oilStops = new Set((map.stations ?? []).filter(isOilLot).map((s) => s.id));
   const tankLines = new Set(snap.lines.filter((l) => l.stops.some((id) => oilStops.has(id))).map((l) => l.id));
   return (
     <group scale={cellSize}>

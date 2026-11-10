@@ -10,7 +10,7 @@
  */
 
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
-import { OIL_START_BAYS, OIL_START_TRACKS, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
+import { MAX_REFINERY_UNITS, OIL_START_BAYS, OIL_START_TRACKS, isOilLot, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
 import { pipeCellOk } from './pipes';
 import { cellIndex, controlProblem, type ControlKind } from './traffic';
 import { nextSignalMode, signalIndexNear, signalSpot } from './signals';
@@ -370,11 +370,11 @@ export class TerrainStore {
    * turned `rot`: Station cells, the access road cell → Road, the loading track →
    * a rail-network edge (its cells Rail). False if not allowed.
    */
-  buildOilDepot(x0: number, z0: number, rot: DepotRot): boolean {
+  buildOilDepot(x0: number, z0: number, rot: DepotRot, kind: 'oil' | 'refinery' = 'oil'): boolean {
     if (oilDepotProblem(this.map, x0, z0, rot)) return false;
     const stations = this.map.stations ?? [];
     const id = stations.reduce((m, st) => Math.max(m, st.id), 0) + 1;
-    const st: Station = { id, anchor: [x0, z0], side: 'S', kind: 'oil', rot, bays: OIL_START_BAYS, tracks: OIL_START_TRACKS };
+    const st: Station = { id, anchor: [x0, z0], side: 'S', kind, rot, bays: OIL_START_BAYS, tracks: OIL_START_TRACKS, ...(kind === 'refinery' ? { units: 1 } : {}) };
     const [sx, sz] = oilStub(st);
     const cells = this.map.cells.slice();
     let roads = 0;
@@ -400,7 +400,7 @@ export class TerrainStore {
    */
   upgradeOilDepot(id: number, bays: number, tracks: number): Station | null {
     const st = this.map.stations?.find((s) => s.id === id);
-    if (!st || st.kind !== 'oil' || oilUpgradeProblem(this.map, st, bays, tracks)) return null;
+    if (!st || !isOilLot(st) || oilUpgradeProblem(this.map, st, bays, tracks)) return null;
     const next = oilGrown(st, bays, tracks);
     const n = this.map.size;
     const had = new Set(oilCells(st).map((c) => c.x * n + c.z));
@@ -415,6 +415,15 @@ export class TerrainStore {
     for (const pts of oilTracks(next).slice(oilTracks(st).length)) net = addEdge(net, pts);
     this.setRailNet(net, null);
     return next;
+  }
+
+  /** One more distillation column at refinery `id` (same lot). False if at the most. */
+  addRefineryUnit(id: number): boolean {
+    const st = this.map.stations?.find((s) => s.id === id);
+    if (!st || st.kind !== 'refinery' || (st.units ?? 1) >= MAX_REFINERY_UNITS) return false;
+    this.commit({ stations: (this.map.stations ?? []).map((s) => (s.id === id ? { ...s, units: (st.units ?? 1) + 1 } : s)) }, false);
+    this.emit();
+    return true;
   }
 
   /**
@@ -528,7 +537,7 @@ export class TerrainStore {
   private removeStation(id: number): void {
     const st = this.map.stations?.find((s) => s.id === id);
     if (!st) return;
-    if (st.kind === 'oil') {
+    if (isOilLot(st)) {
       const cells = this.map.cells.slice();
       let roads = 0;
       for (const { x, z, lx } of oilCells(st)) {

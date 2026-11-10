@@ -9,7 +9,7 @@
  * the dev model editor works here too.
  *
  * URL parameters:
- *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | OilDepotModel | OilDepotMin | OilDepotMix | OilDepotMax | StationModel | … | Truck | Tanker
+ *   model = MineModel | LumberMillModel | PowerPlantModel | FactoryModel | OilRigModel | OilDepotModel | OilDepotMin | OilDepotMix | OilDepotMax | Refinery | RefineryMax | StationModel | … | Truck | Tanker
  *   view  = iso | front | side | back | top   (starting camera view)
  *   ui=0  → no panel (clean screenshots)
  * Once the first frames are drawn, <body> gets `data-viewer-ready`.
@@ -26,7 +26,7 @@ import { LumberMillModel } from '../render/LumberMillModel';
 import { PowerPlantModel } from '../render/PowerPlantModel';
 import { FactoryModel } from '../render/FactoryModel';
 import { OilRigModel } from '../render/OilRigModel';
-import { OilDepotMaxPreview, OilDepotMinPreview, OilDepotMixPreview, OilDepotModel } from '../render/OilDepotModel';
+import { OilDepotMaxPreview, OilDepotMinPreview, OilDepotMixPreview, OilDepotModel, RefineryMaxPreview, RefineryPreview } from '../render/OilDepotModel';
 import { StationModel } from '../render/StationModel';
 import { TruckStopModel } from '../render/TruckStopModel';
 import { TankerPreview, TruckPreview } from '../render/TruckModel';
@@ -66,6 +66,8 @@ export const VIEWER_MODELS: Array<{
   { id: 'OilDepotMin', label: 'Olajdepó (1 kamion, 1 vágány)', Comp: OilDepotMinPreview },
   { id: 'OilDepotMix', label: 'Olajdepó (3 kamion, 2 vágány)', Comp: OilDepotMixPreview, zoom: 1.25 },
   { id: 'OilDepotMax', label: 'Olajdepó (5 kamion, 3 vágány)', Comp: OilDepotMaxPreview, zoom: 1.6 },
+  { id: 'Refinery', label: 'Finomító (1 oszlop)', Comp: RefineryPreview },
+  { id: 'RefineryMax', label: 'Finomító (3 oszlop, 5 kamion, 3 vágány)', Comp: RefineryMaxPreview, zoom: 1.6 },
   { id: 'StationModel', label: 'Vasútállomás', Comp: StationModel, track: 'rail', zoom: 0.8, lookY: 0.15 },
   { id: 'TruckStopModel', label: 'Kamionrakodó', Comp: TruckStopModel, track: 'road', zoom: 0.8, lookY: 0.15 },
   { id: 'Truck', label: 'Kamion', Comp: TruckPreview, zoom: 1.0, lookY: 0.3 },

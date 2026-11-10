@@ -126,7 +126,9 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   figyelmeztetés a felső sávban (`ui-bar__warn`). CSAK TELE INDUL (`Line.fullLoad`, `setFullLoad`,
   Járatok panel jelölőnégyzet): `waitForLoad` — a felrakodó megállóban (az ipar terméke egy későbbi
   megállónak kell; raktárban / lerakodó megállóban nem) a kamion (`state 'stop'`) / vonat
-  (`departTrain` → 'load') áll, amíg tele nem lesz; az itt felrakott rakomány ideje az indulástól számít. Hálózati nézet metrótérkép-stílusban
+  (`departTrain` → 'load') áll, amíg tele nem lesz — DE a kamion elindul azzal, amije van, ha egy mögötte sorban álló
+  kamion `FULL_LOAD_YIELD` (4 s) óta rá vár (különben holtpont: a gyár → város kamion a gyári megállóban várt az
+  árura, a deszkát hozó kamionok mögötte nem tudtak lerakodni; 2026-11, a bot találta meg); az itt felrakott rakomány ideje az indulástól számít. Hálózati nézet metrótérkép-stílusban
   (`Transport.tsx`, szürke fátyol, a vonalak egymás mellett futnak). A vonalak,
   megállók és kamionpöttyök az út fölött 0,12 cellával, mélységteszt nélkül (a fátyol
   fölött látszanak), világegységben 0,38 cella szélesen.
@@ -308,8 +310,10 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   kapnak, különben az ablakok fölé kerülnek.
 - EGYENSÚLY (2026-11 ellenőrzés, scratchpad `bot.ts`: automatikus játékos, ami havonta bővít: több
   kamion, ahol a megálló telik, 2. bánya áramhiánynál, új fatelep / 2. gyár, ha a város megáll):
-  kezdőtőke 50 000 (`App.tsx`), 5000 lakos a ~800–960. játéknapon (1× sebességen ~15 perc a botnak,
-  embernek kb. 30–40), a pénz mélypontja ~28 000. Futtatás: `node bot.cjs <seed> <napok> <tőke>`.
+  kezdőtőke 50 000 (`App.tsx`). 2026-11 (a teli rakomány holtpontjának javítása + a bot javítása után: a 2.
+  fatelepet hivatkozás szerint hasonlította, gyakran ugyanazt választotta): 6 térképből 6 eléri az 5000 lakost a
+  648–791. napon (3: 648, 4: 651, 5: 666, 7: 791, 9: 699, 11: 734), csőd nélkül. Embernek kb. 2× ennyi.
+  Futtatás: `node bot.cjs <seed> <napok> <tőke>`; a `botd.ts` járatonkénti bontást ad (`diag`).
 - BEÁLLÍTÁSOK + VISSZAJELZÉS: a Játék panelen (M, ⚙️) grafika, kamera-érzékenység, „Görgővel az egér felé
   zoomol” (`cameraSettings.ts` `setZoomToCursor`, localStorage `tb.zoomToCursor`, a `CameraRig` `zoomToCursor`).
   Visszajelzés (`src/ui/feedback.ts` `feedbackUrl`): GitHub issue (issues/new) előre kitöltve a játék
@@ -492,7 +496,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #114 (a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik, `TIP_CLEAR`, a faltól 0,3-ra halad).
 - Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
 - Folyamatban (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
-  az erőmű nem vesz át olajat.
+  az erőmű nem vesz át olajat; a teli rakományra várakozó kamion holtpontjának javítása (`FULL_LOAD_YIELD`).
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

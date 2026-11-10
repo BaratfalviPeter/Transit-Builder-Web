@@ -301,6 +301,8 @@ const TRAIN_ACCEL = 0.8;
 const TRAIN_DECEL = 1.6;
 const TRAIN_A_LAT = 4;
 /** Seconds a train stands at a stop (un)loading. */
+/** A truck waiting for a full load gives up (goes) once one queued behind it has waited this long (s). */
+const FULL_LOAD_YIELD = 4;
 const TRAIN_STOP_TIME = 4;
 /**
  * Seconds a wagon fills under an oil depot's gantry before the train pulls
@@ -895,7 +897,11 @@ export class TransportSim {
       if (t.state === 'stop') {
         t.timer -= dt;
         if (t.timer > 0) continue;
-        if (this.waitForLoad(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn)) {
+        // Full load — unless a truck queued behind it has been waiting on it a while:
+        // then it goes with what it has (else e.g. the truck bringing the factory's
+        // planks could never get to the stop, and the goods truck would wait forever).
+        const blocking = this.trucks.some((q) => q !== t && q.waitFor === t.id && q.blocked > FULL_LOAD_YIELD);
+        if (!blocking && this.waitForLoad(t, TRUCK_CAPACITY, line, here, byId, map, prod, earn)) {
           t.timer = 1; // waiting to fill up
           continue;
         }

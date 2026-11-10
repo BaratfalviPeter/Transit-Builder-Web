@@ -11,7 +11,11 @@ import {
   OIL_BAY_PRICE,
   OIL_DEPOT_CAPACITY,
   OIL_TRACK_PRICE,
-  isOilDepot,
+  isOilLot,
+  isRefinery,
+  MAX_REFINERY_UNITS,
+  REFINERY_RATE,
+  REFINERY_UNIT_PRICE,
   oilUpgradeProblem,
   selection,
   useGame,
@@ -57,7 +61,7 @@ export function IndustryPanel({ anchor }: { anchor: readonly [number, number] })
   const terrain = useTerrainStore();
   const prod = useInteriorStore().production;
   useProductionVersion();
-  const oil = (map.stations ?? []).find((s) => isOilDepot(s) && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1]);
+  const oil = (map.stations ?? []).find((s) => isOilLot(s) && s.anchor[0] === anchor[0] && s.anchor[1] === anchor[1]);
   if (oil) return <OilDepotPanel st={oil} />;
   const type = map.cells[anchor[0]][anchor[1]];
   const fixed = FIXED_PRODUCTION[type];
@@ -165,7 +169,14 @@ function OilDepotPanel({ st }: { st: Station }) {
   useProductionVersion();
   const bays = st.bays ?? 2;
   const tracks = st.tracks ?? 1;
-  const oil = Math.floor(prod.stationStock(st.id).oil ?? 0);
+  const refinery = isRefinery(st);
+  const units = st.units ?? 1;
+  const oil = Math.floor((refinery ? prod.inboundStock(st.id).oil : prod.stationStock(st.id).oil) ?? 0);
+  const fuel = Math.floor(prod.stationStock(st.id).fuel ?? 0);
+  const addUnit = () => {
+    if (units >= MAX_REFINERY_UNITS || !game.canAfford(REFINERY_UNIT_PRICE)) return;
+    if (terrain.addRefineryUnit(st.id)) game.spend(REFINERY_UNIT_PRICE);
+  };
   const grow = (b: number, t: number, price: number) => {
     if (oilUpgradeProblem(map, st, b, t) || !game.canAfford(price)) return;
     const next = terrain.upgradeOilDepot(st.id, b, t);
@@ -179,14 +190,50 @@ function OilDepotPanel({ st }: { st: Station }) {
   ];
   return (
     <div className="ind">
-      <div className="ind__title">🛢️ Olajdepó</div>
-      <div className="ind__row">
-        <span>Tartályok</span>
-        <span className={oil >= OIL_DEPOT_CAPACITY ? 'ind__warn' : 'ind__dim'}>
-          🛢️ {oil} / {OIL_DEPOT_CAPACITY}
-        </span>
-      </div>
+      <div className="ind__title">{refinery ? '🏭 Finomító' : '🛢️ Olajdepó'}</div>
+      {refinery ? (
+        <>
+          <div className="ind__row" title="Kamionnal / vonattal hozott olaj, feldolgozásra vár">
+            <span>Beérkezett olaj</span>
+            <span className="ind__dim">🛢️ {oil}</span>
+          </div>
+          <div className="ind__row" title="Elszállításra vár (a város veszi meg)">
+            <span>Benzin</span>
+            <span className={fuel >= OIL_DEPOT_CAPACITY ? 'ind__warn' : 'ind__dim'}>
+              ⛽ {fuel} / {OIL_DEPOT_CAPACITY}
+            </span>
+          </div>
+          <div className="ind__row">
+            <span>Feldolgozás</span>
+            <span className="ind__dim">max. {Math.round(REFINERY_RATE * units * 30)} / hó</span>
+          </div>
+        </>
+      ) : (
+        <div className="ind__row">
+          <span>Tartályok</span>
+          <span className={oil >= OIL_DEPOT_CAPACITY ? 'ind__warn' : 'ind__dim'}>
+            🛢️ {oil} / {OIL_DEPOT_CAPACITY}
+          </span>
+        </div>
+      )}
       <div className="ind__head">Bővítés</div>
+      {refinery && (
+        <div className="ind__stop">
+          <div className="ind__row">
+            <span>🗼 Lepárlóoszlop</span>
+            <span className="ind__dots">
+              {'●'.repeat(units)}
+              <span className="ind__dots--off">{'●'.repeat(MAX_REFINERY_UNITS - units)}</span>
+            </span>
+          </div>
+          <div className="ind__roles">
+            <button type="button" disabled={units >= MAX_REFINERY_UNITS || !game.canAfford(REFINERY_UNIT_PRICE)} onClick={addUnit}>
+              {units >= MAX_REFINERY_UNITS ? 'Elérte a maximumot' : `+ 1 · $${REFINERY_UNIT_PRICE.toLocaleString('hu-HU')}`}
+            </button>
+          </div>
+          {units < MAX_REFINERY_UNITS && !game.canAfford(REFINERY_UNIT_PRICE) && <div className="ind__dim">Nincs elég pénz</div>}
+        </div>
+      )}
       {rows.map((r) => {
         const full = r.n >= r.max;
         const why = full ? null : oilUpgradeProblem(map, st, r.b, r.t);
@@ -211,7 +258,7 @@ function OilDepotPanel({ st }: { st: Station }) {
         );
       })}
       <div className="panel__hint">
-        Több töltőállásnál egyszerre több kamion tölthet, több vágánynál egyszerre több vonat (a vágányokat váltóval kösd össze). A telek kiszélesedik: a kamionos
+        {refinery && 'Minden oszlop több olajat dolgoz fel. '}Több töltőállásnál egyszerre több kamion tölthet, több vágánynál egyszerre több vonat (a vágányokat váltóval kösd össze). A telek kiszélesedik: a kamionos
         oldal az egyik, a vasúti a másik irányba, ott szabad, sík terület kell.
       </div>
     </div>

@@ -36,9 +36,14 @@ export const DEMAND: Readonly<Partial<Record<Item, { base: number; perLevel: num
   // Sized to a few trucks a month (one makes ~20–60 units a month).
   goods: { base: 40, perLevel: 2 },
   plank: { base: 20, perLevel: 1 },
+  fuel: { base: 30, perLevel: 1.5 },
 };
 /** The items the city takes (its stops' ACCEPTS). */
 export const CITY_ITEMS = Object.keys(DEMAND) as Item[];
+/** The items its growth depends on (the mean supply); fuel only speeds it up (FUEL_BONUS). */
+export const GROWTH_ITEMS: readonly Item[] = ['goods', 'plank'];
+/** Growth bonus when fully supplied with fuel (×(1 + FUEL_BONUS × supply)). */
+export const FUEL_BONUS = 0.5;
 /** Price factor for deliveries beyond this month's demand. */
 export const OVERSUPPLY_PRICE = 0.25;
 /**
@@ -265,8 +270,8 @@ export class CityDevelopment {
   private meanSatisfaction(): number {
     if (!this.satisfaction) return 0;
     let s = 0;
-    for (const it of CITY_ITEMS) s += this.satisfaction[it] ?? 0;
-    return s / CITY_ITEMS.length;
+    for (const it of GROWTH_ITEMS) s += this.satisfaction[it] ?? 0;
+    return s / GROWTH_ITEMS.length;
   }
 
   private growthMode(): CitySnapshot['growth'] {
@@ -278,7 +283,10 @@ export class CityDevelopment {
   private growthPerDay(): number {
     const mode = this.growthMode();
     if (mode === 'free') return GROWTH_BASE;
-    return mode === 'supplied' ? GROWTH_SUPPLIED * this.meanSatisfaction() : 0;
+    if (mode !== 'supplied') return 0;
+    // Fuel isn't needed to grow, but a city that gets it grows faster.
+    const fuel = this.satisfaction?.fuel ?? 0;
+    return GROWTH_SUPPLIED * this.meanSatisfaction() * (1 + FUEL_BONUS * fuel);
   }
 
   /** Month over: what was delivered against what was wanted. */

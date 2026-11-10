@@ -16,6 +16,7 @@
 import { CellType, cornerHeightAt, type TerrainMap } from './terrain';
 import type { Station } from './stations';
 import type { DepotRot } from './depot';
+import type { Item } from './interior';
 
 // ---------------------------------------------------------------- layout (design units)
 
@@ -116,6 +117,26 @@ export const OIL_DEPOT_CAPACITY = 400;
 export const OIL_H = 6;
 
 export const isOilDepot = (s: Station): boolean => s.kind === 'oil';
+
+/**
+ * THE REFINERY (finomító) is built on the same lot as the oil depot — the same
+ * truck loading U and rail tracks under a gantry, the same upgrades — with
+ * distillation columns in place of the tank farm: oil comes in by truck / train,
+ * petrol goes out the same way (production.ts turns it, REFINERY_RATE per column).
+ */
+export const isRefinery = (s: Station): boolean => s.kind === 'refinery';
+/** A stop on such a lot (oil depot or refinery). */
+export const isOilLot = (s: Station): boolean => s.kind === 'oil' || s.kind === 'refinery';
+export const REFINERY_PRICE = 15000;
+/** One more distillation column (more petrol a second). */
+export const REFINERY_UNIT_PRICE = 6000;
+export const MAX_REFINERY_UNITS = 3;
+/** Petrol a second per column (from as much oil). */
+export const REFINERY_RATE = 0.6;
+/** What the lot gives out: the depot its oil, the refinery its petrol. */
+export const lotProduct = (s: Station): Item => (isRefinery(s) ? 'fuel' : 'oil');
+/** What the lot takes in (the refinery: oil; the depot: nothing — its oil comes by pipe). */
+export const lotAccepts = (s: Station): Item[] => (isRefinery(s) ? ['oil'] : []);
 
 /** Lot size in cells: W along u (the model's x), H across. */
 export function oilSize(st: Pick<Station, 'bays' | 'tracks'>): { w: number; h: number; layout: OilLayout } {
@@ -225,9 +246,9 @@ export function oilCenter(st: Station): [number, number] {
   return oilToWorld(st, w / 2, h / 2);
 }
 
-/** The oil depot covering (x, z), or null. */
+/** The oil depot / refinery covering (x, z), or null. */
 export function oilDepotAt(map: TerrainMap, x: number, z: number): Station | null {
-  for (const s of map.stations ?? []) if (isOilDepot(s) && oilCells(s).some((c) => c.x === x && c.z === z)) return s;
+  for (const s of map.stations ?? []) if (isOilLot(s) && oilCells(s).some((c) => c.x === x && c.z === z)) return s;
   return null;
 }
 

@@ -11,7 +11,7 @@
  */
 
 import { isDepot } from './depot';
-import { OIL_START_BAYS, OIL_START_TRACKS, isOilDepot } from './oilDepot';
+import { OIL_START_BAYS, OIL_START_TRACKS, isOilLot, isRefinery } from './oilDepot';
 import { LineWalker } from './railNet';
 import { stopKind } from './stations';
 import { CellType, type TerrainMap } from './terrain';
@@ -25,6 +25,9 @@ export const UPKEEP = {
   truckStop: 25,
   depot: 300,
   oilDepot: 350,
+  refinery: 500,
+  /** Each distillation column beyond the first. */
+  refineryUnit: 150,
   /** Each truck bay / rail track beyond what a new depot has. */
   oilBay: 40,
   oilTrack: 60,
@@ -54,13 +57,21 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
   for (let x = 0; x < map.size; x++) for (let z = 0; z < map.size; z++) if (map.cells[x][z] === CellType.Road) road++;
   let rail = 0;
   for (const e of map.railNet?.edges ?? []) rail += new LineWalker(e.pts).total;
-  let stations = 0, stops = 0, depots = 0, oil = 0, oilExtra = 0;
+  let stations = 0, stops = 0, depots = 0, oil = 0, oilExtra = 0, refineries = 0, refExtra = 0;
   for (const s of map.stations ?? []) {
     if (isDepot(s)) depots++;
-    else if (isOilDepot(s)) {
-      oil++;
-      oilExtra += Math.max(0, (s.bays ?? OIL_START_BAYS) - OIL_START_BAYS) * UPKEEP.oilBay;
-      oilExtra += Math.max(0, (s.tracks ?? OIL_START_TRACKS) - OIL_START_TRACKS) * UPKEEP.oilTrack;
+    else if (isOilLot(s)) {
+      // The lot's extra bays / tracks, and a refinery's extra columns.
+      const extra =
+        Math.max(0, (s.bays ?? OIL_START_BAYS) - OIL_START_BAYS) * UPKEEP.oilBay +
+        Math.max(0, (s.tracks ?? OIL_START_TRACKS) - OIL_START_TRACKS) * UPKEEP.oilTrack;
+      if (isRefinery(s)) {
+        refineries++;
+        refExtra += extra + Math.max(0, (s.units ?? 1) - 1) * UPKEEP.refineryUnit;
+      } else {
+        oil++;
+        oilExtra += extra;
+      }
     }
     else if (stopKind(s) === 'truck') stops++;
     else stations++;
@@ -85,6 +96,7 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
     { label: 'Kamionrakodó', count: stops, unit: 'db', cost: stops * UPKEEP.truckStop },
     { label: 'Raktár', count: depots, unit: 'db', cost: depots * UPKEEP.depot },
     { label: 'Olajdepó', count: oil, unit: 'db', cost: oil * UPKEEP.oilDepot + oilExtra },
+    { label: 'Finomító', count: refineries, unit: 'db', cost: refineries * UPKEEP.refinery + refExtra },
     { label: 'Olajvezeték', count: map.pipes?.length ?? 0, unit: 'cella', cost: (map.pipes?.length ?? 0) * UPKEEP.pipeCell },
     { label: 'Jelző', count: signals, unit: 'db', cost: signals * UPKEEP.signal },
     { label: 'Lámpa / körforgalom', count: lights + rounds, unit: 'db', cost: lights * UPKEEP.light + rounds * UPKEEP.roundabout },

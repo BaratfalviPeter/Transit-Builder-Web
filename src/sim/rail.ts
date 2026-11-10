@@ -25,7 +25,7 @@ import { EMPTY_NET, LineWalker, railIndex, TRACK_HALF, type RailNet } from './ra
 import { CellType, type TerrainMap } from './terrain';
 import { stationGeom, stopKind, type Station } from './stations';
 import { depotTracks, isDepot } from './depot';
-import { isOilDepot, oilTracks } from './oilDepot';
+import { isOilLot, oilTracks } from './oilDepot';
 import { laneAt, type Lane } from './lane';
 import { signalFaces, signalsOf } from './signals';
 
@@ -149,7 +149,7 @@ export function locate(net: RailNet, x: number, z: number, dx: number, dz: numbe
 /** The platform segments [ax, az, bx, bz] of a rail stop (none for a truck stop). */
 export function platforms(st: Station): number[][] {
   if (isDepot(st)) return depotTracks(st);
-  if (isOilDepot(st)) return oilTracks(st);
+  if (isOilLot(st)) return oilTracks(st);
   if (stopKind(st) !== 'rail') return [];
   return [stationGeom(st.anchor, st.side, st.ext).trackPts];
 }

@@ -41,6 +41,7 @@ export const WAGON_FOR: Record<Item, WagonKind> = {
   crushed: 'hopper',
   oil: 'tank',
   goods: 'box',
+  fuel: 'tank',
   log: 'flat',
   plank: 'flat',
 };

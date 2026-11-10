@@ -223,3 +223,15 @@ Most 121×121. Kiadáskor választható méret: kicsi 121, közepes ~180, nagy ~
 - Vonattöltés „előreállós”: a vonat kocsinként gördül a töltőkarok alá, a vágány hossza nem számít.
 - Később ugyanez a többi iparágra (garatok a bányánál, rakodók a fatelepnél).
 
+
+## Finomító melléktermékei (megbeszélve, 2026-11)
+
+A finomító most CSAK benzint gyárt (a városba megy). A valóságban a lepárlóoszlop egyszerre több frakciót ad;
+ezek akkor jöhetnek, ha lesz átvevőjük (különben csak felhalmozódnak):
+- **Fűtőolaj / nehézolaj** → erőmű (az erőmű ma is elfogad olajat; jó melléktermék-lánc lenne).
+- **Dízel** → kamion- és vonatflotta üzemanyaga, vagy új ipar (mezőgazdaság, bánya).
+- **Kerozin** → reptér, ha egyszer lesz.
+- **Bitumen** → útépítés alapanyaga az úttípusoknál (főút, autópálya).
+- Ha több termék lesz: a finomító csak akkor dolgozik teljes gőzzel, ha mindegyiket elviszik.
+- A finomító és a későbbi feldolgozó egységek lerakhatók, paraméteres modellel bővülnek (mint az olajdepó);
+  a nyersanyag-lelőhelyek (bánya, fúró, erdő) maradnak fixek a térképen.

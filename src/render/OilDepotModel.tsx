@@ -76,6 +76,13 @@ export interface OilDepotModelProps {
    * (the model viewer) they cycle on a timer.
    */
   status?: () => OilDepotStatus;
+  /**
+   * What stands in the middle: the oil depot's tank farm, or a refinery's
+   * distillation columns (`units`, 1–3) with a flare stack — the rest of the
+   * lot (truck loading, rail gantry, gate, office) is the same.
+   */
+  plant?: 'depot' | 'refinery';
+  units?: number;
 }
 
 export interface OilDepotStatus {
@@ -139,6 +146,8 @@ Object.values(M).forEach((m) => patchCloudShadows(m));
 
 /** Lit windows / beacons: unlit, so they read as glowing. */
 const GLOW = {
+  flame: new THREE.MeshBasicMaterial({ color: '#ff8a2b', toneMapped: false, transparent: true, opacity: 0.9 }),
+  flameCore: new THREE.MeshBasicMaterial({ color: '#ffe27a', toneMapped: false }),
   window: new THREE.MeshBasicMaterial({ color: '#ffd36b', toneMapped: false }),
   beacon: new THREE.MeshBasicMaterial({ color: '#ffb347', toneMapped: false }),
   red: new THREE.MeshBasicMaterial({ color: '#ff3a2a', toneMapped: false }),
@@ -289,6 +298,8 @@ export function OilDepotModel({
   railTracks = 1,
   noTracks = false,
   status,
+  plant = 'depot',
+  units = 1,
 }: OilDepotModelProps) {
   const bays = Math.max(1, Math.min(MAX_TRUCK_BAYS, Math.round(truckBays)));
   const tracks = Math.max(1, Math.min(MAX_RAIL_TRACKS, Math.round(railTracks)));
@@ -303,9 +314,9 @@ export function OilDepotModel({
         <Ground x0={x0} x1={x1} />
         <RailSiding rail={rail} noTracks={noTracks} />
         <LoadingGantry rail={rail} phase={phase} />
-        <TankFarm />
+        {plant === 'refinery' ? <Refinery units={units} phase={phase} /> : <TankFarm />}
         <PumpHouse phase={phase} />
-        <Piping truck={truck} />
+        <Piping truck={truck} refinery={plant === 'refinery' ? units : 0} />
         <TruckLane truck={truck} phase={phase} status={status} />
         <Office />
         <Yard />
@@ -655,6 +666,378 @@ function Catwalk({ a, b }: { a: V3; b: V3 }) {
   );
 }
 
+// --- Refinery (the same lot: distillation columns in place of the tank farm) -------------------
+
+/** The process area (where the depot's bund is). */
+const PAD = { x0: -0.95, x1: 0.2, z0: -1.45, z1: -0.2 };
+/** Distillation columns, the first always there, the others with the upgrades. */
+const COLUMNS: Array<{ x: number; z: number; r: number; h: number; ladder: number }> = [
+  { x: -0.37, z: -0.84, r: 0.12, h: 1.5, ladder: Math.PI / 2 },
+  { x: -0.1, z: -1.2, r: 0.095, h: 1.15, ladder: Math.PI / 2 },
+  { x: -0.63, z: -1.2, r: 0.1, h: 1.28, ladder: -Math.PI / 2 },
+];
+/** A slim stripper column beside the main one (always there). */
+const STRIPPER = { x: -0.17, z: -0.8, r: 0.05, h: 0.85, ladder: Math.PI / 2 };
+/** The fired heater (furnace) that heats the crude before the columns. */
+const FURNACE = { x0: -0.9, x1: -0.62, z0: -0.78, z1: -0.5, h: 0.24 };
+const FLARE = { x: -0.84, z: -1.34, h: 1.85 };
+const RACK_Z = -0.32;
+const colBase = Y0 + 0.03;
+
+/** Ladder rungs of a column (instanced). */
+function columnRungs(c: { x: number; z: number; r: number; h: number; ladder: number }): Inst[] {
+  const out: Inst[] = [];
+  const nx = Math.sin(c.ladder), nz = Math.cos(c.ladder);
+  const d = c.r + 0.02;
+  for (let y = colBase + 0.08; y < colBase + c.h - 0.02; y += 0.055) out.push(rbox([c.x + nx * d, y, c.z + nz * d], [0.045, 0.006, 0.006], [0, c.ladder, 0]));
+  return out;
+}
+
+function Refinery({ units, phase }: { units: number; phase: number }) {
+  const n = Math.max(1, Math.min(COLUMNS.length, units));
+  const cols = COLUMNS.slice(0, n);
+  const rungs = useMemo(() => [...COLUMNS.slice(0, n), STRIPPER].flatMap(columnRungs), [n]);
+  const { x0, x1, z0, z1 } = PAD;
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  return (
+    <group>
+      {/* Process pad: darker floor with a drain line, a low curb */}
+      <Box p={[cx, 0.103, cz]} s={[x1 - x0, 0.006, z1 - z0]} m={M.joint} />
+      <Box p={[cx, 0.107, -0.42]} s={[x1 - x0 - 0.1, 0.004, 0.02]} m={M.dark} />
+      <Box p={[cx, Y0 + 0.025, z0 + 0.0175]} s={[x1 - x0, 0.05, 0.035]} m={M.curb} />
+      <Box p={[cx, Y0 + 0.025, z1 - 0.0175]} s={[x1 - x0, 0.05, 0.035]} m={M.curb} />
+      <Box p={[x0 + 0.0175, Y0 + 0.025, cz]} s={[0.035, 0.05, z1 - z0]} m={M.curb} />
+      <Box p={[x1 - 0.0175, Y0 + 0.025, cz]} s={[0.035, 0.05, z1 - z0]} m={M.curb} />
+      {cols.map((c, i) => (
+        <Column key={i} {...c} big={i === 0} />
+      ))}
+      <Column {...STRIPPER} big={false} />
+      <Batch items={rungs} m={M.yellow} cast={false} />
+      <Furnace phase={phase} />
+      <Exchangers />
+      <RefluxDrum />
+      <Pumps cols={cols} />
+      <PipeRack cols={cols} />
+      <Flare phase={phase} />
+    </group>
+  );
+}
+
+/**
+ * A distillation column: skirt, dark insulated foot, body with rust bands and
+ * side nozzles, ring platforms with railings, ladder rails, a domed top with a
+ * vapour nozzle and a small davit.
+ */
+function Column({ x, z, r, h, ladder, big }: { x: number; z: number; r: number; h: number; ladder: number; big: boolean }) {
+  const top = colBase + h;
+  const nx = Math.sin(ladder), nz = Math.cos(ladder);
+  const tx = Math.cos(ladder), tz = -Math.sin(ladder);
+  const d = r + 0.02;
+  const decks = big ? [0.32, 0.6, 0.86, 1.0] : [0.45, 0.8, 1.0];
+  // Nozzles round the body (not on the ladder side).
+  const nozzles: Array<[number, number]> = big
+    ? [
+        [0.22, ladder + Math.PI],
+        [0.5, ladder + Math.PI * 0.7],
+        [0.72, ladder - Math.PI * 0.6],
+      ]
+    : [[0.35, ladder + Math.PI]];
+  return (
+    <group>
+      <Cyl p={[x, Y0 + 0.02, z]} r={r + 0.035} h={0.04} m={M.slab} seg={12} />
+      <Cyl p={[x, colBase + 0.06, z]} r={r + 0.01} h={0.12} m={M.dark} seg={14} />
+      <Cyl p={[x, colBase + h / 2 + 0.06, z]} r={r} h={h - 0.12} m={M.tank} seg={14} />
+      {[0.16, 0.38, 0.6, 0.82].map((f) => (
+        <Cyl key={f} p={[x, colBase + h * f, z]} r={r + 0.006} h={0.04} m={M.rust} seg={14} open />
+      ))}
+      <mesh material={M.tankRoof} position={[x, top, z]} castShadow>
+        <sphereGeometry args={[r, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
+      </mesh>
+      <Cyl p={[x, top + r * 0.9, z]} r={0.018} h={0.06} m={M.steel} seg={8} />
+      {big && (
+        <group>
+          <Box p={[x - tx * (r * 0.4), top + r * 0.7 + 0.08, z - tz * (r * 0.4)]} s={[0.012, 0.16, 0.012]} m={M.yellow} />
+          <Box p={[x - tx * (r * 0.4) + tx * 0.05, top + r * 0.7 + 0.16, z - tz * (r * 0.4) + tz * 0.05]} s={[Math.abs(tx) * 0.1 + 0.012, 0.012, Math.abs(tz) * 0.1 + 0.012]} m={M.yellow} />
+        </group>
+      )}
+      {nozzles.map(([f, a]) => (
+        <group key={f} position={[x + Math.sin(a) * (r + 0.03), colBase + h * f, z + Math.cos(a) * (r + 0.03)]} rotation={[0, a, 0]}>
+          <mesh material={M.steel} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.016, 0.016, 0.06, 8]} />
+          </mesh>
+          <mesh material={M.rust} position={[0, 0, 0.032]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.024, 0.024, 0.01, 8]} />
+          </mesh>
+        </group>
+      ))}
+      {/* Ring platforms with railings */}
+      {decks.map((f) => (
+        <group key={f}>
+          <Cyl p={[x, colBase + h * f - (f === 1 ? 0.02 : 0), z]} r={r + 0.055} h={0.012} m={M.dark} seg={14} />
+          <mesh material={M.yellow} position={[x, colBase + h * f + 0.055 - (f === 1 ? 0.02 : 0), z]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[r + 0.05, 0.005, 3, 14]} />
+          </mesh>
+        </group>
+      ))}
+      {[-0.022, 0.022].map((o) => (
+        <group key={o} position={[x + nx * d + tx * o, colBase + h / 2 + 0.03, z + nz * d + tz * o]} rotation={[0, ladder, 0]}>
+          <Box p={[0, 0, 0]} s={[0.007, h + 0.06, 0.007]} m={M.yellow} />
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** The fired heater: a box with a brick-red firebox band, burner doors, two stacks with smoke. */
+function Furnace({ phase }: { phase: number }) {
+  const { x0, x1, z0, z1, h } = FURNACE;
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const w = x1 - x0, dd = z1 - z0;
+  const stacks: Array<[number, number]> = [
+    [cx - w * 0.22, cz],
+    [cx + w * 0.22, cz],
+  ];
+  return (
+    <group>
+      <Box p={[cx, Y0 + 0.02, cz]} s={[w + 0.04, 0.04, dd + 0.04]} m={M.slab} />
+      <Box p={[cx, Y0 + 0.04 + h / 2, cz]} s={[w, h, dd]} m={M.wallDark} cast />
+      <Box p={[cx, Y0 + 0.09, cz]} s={[w + 0.006, 0.07, dd + 0.006]} m={M.brick} />
+      <Box p={[cx, Y0 + 0.05 + h, cz]} s={[w + 0.02, 0.025, dd + 0.02]} m={M.dark} cast />
+      {/* Burner doors (glowing) on the front */}
+      {[-0.08, 0, 0.08].map((o) => (
+        <Box key={o} p={[cx + o, Y0 + 0.09, z1 + 0.005]} s={[0.035, 0.035, 0.006]} m={GLOW.flame} />
+      ))}
+      {/* Convection section: a narrower box on top, then the stacks */}
+      <Box p={[cx, Y0 + 0.06 + h + 0.06, cz]} s={[w * 0.7, 0.1, dd * 0.6]} m={M.wall} cast />
+      {stacks.map(([sx, sz], i) => (
+        <group key={i}>
+          <Cyl p={[sx, Y0 + h + 0.35, sz]} r={0.028} rTop={0.022} h={0.5} m={M.rust} seg={8} />
+          <Cyl p={[sx, Y0 + h + 0.6, sz]} r={0.03} h={0.02} m={M.dark} seg={8} />
+          <Steam origin={[sx, Y0 + h + 0.62, sz]} count={4} rise={0.6} spread={0.12} size={0.07} phase={phase + i * 1.3} color="#d9dbde" />
+        </group>
+      ))}
+      {/* Inspection ladder up the side */}
+      <Box p={[x0 - 0.01, Y0 + 0.04 + h / 2, cz - 0.05]} s={[0.006, h, 0.006]} m={M.yellow} />
+      <Box p={[x0 - 0.01, Y0 + 0.04 + h / 2, cz + 0.05]} s={[0.006, h, 0.006]} m={M.yellow} />
+      {/* Hot line from the heater to the main column's foot */}
+      <PipeRun
+        pts={[
+          [x1, Y0 + 0.16, cz],
+          [COLUMNS[0].x - COLUMNS[0].r - 0.03, Y0 + 0.16, cz],
+          [COLUMNS[0].x - COLUMNS[0].r - 0.03, Y0 + 0.16, COLUMNS[0].z],
+        ]}
+        r={0.022}
+        m={M.rust}
+      />
+    </group>
+  );
+}
+
+/** A bank of shell-and-tube heat exchangers on saddles. */
+function Exchangers() {
+  const xs = [0.075, 0.155];
+  return (
+    <group>
+      {xs.map((x, i) => (
+        <group key={x}>
+          {[0, 1].map((k) => {
+            const y = Y0 + 0.07 + k * 0.11;
+            return (
+              <group key={k}>
+                <mesh material={k ? M.steel : M.tank} position={[x, y, -0.8]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                  <cylinderGeometry args={[0.04, 0.04, 0.34, 10]} />
+                </mesh>
+                <mesh material={M.rust} position={[x, y, -0.97]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.046, 0.046, 0.03, 10]} />
+                </mesh>
+                <mesh material={M.rust} position={[x, y, -0.63]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.046, 0.046, 0.03, 10]} />
+                </mesh>
+              </group>
+            );
+          })}
+          {[-0.9, -0.7].map((z) => (
+            <Box key={z} p={[x, Y0 + 0.08, z]} s={[0.09, 0.16, 0.03]} m={M.girder} />
+          ))}
+          <Pipe from={[x, Y0 + 0.18 + 0.04, -0.75 + i * 0.05]} to={[x, Y0 + 0.43, -0.75 + i * 0.05]} r={0.012} m={M.pipe} />
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** The reflux drum, on saddles by the main column. */
+function RefluxDrum() {
+  return (
+    <group position={[-0.12, Y0 + 0.11, -0.56]}>
+      <mesh material={M.tank} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <capsuleGeometry args={[0.055, 0.2, 4, 10]} />
+      </mesh>
+      {[-0.08, 0.08].map((x) => (
+        <Box key={x} p={[x, -0.06, 0]} s={[0.03, 0.06, 0.09]} m={M.slab} />
+      ))}
+      <Cyl p={[-0.12, 0.0, 0]} r={0.058} h={0.012} m={M.rust} seg={10} open />
+      <Cyl p={[0.0, 0.07, 0]} r={0.014} h={0.04} m={M.steel} seg={6} />
+    </group>
+  );
+}
+
+/** A pump (motor + casing on a skid) at each column's foot. */
+function Pumps({ cols }: { cols: Array<{ x: number; z: number; r: number }> }) {
+  return (
+    <group>
+      {cols.map((c, i) => {
+        // Beside each column's foot, clear of its neighbours.
+        const x = i === 0 ? c.x + c.r + 0.09 : c.x + (i === 1 ? -1 : 1) * (c.r + 0.09);
+        const z = i === 0 ? c.z - 0.18 : c.z + 0.1;
+        return (
+          <group key={i}>
+            <Box p={[x, Y0 + 0.012, z]} s={[0.1, 0.024, 0.05]} m={M.girder} />
+            <mesh material={M.blue} position={[x - 0.02, Y0 + 0.05, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.022, 0.022, 0.06, 8]} />
+            </mesh>
+            <Box p={[x + 0.032, Y0 + 0.05, z]} s={[0.03, 0.045, 0.04]} m={M.red} />
+            <Pipe from={[x + 0.032, Y0 + 0.075, z]} to={[x + 0.032, Y0 + 0.16, z]} r={0.01} m={M.pipe} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/** A two-level pipe rack along the front of the pad; vapour lines drop in from the column tops. */
+function PipeRack({ cols }: { cols: Array<{ x: number; z: number; r: number; h: number }> }) {
+  const posts = [-0.85, -0.55, -0.25, 0.05, 0.17];
+  const xa = posts[0] - 0.05, xb = posts[posts.length - 1] + 0.04;
+  const levels = [Y0 + 0.3, Y0 + 0.45];
+  const lines: Array<[number, number, number, THREE.Material]> = [
+    [0, -0.045, 0.02, M.rust],
+    [0, 0, 0.024, M.pipe],
+    [0, 0.045, 0.018, M.steel],
+    [1, -0.04, 0.026, M.pipe],
+    [1, 0.01, 0.02, M.rust],
+    [1, 0.05, 0.016, M.yellow],
+  ];
+  return (
+    <group>
+      {posts.map((x) => (
+        <group key={x}>
+          <Box p={[x, Y0 + 0.24, RACK_Z - 0.07]} s={[0.025, 0.48, 0.025]} m={M.girder} cast />
+          <Box p={[x, Y0 + 0.24, RACK_Z + 0.07]} s={[0.025, 0.48, 0.025]} m={M.girder} cast />
+          {levels.map((y) => (
+            <Box key={y} p={[x, y - 0.015, RACK_Z]} s={[0.03, 0.02, 0.17]} m={M.girder} />
+          ))}
+          <Box p={[x, Y0 + 0.012, RACK_Z]} s={[0.05, 0.024, 0.2]} m={M.slab} />
+        </group>
+      ))}
+      {levels.map((y) =>
+        [-0.07, 0.07].map((dz) => <Box key={`${y}${dz}`} p={[(xa + xb) / 2, y - 0.015, RACK_Z + dz]} s={[xb - xa, 0.018, 0.018]} m={M.girder} />),
+      )}
+      {lines.map(([lv, dz, r, m], i) => (
+        <Pipe key={i} from={[xa, levels[lv] + r, RACK_Z + dz]} to={[xb + 0.02, levels[lv] + r, RACK_Z + dz]} r={r} m={m} />
+      ))}
+      {/* Vapour lines from the column tops down to the rack */}
+      {cols.map((c, i) => {
+        const top = colBase + c.h;
+        const out = c.x + (i === 2 ? -1 : 1) * (c.r + 0.07);
+        return (
+          <PipeRun
+            key={i}
+            pts={[
+              [c.x, top + c.r * 0.9 + 0.03, c.z],
+              [c.x, top + c.r + 0.1, c.z],
+              [out, top + c.r + 0.1, c.z],
+              [out, levels[1] + 0.05, c.z],
+              [out, levels[1] + 0.05, RACK_Z - 0.04],
+            ]}
+            r={0.018}
+            m={M.rust}
+          />
+        );
+      })}
+    </group>
+  );
+}
+
+/** The flare stack: a guyed steel mast with a flickering flame on top, a small fenced yard round its foot. */
+function Flare({ phase }: { phase: number }) {
+  const flame = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime() + phase;
+    const g = flame.current;
+    if (!g) return;
+    const k = 1 + Math.sin(t * 9) * 0.12 + Math.sin(t * 23 + 1) * 0.08;
+    g.scale.set(1 + Math.sin(t * 13) * 0.08, k, 1 + Math.cos(t * 11) * 0.08);
+  });
+  const { x, z, h } = FLARE;
+  const legs: Inst[] = [0, 1, 2].map((i) => {
+    const a = (i / 3) * Math.PI * 2 + 0.4;
+    return rod([x + Math.cos(a) * 0.09, Y0, z + Math.sin(a) * 0.09], [x, Y0 + h * 0.45, z], 0.012);
+  });
+  // Lattice bracing between the legs (a few rings).
+  const ring: Inst[] = [0.12, 0.25, 0.38].flatMap((f) => {
+    const rr = 0.09 * (1 - f / 0.45);
+    return [0, 1, 2].map((i) => {
+      const a = (i / 3) * Math.PI * 2 + 0.4, b = ((i + 1) / 3) * Math.PI * 2 + 0.4;
+      return rod([x + Math.cos(a) * rr, Y0 + h * f, z + Math.sin(a) * rr], [x + Math.cos(b) * rr, Y0 + h * f, z + Math.sin(b) * rr], 0.008);
+    });
+  });
+  const fx0 = x - 0.1, fx1 = x + 0.1, fz0 = z - 0.1, fz1 = z + 0.1;
+  return (
+    <group>
+      <Cyl p={[x, Y0 + 0.02, z]} r={0.05} h={0.04} m={M.slab} seg={8} />
+      <Cyl p={[x, Y0 + h / 2, z]} r={0.02} rTop={0.015} h={h} m={M.steel} seg={8} />
+      {[0.5, 0.75, 0.95].map((f) => (
+        <Cyl key={f} p={[x, Y0 + h * f, z]} r={0.028} h={0.012} m={M.dark} seg={8} />
+      ))}
+      <Batch items={[...legs, ...ring]} m={M.girder} />
+      <Cyl p={[x, Y0 + h + 0.02, z]} r={0.028} h={0.05} m={M.dark} seg={8} />
+      <group ref={flame} position={[x, Y0 + h + 0.05, z]}>
+        <mesh material={GLOW.flame} position={[0, 0.1, 0]}>
+          <coneGeometry args={[0.07, 0.22, 7]} />
+        </mesh>
+        <mesh material={GLOW.flameCore} position={[0, 0.06, 0]}>
+          <coneGeometry args={[0.035, 0.12, 6]} />
+        </mesh>
+      </group>
+      {/* Knock-out drum feeding the flare */}
+      <mesh material={M.tank} position={[x - 0.02, Y0 + 0.05, z + 0.3]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <capsuleGeometry args={[0.04, 0.08, 4, 8]} />
+      </mesh>
+      {/* Wire fence round the foot */}
+      {(
+        [
+          [fx0, fz0, fx1, fz0],
+          [fx1, fz0, fx1, fz1],
+          [fx1, fz1, fx0, fz1],
+          [fx0, fz1, fx0, fz0],
+        ] as const
+      ).map(([ax, az, bx, bz], i) => (
+        <group key={i}>
+          <Box p={[(ax + bx) / 2, Y0 + 0.06, (az + bz) / 2]} s={[Math.abs(bx - ax) + 0.004, 0.11, Math.abs(bz - az) + 0.004]} m={M.fence} />
+          <Box p={[ax, Y0 + 0.065, az]} s={[0.008, 0.13, 0.008]} m={M.steel} />
+        </group>
+      ))}
+    </group>
+  );
+}
+
+/** The refinery's feeds: from each column's foot to the manifold. */
+function ColumnFeeds({ units }: { units: number }) {
+  const cols = COLUMNS.slice(0, Math.max(1, Math.min(COLUMNS.length, units)));
+  return (
+    <group>
+      {cols.map((c, i) => (
+        <group key={i}>
+          <Pipe from={[c.x, MAN_Y, c.z + c.r + 0.01]} to={[c.x, MAN_Y, MAN_Z]} r={0.02} m={M.pipe} />
+          <Joint p={[c.x, MAN_Y, MAN_Z]} r={0.024} m={M.pipe} />
+          <Valve p={[c.x, MAN_Y, MAN_Z - 0.06]} axis="z" />
+        </group>
+      ))}
+    </group>
+  );
+}
+
 // --- Pump house ---------------------------------------------------------------------------------
 
 /** Triangular gable prism: width w (x), height h (y), depth d (z), base y=0. */
@@ -736,10 +1119,8 @@ function PumpHouse({ phase }: { phase: number }) {
 
 // --- Piping ---------------------------------------------------------------------------------
 
-const MAN_Z = -0.12; // manifold in front of the bund
-const MAN_Y = 0.18;
-
-function Piping({ truck }: { truck: TruckLayout }) {
+/** The oil depot's pipes: the incoming pipeline into the tanks, the tank outlets to the manifold. */
+function DepotFeeds() {
   return (
     <group>
       {/* Incoming pipeline from the back edge, between the two tank columns, then a
@@ -767,6 +1148,17 @@ function Piping({ truck }: { truck: TruckLayout }) {
           <Valve p={[x, MAN_Y, -0.16]} axis="z" />
         </group>
       ))}
+    </group>
+  );
+}
+
+const MAN_Z = -0.12; // manifold in front of the bund
+const MAN_Y = 0.18;
+
+function Piping({ truck, refinery = 0 }: { truck: TruckLayout; refinery?: number }) {
+  return (
+    <group>
+      {refinery > 0 ? <ColumnFeeds units={refinery} /> : <DepotFeeds />}
       {/* Manifold along X: to the rail gantry (left) and the pump house (right) */}
       {/* One run: gantry top → riser → manifold → pump house */}
       <PipeRun
@@ -1399,4 +1791,11 @@ export function OilDepotMaxPreview({ phase = 0 }: { phase?: number }) {
 }
 export function OilDepotMixPreview({ phase = 0 }: { phase?: number }) {
   return <OilDepotModel phase={phase} truckBays={3} railTracks={2} />;
+}
+/** The refinery: the oil depot's lot with distillation columns (model viewer). */
+export function RefineryPreview({ phase = 0 }: { phase?: number }) {
+  return <OilDepotModel phase={phase} plant="refinery" units={1} />;
+}
+export function RefineryMaxPreview({ phase = 0 }: { phase?: number }) {
+  return <OilDepotModel phase={phase} plant="refinery" units={3} truckBays={MAX_TRUCK_BAYS} railTracks={MAX_RAIL_TRACKS} />;
 }

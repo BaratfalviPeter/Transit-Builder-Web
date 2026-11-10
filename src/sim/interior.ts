@@ -29,7 +29,7 @@ export const INTERIOR_SIZE = 12;
 export type Resource = 'ore' | 'tree' | 'oil';
 
 /** Goods that move through an interior (on belts, through gates). */
-export type Item = 'ore' | 'crushed' | 'log' | 'plank' | 'oil' | 'goods';
+export type Item = 'ore' | 'crushed' | 'log' | 'plank' | 'oil' | 'goods' | 'fuel';
 
 /** `value`: base delivery price per unit (see transport.ts). */
 export const ITEMS: Record<Item, { label: string; icon: string; color: string; value: number }> = {
@@ -39,6 +39,8 @@ export const ITEMS: Record<Item, { label: string; icon: string; color: string; v
   plank: { label: 'Deszka', icon: '🟫', color: '#d6a868', value: 14 },
   oil: { label: 'Olaj', icon: '🛢️', color: '#24262c', value: 20 },
   goods: { label: 'Áru', icon: '📦', color: '#e0782f', value: 30 },
+  // Refined from oil at a refinery (refinery.ts); the city buys it.
+  fuel: { label: 'Benzin', icon: '⛽', color: '#e8c547', value: 28 },
 };
 
 /** What each industry takes in through its gates (and pays for on delivery). */
@@ -47,7 +49,7 @@ export const ACCEPTS: Partial<Record<CellType, Item[]>> = {
   [CellType.PowerPlant]: ['ore', 'crushed', 'oil'],
   // The city (its stops on the city square's sides): paid by its demand
   // (CityDevelopment.ts), not stocked.
-  [CellType.CityCenter]: ['goods', 'plank'],
+  [CellType.CityCenter]: ['goods', 'plank', 'fuel'],
 };
 
 /** Industry icon (stop labels, line lists). */

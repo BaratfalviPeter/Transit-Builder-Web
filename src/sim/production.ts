@@ -26,6 +26,7 @@
 import { stationOn, stopGivesOut, stopShare, type Side, type Station } from './stations';
 import { DEPOT_CAPACITY } from './depot';
 import { pipedDepots, rigAnchor, rigShore } from './pipes';
+import { REFINERY_RATE, isRefinery, oilCenter } from './oilDepot';
 import { CellType, type TerrainMap } from './terrain';
 import {
   INTERIORS_ENABLED,
@@ -413,8 +414,30 @@ export class ProductionSim {
     }
   }
 
+  /**
+   * Refineries (see oilDepot.ts): the oil delivered to them becomes petrol in
+   * their tanks, REFINERY_RATE a second per column, while there is room; the
+   * petrol's pay distance starts at the refinery.
+   */
+  private tickRefineries(map: TerrainMap, dt: number): void {
+    for (const st of map.stations ?? []) {
+      if (!isRefinery(st)) continue;
+      const key = `r${st.id}`;
+      const budget = (this.carry.get(key) ?? 0) + REFINERY_RATE * (st.units ?? 1) * dt;
+      const inb = this.inbound.get(st.id);
+      const oil = Math.floor(inb?.oil ?? 0);
+      const n = Math.min(Math.floor(budget), oil);
+      // Unused capacity doesn't pile up while there's no oil.
+      this.carry.set(key, n > 0 ? budget - n : Math.min(budget, 1));
+      if (n <= 0 || !inb) continue;
+      const made = this.store(st.id, 'fuel', n, oilCenter(st), 0);
+      inb.oil = (inb.oil ?? 0) - made;
+    }
+  }
+
   private tickFixed(map: TerrainMap, dt: number): void {
     this.tickPipes(map, dt);
+    this.tickRefineries(map, dt);
     const byIndustry = new Map<string, Station[]>();
     for (const st of map.stations ?? []) {
       const key = `${st.anchor[0]},${st.anchor[1]}`;

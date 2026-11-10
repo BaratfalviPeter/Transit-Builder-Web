@@ -40,7 +40,7 @@ export const ITEMS: Record<Item, { label: string; icon: string; color: string; v
   oil: { label: 'Olaj', icon: '🛢️', color: '#24262c', value: 20 },
   goods: { label: 'Áru', icon: '📦', color: '#e0782f', value: 30 },
   // Refined from oil at a refinery (refinery.ts); the city buys it.
-  fuel: { label: 'Benzin', icon: '⛽', color: '#e8c547', value: 28 },
+  fuel: { label: 'Benzin', icon: '⛽', color: '#e8c547', value: 36 },
 };
 
 /** What each industry takes in through its gates (and pays for on delivery). */

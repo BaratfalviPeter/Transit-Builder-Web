@@ -24,8 +24,8 @@ export const UPKEEP = {
   railStation: 50,
   truckStop: 25,
   depot: 300,
-  oilDepot: 350,
-  refinery: 500,
+  oilDepot: 200,
+  refinery: 300,
   /** Each distillation column beyond the first. */
   refineryUnit: 150,
   /** Each truck bay / rail track beyond what a new depot has. */

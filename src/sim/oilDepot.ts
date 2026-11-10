@@ -132,7 +132,7 @@ export const REFINERY_PRICE = 15000;
 export const REFINERY_UNIT_PRICE = 6000;
 export const MAX_REFINERY_UNITS = 3;
 /** Petrol a second per column (from as much oil). */
-export const REFINERY_RATE = 0.6;
+export const REFINERY_RATE = 1;
 /** What the lot gives out: the depot its oil, the refinery its petrol. */
 export const lotProduct = (s: Station): Item => (isRefinery(s) ? 'fuel' : 'oil');
 /** What the lot takes in (the refinery: oil; the depot: nothing — its oil comes by pipe). */

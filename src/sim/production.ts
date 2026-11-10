@@ -63,7 +63,7 @@ export const FIXED_PRODUCTION: Partial<
 > = {
   [CellType.Mine]: { makes: 'ore', rate: 0.5 },
   [CellType.LumberMill]: { makes: 'plank', rate: 0.5 },
-  [CellType.OilRig]: { makes: 'oil', rate: 0.4 },
+  [CellType.OilRig]: { makes: 'oil', rate: 0.8 },
   [CellType.Factory]: { turns: { from: 'plank', to: 'goods' }, rate: 1 },
   [CellType.PowerPlant]: { burns: true, rate: 4 },
 };

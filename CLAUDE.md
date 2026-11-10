@@ -93,7 +93,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   cella mindkét végén → 6/8/10/12), `stationGeom(anchor, side, ext)`; az eszköznél Q váltja,
   +$100 / többletcella; `StationModel ext` nyújtja a peront.
 - **Termelés most FIX** (`FIXED_PRODUCTION`, `production.ts`): bánya SZÉN 0,5/s (az `ore` azonosító
-  maradt, csak a felirat „Szén”), fatelep deszka 0,5/s, olajfúró olaj 0,4/s, gyár deszka→áru max. 1/s,
+  maradt, csak a felirat „Szén”), fatelep deszka 0,5/s, olajfúró olaj 0,8/s (2026-11 hangolás: 0,4 volt, a lánc nem térült meg), gyár deszka→áru max. 1/s,
   erőmű éget max. 4/s. ÁRAM (automatikus, nincs vezeték): az erőmű a készletét egyenletesen égeti
   (`BURN_SPREAD` 30 s), 1 egység/s = `MW_PER_FUEL` 1000 MW, simítva (`POWER_TAU` 20 s) →
   `powerSupply()` / `plantPower()`; a `CityDriver` átadja (`city.setPower`). A város igénye
@@ -332,7 +332,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - OLAJ A JÁTÉKBAN (1. rész, 2026-11): OLAJDEPÓ = `Station kind 'oil'` (`src/sim/oilDepot.ts`; `rot` 0–3,
   `bays` 2, `tracks` 1 — a bővítés később), 7×6 cella (`oilSize`, a modell `oilLayout` számaiból; a modell
   `OilDepotModel` ugyanezeket importálja, cellához igazítva: bejárat `STUB.c` 1,25, első vágány −1,25).
-  Lerakás: eszköz 🛢️ (`oildepot`, $9000, fenntartás 350/hó), `TerrainStore.buildOilDepot` (Station cellák, a
+  Lerakás: eszköz 🛢️ (`oildepot`, $9000, fenntartás 200/hó), `TerrainStore.buildOilDepot` (Station cellák, a
   bejárati cella Road = `oilStub`), előnézet `OilDepotPlacement`, Q forgat. CSŐVEZETÉK (`src/sim/pipes.ts`):
   `map.pipes` cellaindexek (a cella típusát nem változtatja: víz, föld, erdő, út, sín alatt is), eszköz 〰️
   (`pipe`, kattintás a kezdőpontra, utána minden kattintás egy L-alakot rak le, Esc / jobb klikk: vége; $40
@@ -377,15 +377,21 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   units`, 1–3, `COLUMNS`; pódiumok, csonkok, szigetelt láb) + mindig: sztripper-oszlop, kemence két kéménnyel
   és füsttel (`Furnace`), hőcserélők (`Exchangers`), reflux tartály, szivattyúk, kétszintes csőhíd (`PipeRack`), fáklyatorony
   rácsos lábbal, lánggal, kerítéssel (`Flare`) — a tartálypark helyett (a felhasználó kérte, hogy részletesebb legyen). Eszköz 🏭
-  (`refinery`, $15 000, fenntartás 500 + 150 / további oszlop). Működés: kamionnal / vonattal hozott OLAJAT vesz át
+  (`refinery`, $15 000, fenntartás 300 + 150 / további oszlop). Működés: kamionnal / vonattal hozott OLAJAT vesz át
   (`lotAccepts`, `stopAccepts` a transport.ts-ben, fizet érte), `ProductionSim.tickRefineries` benzinné alakítja
-  (`REFINERY_RATE` 0,6/s oszloponként), a BENZIN (`Item 'fuel'`, ⛽, érték 28) a városba megy (`ACCEPTS[CityCenter]`,
+  (`REFINERY_RATE` 1/s oszloponként: 3 oszlop elbírja az 5. szintű fúrót), a BENZIN (`Item 'fuel'`, ⛽, érték 36) a városba megy (`ACCEPTS[CityCenter]`,
   `DEMAND.fuel` 30 + 1,5/szint). A város NÖVEKEDÉSE csak az áru + deszka ellátottságától függ (`GROWTH_ITEMS`), a
   benzin gyorsítja (`FUEL_BONUS` 0,5 × ellátottság). Panel (`OilDepotPanel`): beérkezett olaj, benzin, „+1
   lepárlóoszlop” ($6000, max. 3) + állás / vágány. A vonat a finomítóban csak akkor gurul kocsinként, ha ott tölt
   is (`lotGives`). A megállók rajza a megállólista változására is frissül (`StationsM`). Csak benzin van; a többi
   melléktermék (fűtőolaj, dízel, kerozin, bitumen) az `ötletek.md`-ben. Modellnéző: Refinery, RefineryMax. Teszt:
   scratchpad `refine.ts` (vonat: depó → finomító), `refcity.ts` (kamion: finomító → város).
+- OLAJLÁNC-HANGOLÁS (2026-11, scratchpad `oilbot.ts <seed> <napok>`: valódi térképen fúró → cső → depó → kamion →
+  finomító → kamion → város, a bot kamiont vesz, ha torlódik, oszlopot, ha a finomítóban áll az olaj). Előtte 2 év
+  alatt sem térült meg (~28 000 $ befektetés, ±0 $/hó). Most: hosszabb utakon (13 / 29 mező) átlag +2158 $/hó, 2 év
+  alatt +23 600 $ a befektetés után; nagyon rövid utakon (11 / 12) épp megtérül. A régi lánc (`bot.ts`) nem változott
+  (5-ös térkép 891. nap, 4-es 650. nap). Megjegyzés: az 5. szintű fúró olaja egyedül kb. 4800 lakosnyi áramot adna
+  az erőműben (2,4/s × 1000 MW).
 - Teljesítmény:
   - `StaticBatch.tsx` hierarchikusan összevonja a modellek hálóit (~5000 → ~920 rajzolási hívás).
     A szerkesztő alatt kikapcsol.
@@ -485,7 +491,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   ±0,11 tervezési egység; járda 0,15 széles).
 - Mergelve: #113 (a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik: `RAIL_CLEAR_X`).
 - Mergelve: #114 (a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik, `TIP_CLEAR`, a faltól 0,3-ra halad).
-- Folyamatban: OLAJ 4. rész — finomító (benzin a városba), a depóval közös telek-alapon.
+- Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
+- Folyamatban: gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300).
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön

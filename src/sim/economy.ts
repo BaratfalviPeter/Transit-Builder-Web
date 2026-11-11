@@ -10,6 +10,7 @@
  * them into GameState at every month's end (`closeMonth`).
  */
 
+import { DIRT_WEAR } from './roads';
 import { isDepot } from './depot';
 import { OIL_START_BAYS, OIL_START_TRACKS, isOilLot, isRefinery } from './oilDepot';
 import { LineWalker } from './railNet';
@@ -116,7 +117,8 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
 }
 
 /** Monthly running cost of one line's vehicles. */
-export function runningOf(line: Line): number {
-  if (line.kind === 'truck') return line.vehicles * RUNNING.truck;
+export function runningOf(line: Line, dirtShare = 0): number {
+  // Trucks wear faster on dirt roads (`dirtShare`: TransportSim.dirtShare).
+  if (line.kind === 'truck') return Math.round(line.vehicles * RUNNING.truck * (1 + DIRT_WEAR * dirtShare));
   return line.vehicles * (RUNNING.loco + (line.wagons ?? DEFAULT_WAGONS) * RUNNING.wagon);
 }

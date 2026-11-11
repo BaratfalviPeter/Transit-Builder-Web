@@ -151,8 +151,13 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - ÚTTÍPUSOK (`src/sim/roads.ts`, 2026-11): FÖLDÚT (eszköz `dirtroad`, E, $4 / cella, fenntartás 0,3) és FŐÚT
   (`road`, 1, $10, fenntartás 1). Mindkettő `CellType.Road`; a földút-cellák a `map.dirt` halmazban (mentve tömbként;
   régi mentés: minden főút). FELÚJÍTÁS: főutat húzva a földútra `UPGRADE_PRICE` ($6) / cella (`dirtOnPath`,
-  `buildPath(path, kind)`; a költség: `planCost`). Kamion földúton `DIRT_SPEED` (0,55) × sebességgel (`Lane.slow`
-  szakaszok → `bendLimit`), az útkeresés (`roadRoute`) vödrös Dijkstra: lépésköltség `MAIN_STEP` 5 / `DIRT_STEP` 9
+  `buildPath(path, kind)`; a költség: `planCost`). Kamion földúton `DIRT_SPEED` (0,7) × sebességgel (`Lane.slow`
+  szakaszok → `bendLimit`), és jobban kopik: üzemeltetés × (1 + `DIRT_WEAR` 0,3 × földúti arány) (`runningOf(line,
+  dirtShare)`, `TransportSim.dirtShare` a havi megtett útból: `LineFigures.dist / dirt`). A FŐÚT 1971-től építhető
+  (`MAIN_ROAD_FROM`, `mainRoadOpen`; a `GameState.setActiveTool` nem engedi, a gomb 🔒 1971). BONTÁS: a főút előbb
+  földút lesz, a második bontás viszi el. Bot (`bot2.ts`, `DIRT=1`: földúttal kezd, 1971-ben felújít): 5000 lakos a
+  654 / 680 / 717 / 656. napon (csak főúttal 651 / 666 / 699 / 648; 0,55-ös sebesség + 0,6 kopásnál a 9-es térkép
+  csődbe ment). Az útkeresés (`roadRoute`) vödrös Dijkstra: lépésköltség `MAIN_STEP` 5 / `DIRT_STEP` 7
   (csak főúttal ugyanaz, mint a régi szélességi keresés — a regressziós tesztek azonosak). Rajz: `Roads.tsx` barna
   (`DIRT_COLOR`), felezővonal nélkül. Teszt: scratchpad `roadtype.ts` (útvonal-választás, ugyanaz a járat főúton /
   földúton, mentés, felújítás).
@@ -505,7 +510,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
 - Mergelve (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
   az erőmű nem vesz át olajat; a teli rakományra várakozó kamion holtpontjának javítása (`FULL_LOAD_YIELD`).
-- Folyamatban: ÚTTÍPUSOK 1. rész (földút + főút + felújítás). A teli rakomány elengedése (`FULL_LOAD_YIELD`) a
+- Folyamatban (#117): ÚTTÍPUSOK 1. rész (földút + főút + felújítás, kopás, főút 1971-től, bontás → földút). A teli rakomány elengedése (`FULL_LOAD_YIELD`) a
   felhasználó szerint lehet, hogy jobb volt nélküle (nehezítés) — `ötletek.md`, döntés később.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).

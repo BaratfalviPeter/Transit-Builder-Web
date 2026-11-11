@@ -639,6 +639,14 @@ export class TerrainStore {
     // A pipeline under bare ground / water goes (a road, track or tree over it first).
     if (current !== CellType.Road && current !== CellType.Rail && current !== CellType.Forest && this.removePipe(x, z)) return true;
 
+    // A main road goes back to a dirt road first (roads.ts); the next pass takes it.
+    if (current === CellType.Road && !this.map.dirt?.has(key)) {
+      const dirt = new Set(this.map.dirt ?? []);
+      dirt.add(key);
+      this.commit({ dirt }, true);
+      this.emit();
+      return true;
+    }
     if (canBulldoze(current)) {
       // Road / rail / forest → bare ground, and mark it cleared so no fringe
       // tree or rock pops back onto the freshly cleared cell.

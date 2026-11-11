@@ -24,10 +24,19 @@ export const RAIL_PRICE = 20;
 /** Dirt → main per cell ($): the difference, so dirt + upgrade = main. */
 export const UPGRADE_PRICE = ROAD_PRICE.main - ROAD_PRICE.dirt;
 /** Truck top speed on a dirt road, × the normal one. */
-export const DIRT_SPEED = 0.55;
+export const DIRT_SPEED = 0.7;
+/** Truck running cost on dirt roads: × (1 + DIRT_WEAR × the share driven on dirt). */
+export const DIRT_WEAR = 0.3;
 /** Routing weights of a step (≈ the time it takes: 1 / speed). */
 export const MAIN_STEP = 5;
-export const DIRT_STEP = 9;
+export const DIRT_STEP = 7;
+
+/** The main road opens a year in (the first year: dirt roads only). */
+export const MAIN_ROAD_FROM = Date.UTC(1971, 0, 1);
+export const MAIN_ROAD_YEAR = 1971;
+export function mainRoadOpen(dateMs: number): boolean {
+  return dateMs >= MAIN_ROAD_FROM;
+}
 
 /** The road kind a tool builds (null: not a road tool). */
 export function roadKindOf(tool: ToolId | string): RoadKind | null {

@@ -249,7 +249,6 @@ ezek akkor jöhetnek, ha lesz átvevőjük (különben csak felhalmozódnak):
 
 ## Úttípusok — folytatás (a földút + főút + felújítás után)
 
-- Földúton drágább üzemeltetés (kopás) — most csak lassabb (`DIRT_SPEED`); a járműkopás / szerviz bevezetésével.
-- Az elején csak földút legyen, a főút később nyíljon meg (évszám / fejlesztés)?
+- KÉSZ: földúton drágább üzemeltetés (`DIRT_WEAR`), a főút 1971-től, bontás → előbb földút.
+- Valódi járműkopás / szerviz (a kamion állapota, javítás) később.
 - Autópálya: 2 sáv irányonként, felhajtók (külön, nagyobb lépés: sávváltás, előzés).
-- Bontásnál a főút visszaminősítése földútra (most a bontás teljesen elviszi).

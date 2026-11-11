@@ -204,8 +204,11 @@ export interface LineFigures {
   /** Vehicle-seconds on the line / of them held up (traffic, signals, full yards). */
   time: number;
   held: number;
+  /** Cells driven (trucks), of them on a dirt road (roads.ts: wear → running cost). */
+  dist: number;
+  dirt: number;
 }
-const noFigures = (): LineFigures => ({ units: 0, paidW: 0, time: 0, held: 0 });
+const noFigures = (): LineFigures => ({ units: 0, paidW: 0, time: 0, held: 0, dist: 0, dirt: 0 });
 /** Held-up seconds per cell this month above which it shows as a jam (network view). */
 export const HOTSPOT_MIN = 20;
 
@@ -691,6 +694,16 @@ export class TransportSim {
     return this.stats.get(id) ?? { month: noFigures(), last: null };
   }
 
+  /**
+   * The share of a truck line's driving on dirt roads (0–1): this month so
+   * far, else the last month's. Wears the trucks: a higher running cost.
+   */
+  dirtShare(id: number): number {
+    const st = this.stats.get(id);
+    const f = st && st.month.dist > 1 ? st.month : st?.last;
+    return f && f.dist > 0 ? f.dirt / f.dist : 0;
+  }
+
   /** Where the traffic stands most (cells, held-up seconds), for the network view. */
   hotspots(): Array<{ x: number; z: number; secs: number }> {
     const out: Array<{ x: number; z: number; secs: number }> = [];
@@ -1048,9 +1061,16 @@ export class TransportSim {
     if (sl.join() !== this.snap.stalled.join()) this.set({ stalled: sl });
     // Line figures: time on the line / held up, and where (the jams).
     const n = map.size;
+    const dirtMap = map.dirt?.size ? map : null;
     for (const t of this.trucks) {
       const f = this.figures(t.lineId);
       f.time += dt;
+      if (t.v > 0) {
+        const ds = t.v * dt;
+        f.dist += ds;
+        const p = dirtMap && (poses.get(t.id) ?? this.pose(t));
+        if (p && isDirt(dirtMap, Math.round(p.x), Math.round(p.z))) f.dirt += ds;
+      }
       if (t.blocked > (blockedBefore.get(t) ?? 0)) {
         f.held += dt;
         const p = poses.get(t.id) ?? this.pose(t);

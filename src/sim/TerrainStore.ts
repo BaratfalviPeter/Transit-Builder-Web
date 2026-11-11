@@ -175,6 +175,13 @@ export class TerrainStore {
    */
   buildHighway(plan: HighwayPlan): number {
     if (plan.problem || !plan.cells.length) return 0;
+    // Its bridges / tunnels first (on the still free abutments).
+    const spanIds: number[] = [];
+    for (const sp of plan.spans) {
+      if (!this.buildStructure(sp.kind, sp.a, sp.b)) return 0;
+      const all = this.map.structures!;
+      spanIds.push(all[all.length - 1].id);
+    }
     const n = this.map.size;
     const cells = this.map.cells.slice();
     const touched = new Set<number>();
@@ -206,6 +213,7 @@ export class TerrainStore {
     this.roadCount += placed;
     this.commit({ cells, highway, dirt, ramps }, true);
     this.emit();
+    for (const id of spanIds) this.layOnStructure(id, 'road');
     return placed;
   }
 

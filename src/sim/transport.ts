@@ -48,7 +48,7 @@
  * runtime state, read by the 3D view every frame. Pure TypeScript.
  */
 
-import { deckBoxes, groundStepOk, inBoxes, roadLinkFrom } from './structures';
+import { deckBoxes, groundStepOk, inBoxes, interiorAt, roadLinkFrom } from './structures';
 import {
   CellType,
   getSlopeKind,
@@ -84,7 +84,7 @@ export interface MarketSink {
 }
 import { brakeCapOn, laneAt, nearestS, polyLane, type Lane } from './lane';
 import { DIRT_SPEED, DIRT_STEP, HIGHWAY_STEP, MAIN_STEP, isDirt } from './roads';
-import { HIGHWAY_SPEED, HW_VEC, hwAt, isRamp, roadLinked, roadStep } from './highway';
+import { HIGHWAY_SPEED, HW_VEC, hwAt, isRamp, roadJumpOk, roadLinked, roadStep } from './highway';
 
 export { laneAt, nearestS, polyLane, type Lane };
 import { activeControl, lightState } from './traffic';
@@ -150,6 +150,11 @@ export const TRUCK_CAPACITY = 20;
 const TRUCK_SPEED = 3;
 /** A truck merging onto a motorway waits while one is closer than this (cells) behind the merge point. */
 const MERGE_GAP = 3.5;
+/** The overtaking lane (sideways from the right lane, cells; − = left) and how fast trucks change lanes (cells/s). */
+const LEFT_LANE = -0.4;
+const LANE_CHANGE = 0.5;
+/** Overtake only with this much motorway ahead (cells); back in before it ends / the exit. */
+const OVERTAKE_AHEAD = 3;
 /** Acceleration and (comfortable) braking (cells/s²). */
 const ACCEL = 2.4;
 const DECEL = 4.5;
@@ -232,6 +237,14 @@ export interface Truck {
   prevLane: Lane | null;
   /** Smooth right-lane path built from `path` (s runs along it). */
   lane: Lane | null;
+  /**
+   * Sideways from the lane (cells, right +): on a motorway the overtaking
+   * lane is at LEFT_LANE; `latTo` = where it is changing to; `prevLat` for
+   * the drawing.
+   */
+  lat?: number;
+  latTo?: number;
+  prevLat?: number;
   /** Current speed (cells/s; backwards while backing into a bay). */
   v: number;
   /** 'depot': in a depot's yard (see `depot`). */
@@ -490,7 +503,7 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
       const x = (c / n) | 0, z = c % n;
       // Over a bridge / through a tunnel: straight on to the far abutment.
       const link = roadLinkFrom(map, x, z);
-      if (link && isRoad(link.to[0], link.to[1])) relax(c, link.to[0] * n + link.to[1]);
+      if (link && isRoad(link.to[0], link.to[1]) && (!hw || roadJumpOk(map, x, z, link.to[0], link.to[1]))) relax(c, link.to[0] * n + link.to[1]);
       for (let d = 0; d < 4; d++) {
         const nx = x + DX[d], nz = z + DZ[d];
         if (!isRoad(nx, nz)) continue;
@@ -593,7 +606,9 @@ function speedZones(lane: Lane, map: TerrainMap): Array<[number, number, number]
   const factor = (x: number, z: number) => (hwAt(map, x, z) >= 0 ? HIGHWAY_SPEED : isDirt(map, x, z) ? DIRT_SPEED : 1);
   for (let s = 0; s <= lane.length + 1e-6; s += 0.1) {
     const [x, z] = laneAt(lane, s);
-    const f = factor(Math.round(x), Math.round(z));
+    // Up on a motorway bridge / in its tunnel: motorway speed (its abutment says).
+    const span = inBoxes(lane.deck, x, z) ? interiorAt(map, Math.round(x), Math.round(z)) : null;
+    const f = span ? (hwAt(map, span.a[0], span.a[1]) >= 0 ? HIGHWAY_SPEED : 1) : factor(Math.round(x), Math.round(z));
     if (f === cur) continue;
     if (open >= 0) out.push([open, s, cur]);
     open = f === 1 ? -1 : s;
@@ -635,10 +650,20 @@ export interface TruckPose {
   deck?: boolean;
 }
 
-function poseOnLane(l: Lane, s: number): TruckPose {
-  const f = laneAt(l, s);
-  const h = laneAt(l, s - TRUCK_HITCH);
-  const a = laneAt(l, s - TRUCK_HITCH - TRAILER_AXLE);
+/** A point `lat` to the right of lane `l` at `s` (lat 0: on it). */
+function laneAtLat(l: Lane, s: number, lat: number): [number, number] {
+  const p = laneAt(l, s);
+  if (!lat) return p;
+  const a = laneAt(l, s - 0.05), b = laneAt(l, s + 0.05);
+  const tl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const tx = (b[0] - a[0]) / tl, tz = (b[1] - a[1]) / tl;
+  return [p[0] - tz * lat, p[1] + tx * lat];
+}
+
+function poseOnLane(l: Lane, s: number, lat = 0): TruckPose {
+  const f = laneAtLat(l, s, lat);
+  const h = laneAtLat(l, s - TRUCK_HITCH, lat);
+  const a = laneAtLat(l, s - TRUCK_HITCH - TRAILER_AXLE, lat);
   const yaw = (p: [number, number], q: [number, number]) => Math.atan2(-(p[1] - q[1]), p[0] - q[0]);
   const ty = yaw(h, a);
   // Rear end: a bit past the trailer axles, along the trailer.
@@ -901,6 +926,7 @@ export class TransportSim {
     for (const t of this.trucks) {
       t.prevS = t.s;
       t.prevLane = t.lane;
+      t.prevLat = t.lat;
     }
     for (const t of this.trains) {
       t.prevS = t.s;
@@ -1037,6 +1063,7 @@ export class TransportSim {
         t.blocked = 0;
         t.waitFor = null;
         const stopAt = Math.min(t.lane.length, gate < Infinity && this.pickBay(here, t) < 0 ? gate : Infinity);
+        this.steerLane(t, map, poses, dt);
         let cap = Math.min(brakeCap(t.lane, t.s, TRUCK_SPEED, stopAt), this.trafficCap(t, map, poses));
         if (stopAt - t.s > 0.02) cap = Math.max(cap, CREEP);
         t.v = Math.min(t.v + ACCEL * dt, cap);
@@ -1221,6 +1248,62 @@ export class TransportSim {
   }
 
   /**
+   * Motorway lanes: stuck behind a slower truck (merging, slowing to leave),
+   * a truck pulls out into the left lane if it's clear, and back in when the
+   * right lane is clear again — or before the motorway ends / its exit.
+   */
+  private steerLane(t: Truck, map: TerrainMap, poses: Map<number, TruckPose>, dt: number): void {
+    const lane = t.lane!;
+    const lat = t.lat ?? 0;
+    const onHw = (d: number) => {
+      const [x, z] = laneAt(lane, t.s + d);
+      if (inBoxes(lane.deck, x, z)) {
+        const sp = interiorAt(map, Math.round(x), Math.round(z));
+        return !!sp && hwAt(map, sp.a[0], sp.a[1]) >= 0;
+      }
+      return hwAt(map, Math.round(x), Math.round(z)) >= 0;
+    };
+    let to = t.latTo ?? 0;
+    // The motorway (on its straight lanes) for the next stretch?
+    let ahead = true;
+    for (let d = 0; d <= OVERTAKE_AHEAD; d += 0.25) if (!onHw(d)) ahead = false;
+    const me = poses.get(t.id) ?? this.pose(t);
+    if (!me) return;
+    const hx = Math.cos(me.yaw), hz = -Math.sin(me.yaw);
+    // Others relative to me: along my heading, and sideways (right +) from my lane's line.
+    const rel = (p: readonly [number, number]) => {
+      const dx = p[0] - me.front[0], dz = p[1] - me.front[1];
+      return [dx * hx + dz * hz, -dx * hz + dz * hx + lat] as const;
+    };
+    const laneFree = (want: number, back: number, front: number) => {
+      for (const o of this.trucks) {
+        const op = o !== t && poses.get(o.id);
+        if (!op || !!op.deck !== !!me.deck) continue;
+        for (const p of [op.front, [op.x, op.z] as [number, number], op.rear]) {
+          const [along, side] = rel(p);
+          if (Math.abs(side - want) < 0.25 && along > -back && along < front) return false;
+        }
+      }
+      return true;
+    };
+    if (!ahead || !onHw(0)) to = 0;
+    else if (to === 0 && lat > -0.01) {
+      // A slower truck close ahead in my lane?
+      let slow = false;
+      for (const o of this.trucks) {
+        const op = o !== t && poses.get(o.id);
+        if (!op || !!op.deck !== !!me.deck) continue;
+        const [along, side] = rel(op.rear);
+        if (Math.abs(side) < 0.2 && along > 0 && along < 2.2 && o.v < Math.max(t.v, TRUCK_SPEED) - 0.4) slow = true;
+      }
+      if (slow && laneFree(LEFT_LANE, 3, 2.5)) to = LEFT_LANE;
+    } else if (to === LEFT_LANE && laneFree(0, 1.6, 2.2)) to = 0;
+    t.latTo = to;
+    const step = LANE_CHANGE * dt;
+    t.lat = Math.abs(to - lat) <= step ? to : lat + Math.sign(to - lat) * step;
+  }
+
+  /**
    * On a ramp, about to merge onto the motorway: give way to the traffic on
    * it (a truck on the carriageway close behind the merge point / in it).
    * True = wait.
@@ -1342,7 +1425,7 @@ export class TransportSim {
     if (near.length)
       for (let d = 0.12; d <= range; d += 0.1) {
         if (t.s + d > lane.length + 0.05) break;
-        const [px, pz] = laneAt(lane, t.s + d);
+        const [px, pz] = laneAtLat(lane, t.s + d, t.lat ?? 0);
         const up = inBoxes(lane.deck, px, pz);
         if (near.some(([bx, bz, dk]) => dk === up && Math.hypot(bx - px, bz - pz) < BODY_GAP)) {
           cap = Math.sqrt(2 * DECEL * Math.max(0, d - LOOK_AHEAD));
@@ -1424,6 +1507,7 @@ export class TransportSim {
     this.release(t);
     t.path = path;
     t.lane = path && path.length ? this.laneOf(path, map) : null;
+    t.lat = t.latTo = t.prevLat = 0;
     t.stopDone = -1;
     t.s = 0;
     t.blocked = 0;
@@ -1512,7 +1596,7 @@ export class TransportSim {
     const body: Array<[number, number]> = [o.front, [o.x, o.z], o.rear, [(o.x + o.rear[0]) / 2, (o.z + o.rear[1]) / 2]];
     for (let d = 0.12; d <= LOOK_AHEAD + 1e-6; d += 0.11) {
       if (t.s + d > lane.length + 0.05) break;
-      const [px, pz] = laneAt(lane, t.s + d);
+      const [px, pz] = laneAtLat(lane, t.s + d, t.lat ?? 0);
       if (inBoxes(lane.deck, px, pz) !== !!o.deck) continue; // other level (bridge / tunnel)
       for (const [bx, bz] of body) if (Math.hypot(bx - px, bz - pz) < BODY_GAP) return true;
     }
@@ -2637,7 +2721,9 @@ export class TransportSim {
   drawPose(t: Truck): TruckPose | null {
     if (!t.lane) return null;
     if (t.prevLane !== t.lane) return this.pose(t);
-    return poseOnLane(t.lane, t.prevS + (t.s - t.prevS) * this.drawAlpha());
+    const k = this.drawAlpha();
+    const lat = (t.prevLat ?? 0) + ((t.lat ?? 0) - (t.prevLat ?? 0)) * k;
+    return poseOnLane(t.lane, t.prevS + (t.s - t.prevS) * k, lat);
   }
 
   /** A train's front for drawing now (path distance), between the last two ticks. */
@@ -2652,7 +2738,7 @@ export class TransportSim {
    */
   pose(t: Truck): TruckPose | null {
     if (!t.lane) return null;
-    const p = poseOnLane(t.lane, t.s);
+    const p = poseOnLane(t.lane, t.s, t.lat ?? 0);
     if (t.lane.deck && inBoxes(t.lane.deck, p.x, p.z)) p.deck = true;
     return p;
   }

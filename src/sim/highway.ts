@@ -15,7 +15,8 @@
 
 import { CellType, canBuildRoadAt, type TerrainMap } from './terrain';
 import { hasRailAt } from './railNet';
-import { interiorAt } from './structures';
+import { trackStepOk } from './pathfind';
+import { interiorAt, structurePrice, structureProblem, type StructureKind } from './structures';
 
 const hasCrossing = (map: TerrainMap, x: number, z: number) => hasRailAt(map, x, z);
 
@@ -78,6 +79,14 @@ export function roadStep(map: TerrainMap, x: number, z: number, nx: number, nz: 
   return d === b;
 }
 
+/** May a vehicle cross the bridge / tunnel from abutment (x, z) to (tx, tz)? (A motorway: its way only.) */
+export function roadJumpOk(map: TerrainMap, x: number, z: number, tx: number, tz: number): boolean {
+  const a = hwAt(map, x, z);
+  if (a < 0) return hwAt(map, tx, tz) < 0;
+  const [vx, vz] = HW_VEC[a];
+  return Math.sign(tx - x) === vx && Math.sign(tz - z) === vz;
+}
+
 /** Are the two neighbouring road cells connected (either way)? */
 export function roadLinked(map: TerrainMap, x: number, z: number, nx: number, nz: number): boolean {
   if (!isRoad(map, x, z) || !isRoad(map, nx, nz)) return false;
@@ -95,8 +104,10 @@ export function roadOverHighway(map: TerrainMap, path: ReadonlyArray<{ x: number
 // ---------------------------------------------------------------- planning
 
 export interface HighwayPlan {
-  /** Cells with their direction (both carriageways). */
+  /** Cells with their direction (both carriageways; not the cells a span crosses). */
   cells: Array<{ x: number; z: number; d: HwDir }>;
+  /** Bridges / tunnels it needs (one per carriageway): over water, a valley, through a hill. */
+  spans: Array<{ kind: StructureKind; a: [number, number]; b: [number, number] }>;
   /** Cells to build (not motorway yet). */
   newCells: number;
   /**
@@ -157,6 +168,30 @@ function besideRoute(p: ReadonlyArray<{ x: number; z: number; d: HwDir }>, side:
   return out;
 }
 
+/**
+ * A bridge (over water / a valley / a lower road or rail) or a tunnel (through
+ * a hill, or an underpass under a road) from abutment `a` to `b` over `inner`,
+ * or why not (Hungarian).
+ */
+function spanOver(
+  map: TerrainMap,
+  inner: ReadonlyArray<{ x: number; z: number }>,
+  a: [number, number],
+  b: [number, number],
+): { kind: StructureKind; a: [number, number]; b: [number, number] } | string {
+  const bridge = structureProblem(map, 'bridge', a, b);
+  if (!bridge) return { kind: 'bridge', a, b };
+  const tunnel = structureProblem(map, 'tunnel', a, b);
+  if (!tunnel) return { kind: 'tunnel', a, b };
+  const wet = inner.some((c) => map.cells[c.x][c.z] === CellType.Water);
+  return `${wet ? 'Híd' : 'Alagút / híd'}: ${wet ? bridge : tunnel}`;
+}
+
+/** The price of a plan's bridges / tunnels. */
+export function spansPrice(plan: HighwayPlan): number {
+  return plan.spans.reduce((s, sp) => s + structurePrice(sp.kind, sp.a, sp.b), 0);
+}
+
 /** May motorway cell (x, z) with direction d go here (new, or the same / an end of an existing one)? */
 function cellProblem(map: TerrainMap, x: number, z: number, d: HwDir, plan: ReadonlySet<number>): string | null {
   if (x < 0 || z < 0 || x >= map.size || z >= map.size) return 'A térkép szélén nem fér el';
@@ -190,7 +225,7 @@ function cellProblem(map: TerrainMap, x: number, z: number, d: HwDir, plan: Read
  * other carriageway's end).
  */
 export function highwayPlan(map: TerrainMap, path: ReadonlyArray<{ x: number; z: number }>): HighwayPlan {
-  const fail = (problem: string): HighwayPlan => ({ cells: [], newCells: 0, caps: [], problem });
+  const fail = (problem: string): HighwayPlan => ({ cells: [], newCells: 0, caps: [], spans: [], problem });
   if (path.length < 2) return fail('Húzd tovább');
   const p = withDirs(path);
   if (!p) return fail('Csak egyenesen és derékszögben');
@@ -212,8 +247,39 @@ export function highwayPlan(map: TerrainMap, path: ReadonlyArray<{ x: number; z:
       first ??= 'Túl közeli kanyarok';
       continue;
     }
+    // Cell by cell; a run of cells it can't go on is spanned (bridge / tunnel) on a straight stretch.
     let problem: string | null = null;
-    for (const c of cells) if ((problem = cellProblem(map, c.x, c.z, c.d, keys))) break;
+    const kept: Array<{ x: number; z: number; d: HwDir }> = [];
+    const spans: HighwayPlan['spans'] = [];
+    const bad = (c: { x: number; z: number; d: HwDir }) => cellProblem(map, c.x, c.z, c.d, keys);
+    for (const row of [fwd, back]) {
+      for (let i = 0; i < row.length && !problem; ) {
+        const pr = bad(row[i]);
+        if (!pr) {
+          kept.push(row[i++]);
+          continue;
+        }
+        if (hwAt(map, row[i].x, row[i].z) >= 0 || pr.startsWith('A térkép')) {
+          problem = pr;
+          break;
+        }
+        let j = i;
+        while (j < row.length && bad(row[j])) j++;
+        const a = row[i - 1], b = row[j];
+        if (!a || !b || !row.slice(i - 1, j + 1).every((q) => q.d === a.d)) {
+          problem = pr;
+          break;
+        }
+        const span = spanOver(map, row.slice(i, j), [a.x, a.z], [b.x, b.z]);
+        if (typeof span === 'string') {
+          problem = span;
+          break;
+        }
+        spans.push(span);
+        i = j;
+      }
+      if (problem) break;
+    }
     if (problem) {
       first ??= problem;
       continue;
@@ -235,12 +301,22 @@ export function highwayPlan(map: TerrainMap, path: ReadonlyArray<{ x: number; z:
         caps.push({ x, z });
       }
     }
+    // The two caps at each end must join (a truck turns round there): no step between levels.
+    const capAt = (c: { x: number; z: number; d: HwDir }, ahead: boolean) => ({ x: c.x + (ahead ? 1 : -1) * HW_VEC[c.d][0], z: c.z + (ahead ? 1 : -1) * HW_VEC[c.d][1] });
+    for (const [p1, p2] of [
+      [capAt(fwd[0], false), capAt(back[back.length - 1], true)],
+      [capAt(fwd[fwd.length - 1], true), capAt(back[0], false)],
+    ]) {
+      if (problem) break;
+      if (hwAt(map, p1.x, p1.z) >= 0 || hwAt(map, p2.x, p2.z) >= 0) continue; // joins an existing motorway
+      if (!trackStepOk(map, p1, p2, CellType.Road) && !trackStepOk(map, p2, p1, CellType.Road)) problem = 'A vége lejtőn van: a két útvég nem köthető össze (tereprendezés)';
+    }
     if (problem) {
       first ??= problem;
       continue;
     }
-    const newCells = cells.filter((c) => hwAt(map, c.x, c.z) < 0).length;
-    return { cells, newCells, caps, problem: null };
+    const newCells = kept.filter((c) => hwAt(map, c.x, c.z) < 0).length;
+    return { cells: kept, newCells, caps, spans, problem: null };
   }
   return fail(first ?? 'Ide nem építhető');
 }

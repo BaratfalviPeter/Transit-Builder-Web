@@ -14,7 +14,7 @@
 import { CellType, type TerrainMap } from './terrain';
 import type { ToolId } from './tools';
 import type { PathPlanSnapshot } from './PathPlan';
-import { HIGHWAY_PRICE, highwayPlan } from './highway';
+import { HIGHWAY_PRICE, highwayPlan, spansPrice } from './highway';
 
 export type RoadKind = 'dirt' | 'main';
 
@@ -61,7 +61,7 @@ export function planCost(map: TerrainMap, p: PathPlanSnapshot, kind: RoadKind | 
   if (p.type === CellType.Rail) return p.newCells * RAIL_PRICE;
   if (kind === 'highway') {
     const h = highwayPlan(map, p.previewPath);
-    return h.newCells * HIGHWAY_PRICE + h.caps.length * ROAD_PRICE.main;
+    return h.newCells * HIGHWAY_PRICE + h.caps.length * ROAD_PRICE.main + spansPrice(h);
   }
   return roadPlanCost(map, p.previewPath, p.newCells, kind);
 }

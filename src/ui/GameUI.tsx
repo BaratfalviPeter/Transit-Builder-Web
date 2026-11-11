@@ -131,7 +131,7 @@ const HINT: Record<ToolId, string> = {
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
   road: 'Főút (aszfalt) — húzd az egeret: követi a kurzort, visszahúzva törlődik, elengedve megépül · vagy kattints a kezdő-, majd a célpontra · földútra húzva felújítja · Esc: mégse',
   dirtroad: `Földút — olcsó, kis fenntartású, de a kamionok ${Math.round(DIRT_SPEED * 100)}%-os sebességgel mennek rajta és jobban kopnak (drágább üzemeltetés) · Főúttal (1) ráhúzva felújítható · húzd az egeret, vagy két kattintás · Esc: mégse`,
-  highway: 'Autópálya — húzd végig (egyenesek és derékszögű kanyarok): a húzott sor a menetirány, mellette balra a másik irány · a végein útvég, oda köss utat · keresztezni aluljáróval lehet · Esc: mégse',
+  highway: 'Autópálya — húzd végig (egyenesek és derékszögű kanyarok): a húzott sor a menetirány, mellette balra a másik irány · víz / völgy fölött magától híd, hegyen át alagút · a végein útvég, oda köss utat · keresztezni aluljáróval lehet · Esc: mégse',
   ramp: 'Felhajtó — az autópálya mellé, a külső oldalára (egyenes szakasz mellé): innen lehet rá- és lehajtani; köss hozzá utat · a másik irányhoz a túloldalra is kell egy',
   rail: 'Sín — a legrövidebb sín a kurzorig (bármilyen hosszú), oldalra húzva kanyarodik · Shift: csak egyenesen · kattintás: lerakja és folytatod · Esc: vége · végállomáson hurok kell',
   signal: 'Vasúti jelző — kattints a sínre: arra az oldalra kerül, ahol a kurzor van, és az ott (jobb kéz felől) haladó vonatoknak szól · újra kattintva megfordul · Bontás (B): leszedi · váltótól legyen 1–2 cella távolságra',

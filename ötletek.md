@@ -253,5 +253,5 @@ ezek akkor jöhetnek, ha lesz átvevőjük (különben csak felhalmozódnak):
 - A főút megnyitása FEJLESZTÉSSEL (nem évszámhoz kötve — a felhasználó kérte, 2026-11): pl. kutatás / fejlesztési fa,
   ahol a főút (később autópálya, jobb járművek) pénzért / teljesítményért nyílik meg. Addig az elejétől építhető.
 - Valódi járműkopás / szerviz (a kamion állapota, javítás) később.
-- Autópálya 1. rész KÉSZ (2026-11: 2 cella, felhajtó, 1,5× sebesség). 2. rész: sávváltás / előzés, híd / alagút az
-  autópályán, látványosabb csomópont (rombusz, lóhere), a felhajtó külön rámpa-modellel.
+- Autópálya 1. rész KÉSZ (2026-11: 2 cella, felhajtó, 1,5× sebesség). 2. rész KÉSZ: előzés, magától épülő híd / alagút.
+  Később: látványosabb csomópont (rombusz, lóhere), a felhajtó külön rámpa-modellel.

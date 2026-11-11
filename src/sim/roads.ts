@@ -31,13 +31,6 @@ export const DIRT_WEAR = 0.3;
 export const MAIN_STEP = 5;
 export const DIRT_STEP = 7;
 
-/** The main road opens a year in (the first year: dirt roads only). */
-export const MAIN_ROAD_FROM = Date.UTC(1971, 0, 1);
-export const MAIN_ROAD_YEAR = 1971;
-export function mainRoadOpen(dateMs: number): boolean {
-  return dateMs >= MAIN_ROAD_FROM;
-}
-
 /** The road kind a tool builds (null: not a road tool). */
 export function roadKindOf(tool: ToolId | string): RoadKind | null {
   return tool === 'road' ? 'main' : tool === 'dirtroad' ? 'dirt' : null;

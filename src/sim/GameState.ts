@@ -8,7 +8,6 @@
  * React re-renders.
  */
 
-import { mainRoadOpen } from './roads';
 import { TOOLS, type ToolId } from './tools';
 
 type Listener = () => void;
@@ -151,7 +150,6 @@ export class GameState {
 
   setActiveTool(tool: ToolId): void {
     if (this.activeTool === tool) return;
-    if (tool === 'road' && !mainRoadOpen(this.dateMs)) return; // not yet (roads.ts)
     this.activeTool = tool;
     this.publish();
   }

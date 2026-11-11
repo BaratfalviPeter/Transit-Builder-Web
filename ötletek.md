@@ -249,6 +249,8 @@ ezek akkor jöhetnek, ha lesz átvevőjük (különben csak felhalmozódnak):
 
 ## Úttípusok — folytatás (a földút + főút + felújítás után)
 
-- KÉSZ: földúton drágább üzemeltetés (`DIRT_WEAR`), a főút 1971-től, bontás → előbb földút.
+- KÉSZ: földúton drágább üzemeltetés (`DIRT_WEAR`), bontás → előbb földút.
+- A főút megnyitása FEJLESZTÉSSEL (nem évszámhoz kötve — a felhasználó kérte, 2026-11): pl. kutatás / fejlesztési fa,
+  ahol a főút (később autópálya, jobb járművek) pénzért / teljesítményért nyílik meg. Addig az elejétől építhető.
 - Valódi járműkopás / szerviz (a kamion állapota, javítás) később.
 - Autópálya: 2 sáv irányonként, felhajtók (külön, nagyobb lépés: sávváltás, előzés).

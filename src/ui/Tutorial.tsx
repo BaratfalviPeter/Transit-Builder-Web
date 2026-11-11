@@ -126,7 +126,7 @@ const PAGES: Page[] = [
             épület valamelyik oldalán.
           </li>
           <li>
-            A megállókat <b>úttal</b> (E földút: olcsó, de lassú, a kamionok jobban kopnak · 1 főút 1971-től; húzással) vagy <b>sínnel</b> (2) kötöd össze. A földút később főúttal ráhúzva felújítható.
+            A megállókat <b>úttal</b> (E földút: olcsó, de lassú, a kamionok jobban kopnak · 1 főút; húzással) vagy <b>sínnel</b> (2) kötöd össze. A földút később főúttal ráhúzva felújítható.
           </li>
           <li>
             A <b>Járatok</b> panelen (J) indítasz járatot: kattints sorban a megállókra. A jármű felrakja, amit egy későbbi megálló

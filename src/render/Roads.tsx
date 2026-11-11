@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { activeControl, CellType, cellCornerHeights, cutAt, hasRailAt, isDirt, roadLinkDir, type TerrainMap } from '../sim';
+import { activeControl, CellType, cellCornerHeights, cutAt, hasRailAt, HW_VEC, hwAt, isDirt, isRamp, rightOf, roadLinkDir, roadLinked, type HwDir, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -93,11 +93,17 @@ export function Roads({ map, cellSize }: RoadsProps) {
     const out: Array<[number, number]> = [];
     const round: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
     const dOut: Array<[number, number]> = [];
+    const hw: Array<[number, number]> = [];
     const dRound: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
         // An underpass's cutting: its ramp is drawn by Structures.tsx.
         if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z) && !cutAt(map, x, z)) {
+          // Motorway: square tiles, its own markings (HighwayMarks).
+          if (hwAt(map, x, z) >= 0) {
+            hw.push([x, z]);
+            continue;
+          }
           const dirt = isDirt(map, x, z);
           const pts = roundedOutline(map, x, z);
           if (pts) (dirt ? dRound : round).push({ x, z, pts });
@@ -106,7 +112,7 @@ export function Roads({ map, cellSize }: RoadsProps) {
       }
     }
     return {
-      flatCoords: out,
+      flatCoords: out.concat(hw),
       rounded: round,
       allFlat: out.concat(round.map((r) => [r.x, r.z] as [number, number])),
       dirtCoords: dOut,
@@ -121,6 +127,7 @@ export function Roads({ map, cellSize }: RoadsProps) {
       <FlatRoads coords={dirtCoords} marked={NONE} map={map} cellSize={cellSize} color={DIRT_COLOR} />
       <RoundedRoads cells={dirtRounded} map={map} cellSize={cellSize} color={DIRT_COLOR} />
       <HillRoads map={map} cellSize={cellSize} />
+      <HighwayMarks map={map} cellSize={cellSize} />
     </group>
   );
 }
@@ -156,8 +163,8 @@ function connects(map: TerrainMap, x: number, z: number, dx: number, dz: number)
   const nx = x + dx;
   const nz = z + dz;
   if (nx < 0 || nz < 0 || nx >= map.size || nz >= map.size) return false;
-  // Over a bridge / into a tunnel: the road goes on.
-  return map.cells[nx][nz] === CellType.Road || roadLinkDir(map, x, z, dx, dz);
+  // Over a bridge / into a tunnel: the road goes on. Next to a motorway only where it joins.
+  return (map.cells[nx][nz] === CellType.Road && roadLinked(map, x, z, nx, nz)) || roadLinkDir(map, x, z, dx, dz);
 }
 
 /**
@@ -496,7 +503,7 @@ function buildHillRoadMarkings(
 
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
-      if (cells[x][z] !== CellType.Road || isDirt(map, x, z)) continue;
+      if (cells[x][z] !== CellType.Road || isDirt(map, x, z) || hwAt(map, x, z) >= 0) continue;
       const h00 = cornerHeight(x, z);
       const h10 = cornerHeight(x + 1, z);
       const h11 = cornerHeight(x + 1, z + 1);
@@ -612,4 +619,105 @@ function buildHillRoadSurface(
   geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geom.computeVertexNormals();
   return geom;
+}
+
+// ---------------------------------------------------------------- motorway
+
+const BARRIER_MAT = new THREE.MeshStandardMaterial({ color: '#b9bcc0', roughness: 0.6, metalness: 0.2 });
+const EDGE = 0.43; // edge lines: this far from the cell centre line
+const BARRIER_H = 0.07;
+
+/**
+ * Motorway markings (flat cells): the lane divider (dashed) down the middle
+ * of each carriageway cell, solid edge lines (none where a ramp joins), and
+ * a crash barrier where the two carriageways meet. Corners: the lines turn
+ * with the traffic (mitred).
+ */
+function HighwayMarks({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
+  const half = (map.size - 1) / 2;
+  const geoms = useMemo(() => {
+    if (!map.highway?.size) return null;
+    const M: number[] = [];
+    const B: number[] = []; // barrier boxes: x, z, length axis ('x' | 'z' as 0 | 1), y
+    const n = map.size;
+    for (const [k, d] of map.highway) {
+      const x = Math.floor(k / n), z = k % n;
+      if (map.cells[x][z] !== CellType.Road || !isFlatRoad(map, x, z)) continue;
+      const y = (FLAT_TOP + cellCornerHeights(map, x, z)[0]) * cellSize + MARK_Y * cellSize;
+      const cx = (x - half) * cellSize, cz = (z - half) * cellSize;
+      // The direction it is entered from: the motorway cell behind flowing in.
+      let din: HwDir = d;
+      for (const dd of [0, 1, 2, 3] as HwDir[]) {
+        const [vx, vz] = HW_VEC[dd];
+        const px = x - vx, pz = z - vz;
+        if (hwAt(map, px, pz) === dd) din = dd;
+      }
+      const vin = HW_VEC[din], vout = HW_VEC[d];
+      const rin = HW_VEC[rightOf(din)], rout = HW_VEC[rightOf(d)];
+      const P = (u: number, v: number): [number, number] => [cx + u * cellSize, cz + v * cellSize];
+      // A line at lateral offset o (right +), dashed or solid.
+      const line = (o: number, dashed: boolean) => {
+        const a: [number, number] = [-0.5 * vin[0] + o * rin[0], -0.5 * vin[1] + o * rin[1]];
+        const b: [number, number] = [0.5 * vout[0] + o * rout[0], 0.5 * vout[1] + o * rout[1]];
+        const pts: Array<[number, number]> = din === d ? [a, b] : [a, [o * (rin[0] + rout[0]), o * (rin[1] + rout[1])], b];
+        for (let i = 1; i < pts.length; i++) {
+          const [u0, v0] = pts[i - 1], [u1, v1] = pts[i];
+          const L = Math.hypot(u1 - u0, v1 - v0);
+          if (L < 1e-3) continue;
+          if (!dashed) {
+            const [x0, z0] = P(u0, v0), [x1, z1] = P(u1, v1);
+            ribbon(M, x0, z0, x1, z1, y, DASH_W * cellSize);
+            continue;
+          }
+          const du = (u1 - u0) / L, dv = (v1 - v0) / L;
+          for (let t = DASH / 2; t <= L - DASH / 2 + 1e-6; t += PITCH) {
+            const [x0, z0] = P(u0 + du * (t - DASH / 2), v0 + dv * (t - DASH / 2));
+            const [x1, z1] = P(u0 + du * (t + DASH / 2), v0 + dv * (t + DASH / 2));
+            ribbon(M, x0, z0, x1, z1, y, DASH_W * cellSize);
+          }
+        }
+      };
+      line(0, true); // between its two lanes
+      // Right edge (the outer side): open where a ramp joins.
+      const [ox, oz] = HW_VEC[rightOf(d)];
+      if (!isRamp(map, x + ox, z + oz)) line(EDGE, false);
+      // Left edge, and the barrier on each side shared with the other carriageway.
+      line(-EDGE, false);
+      for (const [vx, vz] of HW_VEC) {
+        const nx = x + vx, nz = z + vz;
+        if (hwAt(map, nx, nz) < 0 || roadLinked(map, x, z, nx, nz) || nx * n + nz < k) continue;
+        B.push(cx + vx * 0.5 * cellSize, cz + vz * 0.5 * cellSize, vx !== 0 ? 1 : 0, y);
+      }
+    }
+    const mk = new THREE.BufferGeometry();
+    mk.setAttribute('position', new THREE.Float32BufferAttribute(M, 3));
+    mk.computeVertexNormals();
+    return { mk, B };
+  }, [map, cellSize, half]);
+  const bref = useRef<THREE.InstancedMesh>(null);
+  const count = geoms ? geoms.B.length / 4 : 0;
+  useLayoutEffect(() => {
+    const mesh = bref.current;
+    if (!mesh || !geoms) return;
+    const o = new THREE.Object3D();
+    for (let i = 0; i < count; i++) {
+      const [x, z, alongZ, y] = geoms.B.slice(i * 4, i * 4 + 4);
+      o.position.set(x, y + (BARRIER_H / 2) * cellSize, z);
+      // The shared edge runs across the step: along z for an x-step.
+      o.scale.set(alongZ ? 0.06 * cellSize : 1.02 * cellSize, BARRIER_H * cellSize, alongZ ? 1.02 * cellSize : 0.06 * cellSize);
+      o.updateMatrix();
+      mesh.setMatrixAt(i, o.matrix);
+    }
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [geoms, count, cellSize]);
+  useLayoutEffect(() => () => geoms?.mk.dispose(), [geoms]);
+  if (!geoms) return null;
+  return (
+    <group>
+      <mesh geometry={geoms.mk} material={MARKING_MAT} />
+      {count > 0 && <instancedMesh key={count} ref={bref} args={[UNIT_BOX, BARRIER_MAT, count]} castShadow receiveShadow />}
+    </group>
+  );
 }

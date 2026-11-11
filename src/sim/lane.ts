@@ -4,8 +4,6 @@
  * Pure TypeScript.
  */
 
-import { DIRT_SPEED } from './roads';
-
 /** A polyline with cumulative lengths: the right lane along a route. */
 export interface Lane {
   xs: number[];
@@ -15,8 +13,13 @@ export interface Lane {
   length: number;
   /** Boxes of the bridges / tunnels it runs on (structures.ts `deckBoxes`), if any. */
   deck?: Array<[number, number, number, number]>;
-  /** Stretches [s0, s1] on a dirt road (roads.ts): top speed × DIRT_SPEED there. */
-  slow?: Array<[number, number]>;
+  /**
+   * Speed zones [s0, s1, factor]: the top speed there × factor (a dirt road:
+   * DIRT_SPEED; a motorway: HIGHWAY_SPEED). Outside them: × 1.
+   */
+  zones?: Array<[number, number, number]>;
+  /** The fastest factor of its zones (≥ 1): the top speed to brake from. */
+  fast?: number;
 }
 
 /** A lane straight through world points (no lane offset: already placed). */
@@ -69,7 +72,7 @@ const bendCache = new WeakMap<Lane, Map<string, Float32Array>>();
 
 /**
  * The bend speed limit along a lane every LIMIT_STEP: in a bend of radius r
- * at most √(aLat·r), never above `top` (cached per lane).
+ * at most √(aLat·r), never above `top` × the zone's factor (cached per lane).
  */
 function bendLimit(l: Lane, aLat: number, top: number): Float32Array {
   let m = bendCache.get(l);
@@ -85,8 +88,9 @@ function bendLimit(l: Lane, aLat: number, top: number): Float32Array {
     let turn = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
     turn = Math.abs(((turn + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     const k = turn / (2 * h); // curvature (1 / radius)
-    a[i] = k > 1e-3 ? Math.min(top, Math.sqrt(aLat / k)) : top;
-    if (l.slow?.some(([s0, s1]) => s >= s0 && s <= s1)) a[i] = Math.min(a[i], top * DIRT_SPEED);
+    let f = 1;
+    if (l.zones) for (const [s0, s1, z] of l.zones) if (s >= s0 && s <= s1) f = z;
+    a[i] = Math.min(top * f, k > 1e-3 ? Math.sqrt(aLat / k) : Infinity);
   }
   m.set(key, a);
   return a;
@@ -98,9 +102,11 @@ function bendLimit(l: Lane, aLat: number, top: number): Float32Array {
  * `stopAt` (lane distance).
  */
 export function brakeCapOn(l: Lane, s: number, top: number, decel: number, aLat: number, stopAt = Infinity): number {
-  let cap = top;
+  // Zones (dirt / motorway) scale the top speed along the lane.
+  const fast = l.zones ? top * (l.fast ?? 1) : top;
+  let cap = fast;
   const lim = bendLimit(l, aLat, top);
-  const range = (top * top) / (2 * decel);
+  const range = (fast * fast) / (2 * decel);
   for (let d = 0; d <= range; d += LIMIT_STEP) {
     const i = Math.round((s + d) / LIMIT_STEP);
     if (i < 0) continue;

@@ -23,6 +23,8 @@ export const UPKEEP = {
   roadCell: 1,
   /** A dirt road (roads.ts): cheap to keep. */
   dirtCell: 0.3,
+  /** A motorway cell (one carriageway; highway.ts). */
+  highwayCell: 4,
   railCell: 2,
   railStation: 50,
   truckStop: 25,
@@ -56,11 +58,13 @@ export interface UpkeepItem {
 
 /** Itemised monthly upkeep of everything built on `map`. */
 export function upkeepOf(map: TerrainMap): UpkeepItem[] {
-  let road = 0, dirt = 0;
+  let road = 0, dirt = 0, motorway = 0;
   for (let x = 0; x < map.size; x++)
     for (let z = 0; z < map.size; z++) {
       if (map.cells[x][z] !== CellType.Road) continue;
-      if (map.dirt?.has(x * map.size + z)) dirt++;
+      const k = x * map.size + z;
+      if (map.highway?.has(k)) motorway++;
+      else if (map.dirt?.has(k)) dirt++;
       else road++;
     }
   let rail = 0;
@@ -100,6 +104,7 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
   const items: UpkeepItem[] = [
     { label: 'Főút', count: road, unit: 'cella', cost: road * UPKEEP.roadCell },
     { label: 'Földút', count: dirt, unit: 'cella', cost: dirt * UPKEEP.dirtCell },
+    { label: 'Autópálya', count: motorway, unit: 'cella', cost: motorway * UPKEEP.highwayCell },
     { label: 'Sín', count: Math.round(rail), unit: 'cella', cost: rail * UPKEEP.railCell },
     { label: 'Vasútállomás', count: stations, unit: 'db', cost: stations * UPKEEP.railStation },
     { label: 'Kamionrakodó', count: stops, unit: 'db', cost: stops * UPKEEP.truckStop },

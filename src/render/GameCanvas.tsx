@@ -89,6 +89,9 @@ import {
   type StopKind,
   type TerrainMap,
   dirtOnPath,
+  highwayPlan,
+  rampProblem,
+  roadOverHighway,
   planCost,
   roadKindOf,
   ROAD_PRICE,
@@ -310,7 +313,7 @@ function structKindOf(id: string): StructureKind | null {
 
 /** Track type a tool plans with the two-click planner (null = not a track tool). */
 function trackOf(id: string): CellType.Road | CellType.Rail | null {
-  return id === 'road' || id === 'dirtroad' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
+  return id === 'road' || id === 'dirtroad' || id === 'highway' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
 }
 
 function Scene() {
@@ -327,6 +330,10 @@ function Scene() {
   const transport = useTransport();
   const { view: networkView } = useTransportSnapshot();
   const map = useTerrainMap();
+  const hwPreview = useMemo(
+    () => (activeTool === 'highway' && pathSnap.pathbuildingState !== 'idle' ? highwayPlan(map, pathSnap.previewPath) : null),
+    [activeTool, pathSnap, map],
+  );
   const half = (map.size - 1) / 2;
 
   // Leaving the raise/lower tools cancels an in-progress selection (but not a
@@ -514,13 +521,14 @@ function Scene() {
     (wx: number, wz: number) => {
       const kind = controlOfTool(game.getActiveTool());
       const { x, z } = cellOf(wx, wz);
+      if (game.getActiveTool() === 'ramp' && terrain.inBounds(x, z)) return { x, z, problem: rampProblem(terrain.getMap(), x, z) };
       if (!kind || !terrain.inBounds(x, z)) return null;
       return { x, z, problem: controlProblem(terrain.getMap(), x, z, kind) };
     },
     [game, terrain, cellOf],
   );
   useEffect(() => {
-    if (controlOfTool(activeTool) === null) setTrafficHover(null);
+    if (controlOfTool(activeTool) === null && activeTool !== 'ramp') setTrafficHover(null);
   }, [activeTool]);
 
   // ---- Signal tool: hover a track, click to place / turn round -----------
@@ -557,9 +565,18 @@ function Scene() {
   const finishDrawing = useCallback(() => {
     const p = pathPlan.getSnapshot();
     if (p.pathbuildingState !== 'drawing') return;
+    if (game.getActiveTool() === 'highway' && p.type === CellType.Road) {
+      const map0 = terrain.getMap();
+      const h = highwayPlan(map0, p.previewPath);
+      const cost = planCost(map0, p, 'highway');
+      if (!h.problem && game.canAfford(cost) && terrain.buildHighway(h) > 0) game.spend(cost);
+      pathPlan.clear();
+      return;
+    }
     const kind = roadKindOf(game.getActiveTool()) ?? 'main';
     const cost = planCost(terrain.getMap(), p, kind);
-    if (!p.blocked && game.canAfford(cost)) {
+    const overHw = p.type === CellType.Road && !!roadOverHighway(terrain.getMap(), p.previewPath);
+    if (!p.blocked && !overHw && game.canAfford(cost)) {
       if (p.type === CellType.Rail) {
         const placed = p.rail && p.rail.pts.length >= 4 ? terrain.buildRail(p.rail) : 0;
         if (placed > 0) game.spend(placed * TOOLS.rail.cost);
@@ -579,7 +596,7 @@ function Scene() {
       active: () => {
         const t = game.getActiveTool();
         if (transport.getSnapshot().view) return false; // network view: stop markers take the clicks
-        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || structKindOf(t) !== null || t === 'depot' || t === 'oildepot' || t === 'refinery' || t === 'pipe' || t === 'signal' || (t === 'select' && !getDev().editorOn);
+        return trackOf(t) !== null || stopToolKind(t) !== null || controlOfTool(t) !== null || t === 'ramp' || structKindOf(t) !== null || t === 'depot' || t === 'oildepot' || t === 'refinery' || t === 'pipe' || t === 'signal' || (t === 'select' && !getDev().editorOn);
       },
       onHover: (wx: number, wz: number) => {
         const sk = structKindOf(game.getActiveTool());
@@ -610,7 +627,7 @@ function Scene() {
           setDepotHover((cur) => (cur && cur.x0 === h.x0 && cur.z0 === h.z0 && cur.problem === h.problem ? cur : h));
           return;
         }
-        if (controlOfTool(game.getActiveTool()) !== null) {
+        if (controlOfTool(game.getActiveTool()) !== null || game.getActiveTool() === 'ramp') {
           const h = trafficTarget(wx, wz);
           setTrafficHover((cur) => (cur && h && cur.x === h.x && cur.z === h.z && cur.problem === h.problem ? cur : h));
           return;
@@ -723,6 +740,13 @@ function Scene() {
           setPipeStart([c.x, c.z]);
           return;
         }
+        if (tool.id === 'ramp') {
+          const h = trafficTarget(wx, wz);
+          if (!h || h.problem || !game.canAfford(tool.cost)) return;
+          if (terrain.buildRamp(h.x, h.z)) game.spend(tool.cost);
+          setTrafficHover(trafficTarget(wx, wz));
+          return;
+        }
         const control = controlOfTool(tool.id);
         if (control) {
           const h = trafficTarget(wx, wz);
@@ -768,10 +792,19 @@ function Scene() {
         // Point B: make sure the route ends exactly at the clicked point.
         pathPlan.preview(m, g, true);
         const p = pathPlan.getSnapshot();
+        if (tool.id === 'highway') {
+          const h = highwayPlan(m, p.previewPath);
+          const cost = planCost(m, p, 'highway');
+          if (h.problem || !game.canAfford(cost)) return;
+          if (terrain.buildHighway(h) > 0) game.spend(cost);
+          pathPlan.clear();
+          return;
+        }
         const kind = roadKindOf(tool.id) ?? 'main';
         const cost = planCost(m, p, kind);
         // Red hologram = refuse (blocked route or not enough money).
         if (p.blocked || !game.canAfford(cost)) return;
+        if (type === CellType.Road && roadOverHighway(m, p.previewPath)) return;
         if (type === CellType.Rail) {
           const placed = p.rail ? terrain.buildRail(p.rail) : 0;
           if (placed === 0) return;
@@ -943,13 +976,13 @@ function Scene() {
           canAfford={money >= TOOLS.depot.cost}
         />
       )}
-      {trafficHover && controlOfTool(activeTool) && (
+      {trafficHover && (controlOfTool(activeTool) || activeTool === 'ramp') && (
         <TrafficPreview
           map={map}
           cellSize={cellSize}
           x={trafficHover.x}
           z={trafficHover.z}
-          kind={controlOfTool(activeTool)!}
+          kind={controlOfTool(activeTool) ?? 'ramp'}
           problem={trafficHover.problem}
           cost={TOOLS[activeTool].cost}
           canAfford={money >= TOOLS[activeTool].cost}
@@ -998,10 +1031,12 @@ function Scene() {
           blocked or unaffordable. */}
       {pathSnap.pathbuildingState !== 'idle' && (
         <PathPreview
-          path={pathSnap.previewPath}
+          path={hwPreview && !hwPreview.problem ? [...hwPreview.cells, ...hwPreview.caps] : pathSnap.previewPath}
           red={
             pathSnap.blocked ||
-            money < planCost(map, pathSnap, roadKindOf(activeTool) ?? 'main')
+            money < planCost(map, pathSnap, activeTool === 'highway' ? 'highway' : roadKindOf(activeTool) ?? 'main') ||
+            (activeTool === 'highway' && !!hwPreview?.problem) ||
+            ((activeTool === 'road' || activeTool === 'dirtroad') && !!roadOverHighway(map, pathSnap.previewPath))
           }
           map={map}
           cellSize={cellSize}

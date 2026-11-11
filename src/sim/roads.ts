@@ -14,6 +14,7 @@
 import { CellType, type TerrainMap } from './terrain';
 import type { ToolId } from './tools';
 import type { PathPlanSnapshot } from './PathPlan';
+import { HIGHWAY_PRICE, highwayPlan } from './highway';
 
 export type RoadKind = 'dirt' | 'main';
 
@@ -30,6 +31,7 @@ export const DIRT_WEAR = 0.3;
 /** Routing weights of a step (≈ the time it takes: 1 / speed). */
 export const MAIN_STEP = 5;
 export const DIRT_STEP = 7;
+export const HIGHWAY_STEP = 3;
 
 /** The road kind a tool builds (null: not a road tool). */
 export function roadKindOf(tool: ToolId | string): RoadKind | null {
@@ -55,7 +57,11 @@ export function roadPlanCost(map: TerrainMap, path: ReadonlyArray<{ x: number; z
 }
 
 /** Cost of the road / rail planner's current plan (`kind`: the road tool's type). */
-export function planCost(map: TerrainMap, p: PathPlanSnapshot, kind: RoadKind): number {
+export function planCost(map: TerrainMap, p: PathPlanSnapshot, kind: RoadKind | 'highway'): number {
   if (p.type === CellType.Rail) return p.newCells * RAIL_PRICE;
+  if (kind === 'highway') {
+    const h = highwayPlan(map, p.previewPath);
+    return h.newCells * HIGHWAY_PRICE + h.caps.length * ROAD_PRICE.main;
+  }
   return roadPlanCost(map, p.previewPath, p.newCells, kind);
 }

@@ -200,7 +200,7 @@ export function TrafficPreview({
   cellSize: number;
   x: number;
   z: number;
-  kind: ControlKind;
+  kind: ControlKind | 'ramp';
   problem: string | null;
   cost: number;
   canAfford: boolean;
@@ -216,7 +216,7 @@ export function TrafficPreview({
         <meshBasicMaterial color={ok ? '#4ade80' : '#f87171'} transparent opacity={0.45} depthWrite={false} />
       </mesh>
       <Html zIndexRange={[10, 0]} position={[0, cellSize * 0.9, 0]} center style={{ pointerEvents: 'none' }}>
-        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${CONTROL_LABEL[kind]} · $${cost}` : reason}</div>
+        <div className={'station-tip' + (ok ? '' : ' is-bad')}>{ok ? `${kind === 'ramp' ? 'Felhajtó' : CONTROL_LABEL[kind]} · $${cost}` : reason}</div>
       </Html>
     </group>
   );

@@ -83,7 +83,8 @@ export interface MarketSink {
   deliver(item: Item, n: number): number;
 }
 import { brakeCapOn, laneAt, nearestS, polyLane, type Lane } from './lane';
-import { DIRT_STEP, MAIN_STEP, isDirt } from './roads';
+import { DIRT_SPEED, DIRT_STEP, HIGHWAY_STEP, MAIN_STEP, isDirt } from './roads';
+import { HIGHWAY_SPEED, HW_VEC, hwAt, isRamp, roadLinked, roadStep } from './highway';
 
 export { laneAt, nearestS, polyLane, type Lane };
 import { activeControl, lightState } from './traffic';
@@ -147,6 +148,8 @@ export const TRUCK_PRICE = 1500;
 export const TRUCK_CAPACITY = 20;
 /** Truck top speed (cells per game second). */
 const TRUCK_SPEED = 3;
+/** A truck merging onto a motorway waits while one is closer than this (cells) behind the merge point. */
+const MERGE_GAP = 3.5;
 /** Acceleration and (comfortable) braking (cells/s²). */
 const ACCEL = 2.4;
 const DECEL = 4.5;
@@ -452,7 +455,8 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
   // is slower, roads.ts). With main roads only it is the old breadth-first
   // search, ties and all (FIFO buckets).
   const dirt = map.dirt?.size ? map.dirt : null;
-  const stepCost = (k: number) => (dirt?.has(k) ? DIRT_STEP : MAIN_STEP);
+  const hw = map.highway?.size ? map.highway : null;
+  const stepCost = (k: number) => (hw?.has(k) ? HIGHWAY_STEP : dirt?.has(k) ? DIRT_STEP : MAIN_STEP);
   const prev = new Int32Array(n * n).fill(-2);
   const dist = new Int32Array(n * n).fill(0x7fffffff);
   const buckets: number[][] = [];
@@ -498,6 +502,7 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
         const axis = d < 2 ? 'x' : 'z';
         const ca = crossing(x, z), cb = crossing(nx, nz);
         if ((ca && ca !== axis) || (cb && cb !== axis)) continue;
+        if (hw && !roadStep(map, x, z, nx, nz)) continue; // motorway: one-way, on / off at ramps
         relax(c, k);
       }
     }
@@ -581,20 +586,20 @@ export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => b
   return deck.length ? { xs, zs, cum, length: cum[cum.length - 1], deck } : { xs, zs, cum, length: cum[cum.length - 1] };
 }
 
-/** The stretches of a lane on dirt road cells (sampled every 0.1). */
-function dirtStretches(lane: Lane, map: TerrainMap): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  let open = -1;
+/** The stretches of a lane on dirt road / motorway cells (sampled every 0.1): [s0, s1, speed factor]. */
+function speedZones(lane: Lane, map: TerrainMap): Array<[number, number, number]> {
+  const out: Array<[number, number, number]> = [];
+  let open = -1, cur = 1;
+  const factor = (x: number, z: number) => (hwAt(map, x, z) >= 0 ? HIGHWAY_SPEED : isDirt(map, x, z) ? DIRT_SPEED : 1);
   for (let s = 0; s <= lane.length + 1e-6; s += 0.1) {
     const [x, z] = laneAt(lane, s);
-    const on = isDirt(map, Math.round(x), Math.round(z));
-    if (on && open < 0) open = s;
-    else if (!on && open >= 0) {
-      out.push([open, s]);
-      open = -1;
-    }
+    const f = factor(Math.round(x), Math.round(z));
+    if (f === cur) continue;
+    if (open >= 0) out.push([open, s, cur]);
+    open = f === 1 ? -1 : s;
+    cur = f;
   }
-  if (open >= 0) out.push([open, lane.length]);
+  if (open >= 0) out.push([open, lane.length, cur]);
   return out;
 }
 
@@ -1133,9 +1138,9 @@ export class TransportSim {
     const j = new Uint8Array(n * n);
     for (let x = 0; x < n; x++)
       for (let z = 0; z < n; z++) {
-        if (!road(x, z)) continue;
+        if (!road(x, z) || hwAt(map, x, z) >= 0) continue;
         let k = 0;
-        for (let d = 0; d < 4; d++) if (road(x + DX[d], z + DZ[d])) k++;
+        for (let d = 0; d < 4; d++) if (road(x + DX[d], z + DZ[d]) && roadLinked(map, x, z, x + DX[d], z + DZ[d])) k++;
         if (roadLinkFrom(map, x, z)) k++; // the road over a bridge / through a tunnel
         if (k >= 3) j[x * n + z] = 1;
       }
@@ -1157,6 +1162,7 @@ export class TransportSim {
       this.release(t);
     }
     if (t.pass > 0) return false;
+    if (this.mergeWait(t, map, poses)) return true;
     const n = map.size;
     const jm = this.junctionMap(map);
     const cellAt = (d: number) => {
@@ -1211,6 +1217,44 @@ export class TransportSim {
     t.holds = [...run];
     for (const c of run) this.reserved.set(c, t.id);
     t.holdUntil = sOut + TRUCK_HITCH + TRAILER_AXLE + 0.2;
+    return false;
+  }
+
+  /**
+   * On a ramp, about to merge onto the motorway: give way to the traffic on
+   * it (a truck on the carriageway close behind the merge point / in it).
+   * True = wait.
+   */
+  private mergeWait(t: Truck, map: TerrainMap, poses: Map<number, TruckPose>): boolean {
+    const lane = t.lane;
+    if (!lane || !map.ramps?.size) return false;
+    const cell = (s: number) => {
+      const [x, z] = laneAt(lane, s);
+      return [Math.round(x), Math.round(z)] as const;
+    };
+    const [cx, cz] = cell(t.s);
+    if (!isRamp(map, cx, cz)) return false;
+    let next: readonly [number, number] | null = null;
+    for (let d = t.s + 0.1; d <= Math.min(lane.length, t.s + 0.8); d += 0.1) {
+      const c = cell(d);
+      if (c[0] !== cx || c[1] !== cz) {
+        next = c;
+        break;
+      }
+    }
+    if (!next) return false;
+    const h = hwAt(map, next[0], next[1]);
+    if (h < 0) return false;
+    const [vx, vz] = HW_VEC[h];
+    for (const o of this.trucks) {
+      const op = o !== t && poses.get(o.id);
+      if (!op) continue;
+      for (const [px, pz] of [[op.x, op.z], op.front, op.rear] as Array<[number, number]>) {
+        const rx = px - next[0], rz = pz - next[1];
+        const along = rx * vx + rz * vz, lat = Math.abs(rx * vz - rz * vx);
+        if (lat < 0.6 && along > -MERGE_GAP && along < 0.9) return this.waitOn(t, o);
+      }
+    }
     return false;
   }
 
@@ -1282,9 +1326,10 @@ export class TransportSim {
   private trafficCap(t: Truck, map: TerrainMap, poses: Map<number, TruckPose>): number {
     const lane = t.lane;
     const me = poses.get(t.id);
-    if (!lane || !me || t.pass > 0) return TRUCK_SPEED;
-    const range = (TRUCK_SPEED * TRUCK_SPEED) / (2 * DECEL) + LOOK_AHEAD;
-    let cap = TRUCK_SPEED;
+    const top = TRUCK_SPEED * (lane?.fast ?? 1);
+    if (!lane || !me || t.pass > 0) return top;
+    const range = (top * top) / (2 * DECEL) + LOOK_AHEAD;
+    let cap = top;
     // The nearest truck body on the lane ahead.
     const near: Array<[number, number, boolean]> = [];
     for (const o of this.trucks) {
@@ -1365,9 +1410,12 @@ export class TransportSim {
   /** The lane along a route (round any roundabouts on it). */
   private laneOf(path: Cell[], map: TerrainMap): Lane {
     const lane = buildLane(path, (x, z) => activeControl(map, x, z) === 'roundabout');
-    if (map.dirt?.size) {
-      const slow = dirtStretches(lane, map);
-      if (slow.length) lane.slow = slow;
+    if (map.dirt?.size || map.highway?.size) {
+      const zones = speedZones(lane, map);
+      if (zones.length) {
+        lane.zones = zones;
+        lane.fast = Math.max(1, ...zones.map((z) => z[2]));
+      }
     }
     return lane;
   }

@@ -365,6 +365,10 @@ export interface TerrainMap {
   readonly signals?: readonly import('./signals').RailSignal[];
   /** Bridges and tunnels (see structures.ts): a second level above / below the cells. */
   readonly structures?: readonly import('./structures').Structure[];
+  /** Motorway cells (x·size + z → the direction traffic leaves it; see highway.ts). */
+  readonly highway?: ReadonlyMap<number, import('./highway').HwDir>;
+  /** Motorway ramps (road cells on a carriageway's outer side; see highway.ts). */
+  readonly ramps?: ReadonlySet<number>;
   /** Dirt road cells (x·size + z; see roads.ts); every other Road cell is a main road. */
   readonly dirt?: ReadonlySet<number>;
   /** Oil pipeline cells (x·size + z; see pipes.ts): under water / underground, over any cell. */

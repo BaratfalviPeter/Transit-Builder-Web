@@ -38,7 +38,7 @@ export function FinanceDriver(): null {
       const lineCost: Record<number, number> = {};
       let running = 0;
       for (const l of transport.getSnapshot().lines) {
-        const c = runningOf(l);
+        const c = runningOf(l, transport.dirtShare(l.id));
         lineCost[l.id] = c;
         running += c;
       }

@@ -88,6 +88,11 @@ import {
   useTransportSnapshot,
   type StopKind,
   type TerrainMap,
+  dirtOnPath,
+  planCost,
+  roadKindOf,
+  ROAD_PRICE,
+  UPGRADE_PRICE,
 } from '../sim';
 import { getDev } from '../dev/modelEditorStore';
 
@@ -305,7 +310,7 @@ function structKindOf(id: string): StructureKind | null {
 
 /** Track type a tool plans with the two-click planner (null = not a track tool). */
 function trackOf(id: string): CellType.Road | CellType.Rail | null {
-  return id === 'road' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
+  return id === 'road' || id === 'dirtroad' ? CellType.Road : id === 'rail' ? CellType.Rail : null;
 }
 
 function Scene() {
@@ -552,14 +557,18 @@ function Scene() {
   const finishDrawing = useCallback(() => {
     const p = pathPlan.getSnapshot();
     if (p.pathbuildingState !== 'drawing') return;
-    const tool = TOOLS[p.type === CellType.Rail ? 'rail' : 'road'];
-    const cost = p.newCells * tool.cost;
+    const kind = roadKindOf(game.getActiveTool()) ?? 'main';
+    const cost = planCost(terrain.getMap(), p, kind);
     if (!p.blocked && game.canAfford(cost)) {
-      let placed = 0;
       if (p.type === CellType.Rail) {
-        if (p.rail && p.rail.pts.length >= 4) placed = terrain.buildRail(p.rail);
-      } else if (p.previewPath.length > 1) placed = terrain.buildPath(p.previewPath);
-      if (placed > 0) game.spend(placed * tool.cost);
+        const placed = p.rail && p.rail.pts.length >= 4 ? terrain.buildRail(p.rail) : 0;
+        if (placed > 0) game.spend(placed * TOOLS.rail.cost);
+      } else if (p.previewPath.length > 1) {
+        const map0 = terrain.getMap();
+        const up = kind === 'main' ? dirtOnPath(map0, p.previewPath) : 0;
+        const placed = terrain.buildPath(p.previewPath, kind);
+        if (placed + up > 0) game.spend(placed * ROAD_PRICE[kind] + up * UPGRADE_PRICE);
+      }
     }
     pathPlan.clear();
   }, [pathPlan, game, terrain]);
@@ -759,17 +768,20 @@ function Scene() {
         // Point B: make sure the route ends exactly at the clicked point.
         pathPlan.preview(m, g, true);
         const p = pathPlan.getSnapshot();
-        const cost = p.newCells * tool.cost;
+        const kind = roadKindOf(tool.id) ?? 'main';
+        const cost = planCost(m, p, kind);
         // Red hologram = refuse (blocked route or not enough money).
         if (p.blocked || !game.canAfford(cost)) return;
-        let placed = 0;
         if (type === CellType.Rail) {
-          if (p.rail) placed = terrain.buildRail(p.rail);
-        } else if (p.previewPath.length > 0) {
-          placed = terrain.buildPath(p.previewPath);
+          const placed = p.rail ? terrain.buildRail(p.rail) : 0;
+          if (placed === 0) return;
+          game.spend(placed * tool.cost);
+        } else {
+          const up = kind === 'main' ? dirtOnPath(m, p.previewPath) : 0;
+          const placed = p.previewPath.length > 0 ? terrain.buildPath(p.previewPath, kind) : 0;
+          if (placed + up === 0) return;
+          game.spend(placed * ROAD_PRICE[kind] + up * UPGRADE_PRICE);
         }
-        if (placed === 0) return;
-        game.spend(placed * tool.cost);
         if (type === CellType.Rail && p.rail) {
           // Chain: the next piece starts where this one ended.
           const n = p.rail.pts.length;
@@ -989,7 +1001,7 @@ function Scene() {
           path={pathSnap.previewPath}
           red={
             pathSnap.blocked ||
-            money < pathSnap.newCells * TOOLS[pathSnap.type === CellType.Rail ? 'rail' : 'road'].cost
+            money < planCost(map, pathSnap, roadKindOf(activeTool) ?? 'main')
           }
           map={map}
           cellSize={cellSize}

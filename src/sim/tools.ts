@@ -8,6 +8,7 @@
  * Infrastructure (road/rail/station). "Select" is the neutral default.
  */
 
+import { RAIL_PRICE, ROAD_PRICE } from './roads';
 import { CellType } from './terrain';
 import type { ControlKind } from './traffic';
 import { DEPOT_PRICE } from './depot';
@@ -22,6 +23,7 @@ export type ToolId =
   | 'lower'
   | 'bulldoze'
   | 'road'
+  | 'dirtroad'
   | 'rail'
   | 'station'
   | 'truckstop'
@@ -58,8 +60,10 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   lower: { id: 'lower', label: 'Süllyesztés', cost: 50, builds: null },
   bulldoze: { id: 'bulldoze', label: 'Bontás', cost: 0, builds: null },
   // Infrastructure
-  road: { id: 'road', label: 'Út', cost: 10, builds: CellType.Road },
-  rail: { id: 'rail', label: 'Sín', cost: 20, builds: CellType.Rail },
+  // Road types (see roads.ts): main road (asphalt) and dirt road (cheap, slow).
+  road: { id: 'road', label: 'Főút', cost: ROAD_PRICE.main, builds: CellType.Road },
+  dirtroad: { id: 'dirtroad', label: 'Földút', cost: ROAD_PRICE.dirt, builds: CellType.Road },
+  rail: { id: 'rail', label: 'Sín', cost: RAIL_PRICE, builds: CellType.Rail },
   // Rail station on an industry's side (flat price per station).
   station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },
   // Truck stop on an industry's side (flat price).
@@ -91,6 +95,6 @@ export function controlOfTool(id: ToolId): ControlKind | null {
 /** Terraforming tab tools. */
 export const TERRAFORM_TOOLS: ToolId[] = ['select', 'raise', 'lower', 'bulldoze'];
 /** Infrastructure tab tools. */
-export const TRANSPORT_TOOLS: ToolId[] = ['select', 'road', 'rail', 'station', 'truckstop'];
+export const TRANSPORT_TOOLS: ToolId[] = ['select', 'dirtroad', 'road', 'rail', 'station', 'truckstop'];
 /** Traffic tools (in the Infrastructure tab, own group). */
 export const TRAFFIC_TOOLS: ToolId[] = ['yield', 'stop', 'light', 'roundabout'];

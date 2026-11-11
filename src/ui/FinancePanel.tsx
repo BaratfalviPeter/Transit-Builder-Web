@@ -13,6 +13,7 @@ import {
   useGame,
   useGameSnapshot,
   useTerrainMap,
+  useTransport,
   useTransportSnapshot,
   type FinCat,
   type MonthBooks,
@@ -38,7 +39,8 @@ export function FinancePanel() {
   const { lines } = useTransportSnapshot();
   const upkeep = upkeepOf(map);
   const upkeepTotal = upkeep.reduce((a, i) => a + i.cost, 0);
-  const runningTotal = lines.reduce((a, l) => a + runningOf(l), 0);
+  const transport = useTransport();
+  const runningTotal = lines.reduce((a, l) => a + runningOf(l, transport.dirtShare(l.id)), 0);
   const interest = Math.round((snap.loan * LOAN_RATE) / 12);
   const last = snap.lastMonth;
   const cell = (b: MonthBooks | null, f: (b: MonthBooks) => number, sign: 1 | -1) => {
@@ -151,7 +153,7 @@ export function FinancePanel() {
             <tbody>
               {lines.map((l) => {
                 const inc = last?.lineIncome[l.id] ?? 0;
-                const cost = last?.lineCost[l.id] ?? runningOf(l);
+                const cost = last?.lineCost[l.id] ?? runningOf(l, transport.dirtShare(l.id));
                 const net = inc - cost;
                 return (
                   <tr key={l.id}>

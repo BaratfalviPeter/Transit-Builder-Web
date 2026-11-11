@@ -21,8 +21,9 @@ export const SAVE_KEY = 'transit-builder:save';
 export const SAVE_VERSION = 1;
 
 /** The map as plain JSON (its Set / Map fields as arrays). */
-type MapSave = Omit<TerrainMap, 'cleared' | 'controls'> & {
+type MapSave = Omit<TerrainMap, 'cleared' | 'controls' | 'dirt'> & {
   cleared?: number[];
+  dirt?: number[];
   controls?: Array<[number, ControlKind]>;
 };
 
@@ -46,7 +47,7 @@ export interface SaveParts {
 }
 
 export function toSave(p: SaveParts): SaveData {
-  const { cleared, controls, ...rest } = p.map;
+  const { cleared, controls, dirt, ...rest } = p.map;
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
@@ -54,6 +55,7 @@ export function toSave(p: SaveParts): SaveData {
       ...rest,
       ...(cleared ? { cleared: [...cleared] } : {}),
       ...(controls ? { controls: [...controls] } : {}),
+      ...(dirt?.size ? { dirt: [...dirt] } : {}),
     },
     lines: p.lines.slice(),
     game: p.game,
@@ -64,11 +66,12 @@ export function toSave(p: SaveParts): SaveData {
 
 /** The map of a save, with its Set / Map fields rebuilt. */
 export function mapOf(s: SaveData): TerrainMap {
-  const { cleared, controls, ...rest } = s.map;
+  const { cleared, controls, dirt, ...rest } = s.map;
   return {
     ...rest,
     ...(cleared ? { cleared: new Set(cleared) } : {}),
     ...(controls ? { controls: new Map(controls) } : {}),
+    ...(dirt ? { dirt: new Set(dirt) } : {}),
   };
 }
 

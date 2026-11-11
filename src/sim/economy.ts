@@ -10,6 +10,7 @@
  * them into GameState at every month's end (`closeMonth`).
  */
 
+import { DIRT_WEAR } from './roads';
 import { isDepot } from './depot';
 import { OIL_START_BAYS, OIL_START_TRACKS, isOilLot, isRefinery } from './oilDepot';
 import { LineWalker } from './railNet';
@@ -20,6 +21,8 @@ import { DEFAULT_WAGONS, type Line } from './transport';
 /** Monthly upkeep ($). */
 export const UPKEEP = {
   roadCell: 1,
+  /** A dirt road (roads.ts): cheap to keep. */
+  dirtCell: 0.3,
   railCell: 2,
   railStation: 50,
   truckStop: 25,
@@ -53,8 +56,13 @@ export interface UpkeepItem {
 
 /** Itemised monthly upkeep of everything built on `map`. */
 export function upkeepOf(map: TerrainMap): UpkeepItem[] {
-  let road = 0;
-  for (let x = 0; x < map.size; x++) for (let z = 0; z < map.size; z++) if (map.cells[x][z] === CellType.Road) road++;
+  let road = 0, dirt = 0;
+  for (let x = 0; x < map.size; x++)
+    for (let z = 0; z < map.size; z++) {
+      if (map.cells[x][z] !== CellType.Road) continue;
+      if (map.dirt?.has(x * map.size + z)) dirt++;
+      else road++;
+    }
   let rail = 0;
   for (const e of map.railNet?.edges ?? []) rail += new LineWalker(e.pts).total;
   let stations = 0, stops = 0, depots = 0, oil = 0, oilExtra = 0, refineries = 0, refExtra = 0;
@@ -90,7 +98,8 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
     else tunnel += len;
   }
   const items: UpkeepItem[] = [
-    { label: 'Út', count: road, unit: 'cella', cost: road * UPKEEP.roadCell },
+    { label: 'Főút', count: road, unit: 'cella', cost: road * UPKEEP.roadCell },
+    { label: 'Földút', count: dirt, unit: 'cella', cost: dirt * UPKEEP.dirtCell },
     { label: 'Sín', count: Math.round(rail), unit: 'cella', cost: rail * UPKEEP.railCell },
     { label: 'Vasútállomás', count: stations, unit: 'db', cost: stations * UPKEEP.railStation },
     { label: 'Kamionrakodó', count: stops, unit: 'db', cost: stops * UPKEEP.truckStop },
@@ -108,7 +117,8 @@ export function upkeepOf(map: TerrainMap): UpkeepItem[] {
 }
 
 /** Monthly running cost of one line's vehicles. */
-export function runningOf(line: Line): number {
-  if (line.kind === 'truck') return line.vehicles * RUNNING.truck;
+export function runningOf(line: Line, dirtShare = 0): number {
+  // Trucks wear faster on dirt roads (`dirtShare`: TransportSim.dirtShare).
+  if (line.kind === 'truck') return Math.round(line.vehicles * RUNNING.truck * (1 + DIRT_WEAR * dirtShare));
   return line.vehicles * (RUNNING.loco + (line.wagons ?? DEFAULT_WAGONS) * RUNNING.wagon);
 }

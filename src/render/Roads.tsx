@@ -14,7 +14,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { activeControl, CellType, cellCornerHeights, cutAt, hasRailAt, roadLinkDir, type TerrainMap } from '../sim';
+import { activeControl, CellType, cellCornerHeights, cutAt, hasRailAt, isDirt, roadLinkDir, type TerrainMap } from '../sim';
 import { CELL_STYLE } from './terrainStyle';
 import { patchRef } from './cloudShadows';
 
@@ -24,6 +24,8 @@ export interface RoadsProps {
 }
 
 const ROAD_STYLE = CELL_STYLE[CellType.Road];
+/** Dirt road (roads.ts): packed earth, no markings. */
+const DIRT_COLOR = '#8a6c4a';
 // Flat grass tile top; hill surface + hill roads sit relative to this.
 const FLAT_TOP = CELL_STYLE[CellType.Empty].scaleY;
 // Small lift so the road never z-fights the hill surface it rests on (the
@@ -87,26 +89,37 @@ function roundedOutline(map: TerrainMap, x: number, z: number): Array<[number, n
 }
 
 export function Roads({ map, cellSize }: RoadsProps) {
-  const { flatCoords, rounded, allFlat } = useMemo(() => {
+  const { flatCoords, rounded, allFlat, dirtCoords, dirtRounded } = useMemo(() => {
     const out: Array<[number, number]> = [];
     const round: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
+    const dOut: Array<[number, number]> = [];
+    const dRound: Array<{ x: number; z: number; pts: Array<[number, number]> }> = [];
     for (let x = 0; x < map.size; x++) {
       for (let z = 0; z < map.size; z++) {
         // An underpass's cutting: its ramp is drawn by Structures.tsx.
         if (map.cells[x][z] === CellType.Road && isFlatRoad(map, x, z) && !cutAt(map, x, z)) {
+          const dirt = isDirt(map, x, z);
           const pts = roundedOutline(map, x, z);
-          if (pts) round.push({ x, z, pts });
-          else out.push([x, z]);
+          if (pts) (dirt ? dRound : round).push({ x, z, pts });
+          else (dirt ? dOut : out).push([x, z]);
         }
       }
     }
-    return { flatCoords: out, rounded: round, allFlat: out.concat(round.map((r) => [r.x, r.z] as [number, number])) };
+    return {
+      flatCoords: out,
+      rounded: round,
+      allFlat: out.concat(round.map((r) => [r.x, r.z] as [number, number])),
+      dirtCoords: dOut,
+      dirtRounded: dRound,
+    };
   }, [map]);
 
   return (
     <group>
       <FlatRoads coords={flatCoords} marked={allFlat} map={map} cellSize={cellSize} />
       <RoundedRoads cells={rounded} map={map} cellSize={cellSize} />
+      <FlatRoads coords={dirtCoords} marked={NONE} map={map} cellSize={cellSize} color={DIRT_COLOR} />
+      <RoundedRoads cells={dirtRounded} map={map} cellSize={cellSize} color={DIRT_COLOR} />
       <HillRoads map={map} cellSize={cellSize} />
     </group>
   );
@@ -179,12 +192,17 @@ function ribbon(
  * read as rounded, not blocky. All markings share one Y (MARK_Y) so curve ends
  * meet the straights exactly.
  */
+const NONE: Array<[number, number]> = [];
+
 function FlatRoads({
   coords,
   marked,
   map,
   cellSize,
+  color = ROAD_STYLE.color,
 }: {
+  /** Surface colour (asphalt / dirt). */
+  color?: string;
   /** Square tiles. */
   coords: Array<[number, number]>;
   /** All flat road cells (their centre-lines). */
@@ -345,8 +363,8 @@ function FlatRoads({
       >
         <meshStandardMaterial
           ref={patchRef}
-          color={ROAD_STYLE.color}
-          roughness={0.8}
+          color={color}
+          roughness={color === ROAD_STYLE.color ? 0.8 : 0.95}
           polygonOffset
           polygonOffsetFactor={-1}
           polygonOffsetUnits={-1}
@@ -362,7 +380,9 @@ function RoundedRoads({
   cells,
   map,
   cellSize,
+  color = ROAD_STYLE.color,
 }: {
+  color?: string;
   cells: Array<{ x: number; z: number; pts: Array<[number, number]> }>;
   map: TerrainMap;
   cellSize: number;
@@ -394,27 +414,32 @@ function RoundedRoads({
   if (!geom) return null;
   return (
     <mesh geometry={geom} receiveShadow>
-      <meshStandardMaterial ref={patchRef} color={ROAD_STYLE.color} roughness={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+      <meshStandardMaterial ref={patchRef} color={color} roughness={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
     </mesh>
   );
 }
 
 /** Slope-conforming surface for roads sitting on hills, with centre-lines. */
 function HillRoads({ map, cellSize }: { map: TerrainMap; cellSize: number }) {
-  const geometry = useMemo(
-    () => buildHillRoadSurface(map, cellSize),
-    [map, cellSize],
-  );
+  const geometry = useMemo(() => buildHillRoadSurface(map, cellSize, false), [map, cellSize]);
+  const dirtGeom = useMemo(() => buildHillRoadSurface(map, cellSize, true), [map, cellSize]);
   const markGeom = useMemo(
     () => buildHillRoadMarkings(map, cellSize),
     [map, cellSize],
   );
-  if (!geometry) return null;
+  if (!geometry && !dirtGeom) return null;
   return (
     <group>
-      <mesh geometry={geometry} castShadow receiveShadow>
-        <meshStandardMaterial ref={patchRef} color={ROAD_STYLE.color} roughness={0.85} />
-      </mesh>
+      {geometry && (
+        <mesh geometry={geometry} castShadow receiveShadow>
+          <meshStandardMaterial ref={patchRef} color={ROAD_STYLE.color} roughness={0.85} />
+        </mesh>
+      )}
+      {dirtGeom && (
+        <mesh geometry={dirtGeom} castShadow receiveShadow>
+          <meshStandardMaterial ref={patchRef} color={DIRT_COLOR} roughness={0.95} />
+        </mesh>
+      )}
       {markGeom && (
         <mesh geometry={markGeom}>
           <meshStandardMaterial
@@ -471,7 +496,7 @@ function buildHillRoadMarkings(
 
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
-      if (cells[x][z] !== CellType.Road) continue;
+      if (cells[x][z] !== CellType.Road || isDirt(map, x, z)) continue;
       const h00 = cornerHeight(x, z);
       const h10 = cornerHeight(x + 1, z);
       const h11 = cornerHeight(x + 1, z + 1);
@@ -521,6 +546,8 @@ function buildHillRoadMarkings(
 function buildHillRoadSurface(
   map: TerrainMap,
   cellSize: number,
+  /** The dirt road cells (true) or the main road ones (false). */
+  dirt: boolean,
 ): THREE.BufferGeometry | null {
   const { size, heights, cells } = map;
   const half = (size - 1) / 2;
@@ -563,7 +590,7 @@ function buildHillRoadSurface(
   let any = false;
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
-      if (cells[x][z] !== CellType.Road) continue;
+      if (cells[x][z] !== CellType.Road || isDirt(map, x, z) !== dirt) continue;
       // Only slope cells here; flat cells (all corners equal) are drawn as
       // tiles by FlatRoads. A ramp foot can have heights[x][z] === 0 yet have
       // unequal corners, so classify by corners — this is the fix for level-1

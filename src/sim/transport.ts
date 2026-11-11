@@ -83,6 +83,7 @@ export interface MarketSink {
   deliver(item: Item, n: number): number;
 }
 import { brakeCapOn, laneAt, nearestS, polyLane, type Lane } from './lane';
+import { DIRT_STEP, MAIN_STEP, isDirt } from './roads';
 
 export { laneAt, nearestS, polyLane, type Lane };
 import { activeControl, lightState } from './traffic';
@@ -203,8 +204,11 @@ export interface LineFigures {
   /** Vehicle-seconds on the line / of them held up (traffic, signals, full yards). */
   time: number;
   held: number;
+  /** Cells driven (trucks), of them on a dirt road (roads.ts: wear → running cost). */
+  dist: number;
+  dirt: number;
 }
-const noFigures = (): LineFigures => ({ units: 0, paidW: 0, time: 0, held: 0 });
+const noFigures = (): LineFigures => ({ units: 0, paidW: 0, time: 0, held: 0, dist: 0, dirt: 0 });
 /** Held-up seconds per cell this month above which it shows as a jam (network view). */
 export const HOTSPOT_MIN = 20;
 
@@ -444,45 +448,58 @@ export function roadRoute(map: TerrainMap, from: Cell[], to: Cell[], oneWay = fa
       for (let i = 1; i < d.length; i++) noStep.add((d[i][0] * n + d[i][1]) * n * n + d[i - 1][0] * n + d[i - 1][1]);
     }
 
+  // Dijkstra with buckets (Dial): a step costs the time it takes (a dirt road
+  // is slower, roads.ts). With main roads only it is the old breadth-first
+  // search, ties and all (FIFO buckets).
+  const dirt = map.dirt?.size ? map.dirt : null;
+  const stepCost = (k: number) => (dirt?.has(k) ? DIRT_STEP : MAIN_STEP);
   const prev = new Int32Array(n * n).fill(-2);
-  const q: number[] = [];
+  const dist = new Int32Array(n * n).fill(0x7fffffff);
+  const buckets: number[][] = [];
+  const push = (k: number, d: number) => (buckets[d] ??= []).push(k);
   for (const [x, z] of from) {
     if (!isRoad(x, z)) continue;
     const c = x * n + z;
     if (prev[c] !== -2) continue;
     prev[c] = -1;
-    q.push(c);
+    dist[c] = 0;
+    push(c, 0);
   }
-  for (let h = 0; h < q.length; h++) {
-    const c = q[h];
-    if (goal.has(c)) {
-      const path: Cell[] = [];
-      for (let k = c; k >= 0; k = prev[k]) path.push([(k / n) | 0, k % n]);
-      return path.reverse();
-    }
-    const x = (c / n) | 0, z = c % n;
-    // Over a bridge / through a tunnel: straight on to the far abutment.
-    const link = roadLinkFrom(map, x, z);
-    if (link && isRoad(link.to[0], link.to[1])) {
-      const k = link.to[0] * n + link.to[1];
-      if (prev[k] === -2) {
-        prev[k] = c;
-        q.push(k);
+  const relax = (c: number, k: number) => {
+    const d = dist[c] + stepCost(k);
+    if (d >= dist[k]) return;
+    dist[k] = d;
+    prev[k] = c;
+    push(k, d);
+  };
+  for (let b = 0; b < buckets.length; b++) {
+    const q = buckets[b];
+    if (!q) continue;
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h];
+      if (dist[c] !== b) continue; // stale (reached cheaper since)
+      if (goal.has(c)) {
+        const path: Cell[] = [];
+        for (let k = c; k >= 0; k = prev[k]) path.push([(k / n) | 0, k % n]);
+        return path.reverse();
       }
-    }
-    for (let d = 0; d < 4; d++) {
-      const nx = x + DX[d], nz = z + DZ[d];
-      if (!isRoad(nx, nz)) continue;
-      const k = nx * n + nz;
-      if (prev[k] !== -2 || noStep.has(c * n * n + k)) continue;
-      if (!groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // along a span: only over / through it
-      if (!axisOk(kind(x, z), d) || !axisOk(kind(nx, nz), d)) continue;
-      if (Math.abs(map.heights[nx][nz] - map.heights[x][z]) > HILL_STEP + 1e-6) continue;
-      const axis = d < 2 ? 'x' : 'z';
-      const ca = crossing(x, z), cb = crossing(nx, nz);
-      if ((ca && ca !== axis) || (cb && cb !== axis)) continue;
-      prev[k] = c;
-      q.push(k);
+      const x = (c / n) | 0, z = c % n;
+      // Over a bridge / through a tunnel: straight on to the far abutment.
+      const link = roadLinkFrom(map, x, z);
+      if (link && isRoad(link.to[0], link.to[1])) relax(c, link.to[0] * n + link.to[1]);
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d], nz = z + DZ[d];
+        if (!isRoad(nx, nz)) continue;
+        const k = nx * n + nz;
+        if (prev[k] === -1 || noStep.has(c * n * n + k)) continue;
+        if (!groundStepOk(map, { x, z }, { x: nx, z: nz })) continue; // along a span: only over / through it
+        if (!axisOk(kind(x, z), d) || !axisOk(kind(nx, nz), d)) continue;
+        if (Math.abs(map.heights[nx][nz] - map.heights[x][z]) > HILL_STEP + 1e-6) continue;
+        const axis = d < 2 ? 'x' : 'z';
+        const ca = crossing(x, z), cb = crossing(nx, nz);
+        if ((ca && ca !== axis) || (cb && cb !== axis)) continue;
+        relax(c, k);
+      }
     }
   }
   return null;
@@ -562,6 +579,23 @@ export function buildLane(path: Cell[], roundabout?: (x: number, z: number) => b
   for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], zs[i] - zs[i - 1]));
   const deck = deckBoxes(path);
   return deck.length ? { xs, zs, cum, length: cum[cum.length - 1], deck } : { xs, zs, cum, length: cum[cum.length - 1] };
+}
+
+/** The stretches of a lane on dirt road cells (sampled every 0.1). */
+function dirtStretches(lane: Lane, map: TerrainMap): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let open = -1;
+  for (let s = 0; s <= lane.length + 1e-6; s += 0.1) {
+    const [x, z] = laneAt(lane, s);
+    const on = isDirt(map, Math.round(x), Math.round(z));
+    if (on && open < 0) open = s;
+    else if (!on && open >= 0) {
+      out.push([open, s]);
+      open = -1;
+    }
+  }
+  if (open >= 0) out.push([open, lane.length]);
+  return out;
 }
 
 /** The truck speed cap at `s` for the bends ahead and a stop at `stopAt` (see lane.ts). */
@@ -658,6 +692,16 @@ export class TransportSim {
   /** A line's figures: this month so far and the last whole month. */
   lineStats(id: number): { month: LineFigures; last: LineFigures | null } {
     return this.stats.get(id) ?? { month: noFigures(), last: null };
+  }
+
+  /**
+   * The share of a truck line's driving on dirt roads (0–1): this month so
+   * far, else the last month's. Wears the trucks: a higher running cost.
+   */
+  dirtShare(id: number): number {
+    const st = this.stats.get(id);
+    const f = st && st.month.dist > 1 ? st.month : st?.last;
+    return f && f.dist > 0 ? f.dirt / f.dist : 0;
   }
 
   /** Where the traffic stands most (cells, held-up seconds), for the network view. */
@@ -1017,9 +1061,16 @@ export class TransportSim {
     if (sl.join() !== this.snap.stalled.join()) this.set({ stalled: sl });
     // Line figures: time on the line / held up, and where (the jams).
     const n = map.size;
+    const dirtMap = map.dirt?.size ? map : null;
     for (const t of this.trucks) {
       const f = this.figures(t.lineId);
       f.time += dt;
+      if (t.v > 0) {
+        const ds = t.v * dt;
+        f.dist += ds;
+        const p = dirtMap && (poses.get(t.id) ?? this.pose(t));
+        if (p && isDirt(dirtMap, Math.round(p.x), Math.round(p.z))) f.dirt += ds;
+      }
       if (t.blocked > (blockedBefore.get(t) ?? 0)) {
         f.held += dt;
         const p = poses.get(t.id) ?? this.pose(t);
@@ -1313,7 +1364,12 @@ export class TransportSim {
 
   /** The lane along a route (round any roundabouts on it). */
   private laneOf(path: Cell[], map: TerrainMap): Lane {
-    return buildLane(path, (x, z) => activeControl(map, x, z) === 'roundabout');
+    const lane = buildLane(path, (x, z) => activeControl(map, x, z) === 'roundabout');
+    if (map.dirt?.size) {
+      const slow = dirtStretches(lane, map);
+      if (slow.length) lane.slow = slow;
+    }
+    return lane;
   }
 
   private setPath(t: Truck, path: Cell[] | null, map: TerrainMap): void {

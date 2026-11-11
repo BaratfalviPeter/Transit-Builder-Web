@@ -148,6 +148,19 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   vonalig fékez, szabadon JUNCTION_SPEED). Kereszteződési várakozásnál a vonalig fékez
   (`toJunctionLine`), nem helyben áll meg. Megállóból a parkoló helyéről indul (`startS`),
   a `startBlocked` a mögötte érkezőket is nézi.
+- ÚTTÍPUSOK (`src/sim/roads.ts`, 2026-11): FÖLDÚT (eszköz `dirtroad`, E, $4 / cella, fenntartás 0,3) és FŐÚT
+  (`road`, 1, $10, fenntartás 1). Mindkettő `CellType.Road`; a földút-cellák a `map.dirt` halmazban (mentve tömbként;
+  régi mentés: minden főút). FELÚJÍTÁS: főutat húzva a földútra `UPGRADE_PRICE` ($6) / cella (`dirtOnPath`,
+  `buildPath(path, kind)`; a költség: `planCost`). Kamion földúton `DIRT_SPEED` (0,7) × sebességgel (`Lane.slow`
+  szakaszok → `bendLimit`), és jobban kopik: üzemeltetés × (1 + `DIRT_WEAR` 0,3 × földúti arány) (`runningOf(line,
+  dirtShare)`, `TransportSim.dirtShare` a havi megtett útból: `LineFigures.dist / dirt`). A főút az elejétől építhető (évhez
+  kötve NEM — a felhasználó kérte; később fejlesztéssel nyílhat meg, `ötletek.md`). BONTÁS: a főút előbb
+  földút lesz, a második bontás viszi el. Bot (`bot2.ts`, `DIRT=1`: földúttal kezd, 1971-ben felújít): 5000 lakos a
+  654 / 680 / 717 / 656. napon (csak főúttal 651 / 666 / 699 / 648; 0,55-ös sebesség + 0,6 kopásnál a 9-es térkép
+  csődbe ment). Az útkeresés (`roadRoute`) vödrös Dijkstra: lépésköltség `MAIN_STEP` 5 / `DIRT_STEP` 7
+  (csak főúttal ugyanaz, mint a régi szélességi keresés — a regressziós tesztek azonosak). Rajz: `Roads.tsx` barna
+  (`DIRT_COLOR`), felezővonal nélkül. Teszt: scratchpad `roadtype.ts` (útvonal-választás, ugyanaz a járat főúton /
+  földúton, mentés, felújítás).
 - Forgalomirányítás (`traffic.ts`): `map.controls` (cellaindex → light | roundabout | yield |
   stop), olvasáskor validálva (`activeControl`). Lámpa/körforgalom kereszteződésre, tábla a
   kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
@@ -156,7 +169,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
-- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, E földút, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
   J/P/M/0 panelek (M = Játék: mentés, új játék; a 0 a beírt karakter szerint is: magyar billentyűzeten
   az 1 bal oldalán van, code 'Backquote'), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
@@ -495,8 +508,10 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #113 (a telek elülső / hátsó szegélyfala az első vágány mellett kezdődik: `RAIL_CLEAR_X`).
 - Mergelve: #114 (a jobb oldali állásokhoz a kamion a fal elejénél balra húzódik, `TIP_CLEAR`, a faltól 0,3-ra halad).
 - Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
-- Folyamatban (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
+- Mergelve (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
   az erőmű nem vesz át olajat; a teli rakományra várakozó kamion holtpontjának javítása (`FULL_LOAD_YIELD`).
+- Folyamatban (#117): ÚTTÍPUSOK 1. rész (földút + főút + felújítás, kopás, bontás → földút). A teli rakomány elengedése (`FULL_LOAD_YIELD`) a
+  felhasználó szerint lehet, hogy jobb volt nélküle (nehezítés) — `ötletek.md`, döntés később.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
 - OLAJDEPÓ PARAMÉTERES (a felhasználó kérte; a bővítés a modellt cseréli egy nagyobbra, nem külön
@@ -518,7 +533,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 ## Következő lépések
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem, PAY_SPEED, LEVEL_RATE)
 - Jelzők / vonatok finomítása (a felhasználó jóváhagyta; konkrétumok tőle)
-- Úttípusok: földút + főút + felújítás, utána autópálya (a felhasználó FIXEN szeretné; `ötletek.md`)
+- Úttípusok: földút + főút + felújítás KÉSZ; utána autópálya (a felhasználó FIXEN szeretné; `ötletek.md`)
 - Ötletek (`ötletek.md`): sokszínű ipar (rakománycsoportok, lépcsőzetes láncok), épületek anyagból,
   sínépítő vonat
 - Döntés a lerakható iparágakról (`ötletek.md`)

@@ -9,6 +9,7 @@
  * Grid indexing matches `generateTerrain`: cells[x][z], x,z in [0, size).
  */
 
+import type { RoadKind } from './roads';
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
 import { MAX_REFINERY_UNITS, OIL_START_BAYS, OIL_START_TRACKS, isOilLot, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
 import { pipeCellOk } from './pipes';
@@ -106,8 +107,10 @@ export class TerrainStore {
    * (the cell turns Road, its rail piece stays). Each new cell is checked
    * against the build rules as the route grows. Returns the cells placed.
    */
-  buildPath(path: ReadonlyArray<{ x: number; z: number }>): number {
+  buildPath(path: ReadonlyArray<{ x: number; z: number }>, kind: RoadKind = 'main'): number {
     let cells: CellType[][] | null = null;
+    const dirt = new Set(this.map.dirt ?? []);
+    const dirtBefore = dirt.size;
     const touched = new Set<number>();
     let placed = 0;
     // Bridges / tunnels the route runs along: their span isn't road cells —
@@ -124,7 +127,11 @@ export class TerrainStore {
       if (!this.inBounds(x, z)) continue;
       if (onSpan.has(x * this.map.size + z)) continue;
       const cur = (cells ?? this.map.cells)[x][z];
-      if (cur === CellType.Road) continue;
+      const k = x * this.map.size + z;
+      if (cur === CellType.Road) {
+        if (kind === 'main') dirt.delete(k); // upgraded (paid by the caller)
+        continue;
+      }
       // Rules see the cells placed so far (slope-connectivity checks).
       const view = cells ? { ...this.map, cells } : this.map;
       const ok = cur === CellType.Rail ? roadCrossingAxis(view, x, z) !== null : canBuildRoadAt(view, x, z);
@@ -135,11 +142,14 @@ export class TerrainStore {
         touched.add(x);
       }
       cells[x][z] = CellType.Road;
+      if (kind === 'dirt') dirt.add(k);
+      else dirt.delete(k);
       placed++;
     }
-    if (cells && placed > 0) {
-      this.roadCount += placed;
-      this.commit({ cells }, true);
+    const dirtChanged = dirt.size !== dirtBefore;
+    if ((cells && placed > 0) || dirtChanged) {
+      if (cells) this.roadCount += placed;
+      this.commit({ ...(cells && placed > 0 ? { cells } : {}), ...(dirtChanged ? { dirt } : {}) }, true);
       this.emit();
     }
     // The spans the route crossed end to end: the road goes on them.
@@ -629,6 +639,14 @@ export class TerrainStore {
     // A pipeline under bare ground / water goes (a road, track or tree over it first).
     if (current !== CellType.Road && current !== CellType.Rail && current !== CellType.Forest && this.removePipe(x, z)) return true;
 
+    // A main road goes back to a dirt road first (roads.ts); the next pass takes it.
+    if (current === CellType.Road && !this.map.dirt?.has(key)) {
+      const dirt = new Set(this.map.dirt ?? []);
+      dirt.add(key);
+      this.commit({ dirt }, true);
+      this.emit();
+      return true;
+    }
     if (canBulldoze(current)) {
       // Road / rail / forest → bare ground, and mark it cleared so no fringe
       // tree or rock pops back onto the freshly cleared cell.
@@ -636,6 +654,11 @@ export class TerrainStore {
       const next = new Set(cleared);
       next.add(key);
       this.map = { ...this.map, cleared: next };
+      if (this.map.dirt?.has(key)) {
+        const dirt = new Set(this.map.dirt);
+        dirt.delete(key);
+        this.map = { ...this.map, dirt };
+      }
       // A road/rail on a raised cell goes back to hillside, not flat grass.
       const raised = (current === CellType.Road || current === CellType.Rail) && this.map.heights[x][z] > 0;
       this.applyCell(x, z, raised ? CellType.Hill : CellType.Empty);
@@ -808,6 +831,7 @@ export class TerrainStore {
       cells?: CellType[][];
       heights?: number[][];
       cleared?: ReadonlySet<number>;
+      dirt?: ReadonlySet<number>;
       railNet?: RailNet;
       stations?: TerrainMap['stations'];
       structures?: TerrainMap['structures'];

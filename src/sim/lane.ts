@@ -4,6 +4,8 @@
  * Pure TypeScript.
  */
 
+import { DIRT_SPEED } from './roads';
+
 /** A polyline with cumulative lengths: the right lane along a route. */
 export interface Lane {
   xs: number[];
@@ -13,6 +15,8 @@ export interface Lane {
   length: number;
   /** Boxes of the bridges / tunnels it runs on (structures.ts `deckBoxes`), if any. */
   deck?: Array<[number, number, number, number]>;
+  /** Stretches [s0, s1] on a dirt road (roads.ts): top speed × DIRT_SPEED there. */
+  slow?: Array<[number, number]>;
 }
 
 /** A lane straight through world points (no lane offset: already placed). */
@@ -82,6 +86,7 @@ function bendLimit(l: Lane, aLat: number, top: number): Float32Array {
     turn = Math.abs(((turn + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
     const k = turn / (2 * h); // curvature (1 / radius)
     a[i] = k > 1e-3 ? Math.min(top, Math.sqrt(aLat / k)) : top;
+    if (l.slow?.some(([s0, s1]) => s >= s0 && s <= s1)) a[i] = Math.min(a[i], top * DIRT_SPEED);
   }
   m.set(key, a);
   return a;

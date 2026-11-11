@@ -31,6 +31,7 @@ export * from './save';
 export * from './economy';
 export * from './selection';
 export * from './pipes';
+export * from './roads';
 export {
   OIL_DEPOT_PRICE,
   REFINERY_PRICE,

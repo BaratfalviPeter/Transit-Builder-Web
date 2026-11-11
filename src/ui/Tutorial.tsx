@@ -126,7 +126,7 @@ const PAGES: Page[] = [
             épület valamelyik oldalán.
           </li>
           <li>
-            A megállókat <b>úttal</b> (1, húzással) vagy <b>sínnel</b> (2) kötöd össze.
+            A megállókat <b>úttal</b> (E földút: olcsó, de lassú · 1 főút; húzással) vagy <b>sínnel</b> (2) kötöd össze. A földút később főúttal ráhúzva felújítható.
           </li>
           <li>
             A <b>Járatok</b> panelen (J) indítasz járatot: kattints sorban a megállókra. A jármű felrakja, amit egy későbbi megálló
@@ -294,7 +294,7 @@ interface Task {
 const TASKS: Task[] = [
   { id: 'stop', text: 'Rakj le egy rakodót egy iparág mellé', hint: '4 Rakodó — pl. a fatelep vagy a bánya oldalára' },
   { id: 'stop2', text: 'Rakj le egy második megállót oda, ahová viszed', hint: 'pl. a gyár, az erőmű vagy a város széle' },
-  { id: 'road', text: 'Köss össze két megállót úttal', hint: '1 Út — húzd az egyiktől a másikig' },
+  { id: 'road', text: 'Köss össze két megállót úttal', hint: 'E Földút / 1 Főút — húzd az egyiktől a másikig' },
   { id: 'line', text: 'Indíts kamionjáratot', hint: 'J Járatok → Új kamionjárat → kattints a megállókra' },
   { id: 'income', text: 'Az első bevétel', hint: 'a kamion leszállítja a rakományt', sticky: true },
   { id: 'power', text: 'Áram: szén a bányából az erőműbe', hint: 'az erőmű magától ellátja a várost' },

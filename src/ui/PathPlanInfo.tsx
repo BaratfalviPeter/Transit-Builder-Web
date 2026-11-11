@@ -6,17 +6,21 @@
  * hologram is red (blocked / not enough money), plus the cancel hint.
  */
 
-import { CellType, TOOLS, useGameSnapshot, usePathPlanSnapshot } from '../sim';
+import { CellType, TOOLS, dirtOnPath, planCost, roadKindOf, useGameSnapshot, usePathPlanSnapshot, useTerrainMap } from '../sim';
 import './pathPlanInfo.css';
 
 export function PathPlanInfo() {
   const snap = usePathPlanSnapshot();
-  const { money } = useGameSnapshot();
+  const { money, activeTool } = useGameSnapshot();
+  const map = useTerrainMap();
   if (snap.pathbuildingState === 'idle') return null;
   const drawing = snap.pathbuildingState === 'drawing';
 
-  const tool = TOOLS[snap.type === CellType.Rail ? 'rail' : 'road'];
-  const cost = snap.newCells * tool.cost;
+  const kind = roadKindOf(activeTool) ?? 'main';
+  const rail = snap.type === CellType.Rail;
+  const tool = TOOLS[rail ? 'rail' : kind === 'dirt' ? 'dirtroad' : 'road'];
+  const cost = planCost(map, snap, kind);
+  const upgrades = !rail && kind === 'main' ? dirtOnPath(map, snap.previewPath) : 0;
   const poor = money < cost;
   const status = snap.blocked
     ? snap.rail?.reason ?? 'Akadály – ide nem vezethető'
@@ -32,7 +36,8 @@ export function PathPlanInfo() {
     <div className={`ppi ${snap.blocked || poor ? 'ppi--red' : ''}`}>
       <div className="ppi__row">
         <span className="ppi__title">
-          {tool.label} · {snap.newCells} {snap.type === CellType.Rail ? 'cella hosszú' : 'új cella'}
+          {tool.label} · {snap.newCells} {rail ? 'cella hosszú' : 'új cella'}
+          {upgrades > 0 && ` · ${upgrades} felújítás`}
         </span>
         <span className="ppi__cost">${cost}</span>
       </div>

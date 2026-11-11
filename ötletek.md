@@ -151,6 +151,7 @@ a növekedést (mint most az áram).
   1 sávos, ezért ez külön, nagyobb lépés (sávváltás, előzés).
 - Felújítás: a meglévő útra ráhúzva a jobb típus.
 - Sorrend: földút + főút + felújítás → autópálya → (később) járműkopás / szerviz.
+- KÉSZ (2026-11): földút + főút + felújítás (`src/sim/roads.ts`); a folytatás lent („Úttípusok — folytatás”).
 
 ## Iparági rakodók a peron helyett (a felhasználó választotta: A irány, 2026-11)
 
@@ -235,3 +236,20 @@ ezek akkor jöhetnek, ha lesz átvevőjük (különben csak felhalmozódnak):
 - Ha több termék lesz: a finomító csak akkor dolgozik teljes gőzzel, ha mindegyiket elviszik.
 - A finomító és a későbbi feldolgozó egységek lerakhatók, paraméteres modellel bővülnek (mint az olajdepó);
   a nyersanyag-lelőhelyek (bánya, fúró, erdő) maradnak fixek a térképen.
+
+## „Csak tele induljon” — engedjen-e utat a sorban állóknak? (a felhasználó kérte, maradjon ötletnek, 2026-11)
+
+- Most (#116): a teli rakományra váró kamion elindul azzal, amije van, ha egy mögötte sorban álló kamion
+  `FULL_LOAD_YIELD` (4 s) óta rá vár — így nem lesz holtpont (gyár → város kamion vár az árura, a deszkát hozó
+  kamionok mögötte nem tudnak lerakodni).
+- A felhasználó szerint a régi viselkedés (nincs elengedés, dugó lehet) is jó lehet: nehezítés, a játékosnak kell
+  megoldania (külön megálló a be- és kirakodásnak, Be / Ki szerep, több állás).
+- Lehetőségek: visszaállítani a régit; vagy beállítás / nehézség („mester”: nincs elengedés); vagy figyelmeztetés a
+  Járatok panelen, ha egy teli rakományra váró kamion másokat feltart. Döntés később.
+
+## Úttípusok — folytatás (a földút + főút + felújítás után)
+
+- Földúton drágább üzemeltetés (kopás) — most csak lassabb (`DIRT_SPEED`); a járműkopás / szerviz bevezetésével.
+- Az elején csak földút legyen, a főút később nyíljon meg (évszám / fejlesztés)?
+- Autópálya: 2 sáv irányonként, felhajtók (külön, nagyobb lépés: sávváltás, előzés).
+- Bontásnál a főút visszaminősítése földútra (most a bontás teljesen elviszi).

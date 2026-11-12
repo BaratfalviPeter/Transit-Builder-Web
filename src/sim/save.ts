@@ -9,6 +9,7 @@
  * Pure TypeScript; the React side (useSave.ts) decides when to save / load.
  */
 
+import type { HwDir } from './highway';
 import type { CitySave } from './CityDevelopment';
 import type { GameSave } from './GameState';
 import type { ProductionSave } from './production';
@@ -21,9 +22,11 @@ export const SAVE_KEY = 'transit-builder:save';
 export const SAVE_VERSION = 1;
 
 /** The map as plain JSON (its Set / Map fields as arrays). */
-type MapSave = Omit<TerrainMap, 'cleared' | 'controls' | 'dirt'> & {
+type MapSave = Omit<TerrainMap, 'cleared' | 'controls' | 'dirt' | 'highway' | 'ramps'> & {
   cleared?: number[];
   dirt?: number[];
+  highway?: Array<[number, HwDir]>;
+  ramps?: number[];
   controls?: Array<[number, ControlKind]>;
 };
 
@@ -47,7 +50,7 @@ export interface SaveParts {
 }
 
 export function toSave(p: SaveParts): SaveData {
-  const { cleared, controls, dirt, ...rest } = p.map;
+  const { cleared, controls, dirt, highway, ramps, ...rest } = p.map;
   return {
     version: SAVE_VERSION,
     savedAt: Date.now(),
@@ -56,6 +59,8 @@ export function toSave(p: SaveParts): SaveData {
       ...(cleared ? { cleared: [...cleared] } : {}),
       ...(controls ? { controls: [...controls] } : {}),
       ...(dirt?.size ? { dirt: [...dirt] } : {}),
+      ...(highway?.size ? { highway: [...highway] } : {}),
+      ...(ramps?.size ? { ramps: [...ramps] } : {}),
     },
     lines: p.lines.slice(),
     game: p.game,
@@ -66,12 +71,14 @@ export function toSave(p: SaveParts): SaveData {
 
 /** The map of a save, with its Set / Map fields rebuilt. */
 export function mapOf(s: SaveData): TerrainMap {
-  const { cleared, controls, dirt, ...rest } = s.map;
+  const { cleared, controls, dirt, highway, ramps, ...rest } = s.map;
   return {
     ...rest,
     ...(cleared ? { cleared: new Set(cleared) } : {}),
     ...(controls ? { controls: new Map(controls) } : {}),
     ...(dirt ? { dirt: new Set(dirt) } : {}),
+    ...(highway ? { highway: new Map(highway) } : {}),
+    ...(ramps ? { ramps: new Set(ramps) } : {}),
   };
 }
 

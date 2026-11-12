@@ -50,8 +50,10 @@ const ICON: Record<ToolId, string> = {
   raise: '⛰️',
   lower: '🕳️',
   bulldoze: '🚜',
-  road: '🛣️',
+  road: '🚗',
   dirtroad: '🟫',
+  highway: '🛣️',
+  ramp: '↪️',
   rail: '🚆',
   station: '🚉',
   truckstop: '🚚',
@@ -76,6 +78,8 @@ const KEYS: Array<{ code: string; label: string; tool: ToolId }> = [
   { code: 'KeyB', label: 'B', tool: 'bulldoze' },
   { code: 'KeyE', label: 'E', tool: 'dirtroad' },
   { code: 'Digit1', label: '1', tool: 'road' },
+  { code: 'KeyX', label: 'X', tool: 'highway' },
+  { code: 'KeyC', label: 'C', tool: 'ramp' },
   { code: 'Digit2', label: '2', tool: 'rail' },
   { code: 'Digit3', label: '3', tool: 'station' },
   { code: 'Digit4', label: '4', tool: 'truckstop' },
@@ -114,7 +118,7 @@ const PANEL_KEYS: Array<{ code: string; key?: string; label: string; panel: Pane
 const GROUPS: Array<{ title: string; tools: ToolId[] }> = [
   { title: '', tools: ['select'] },
   { title: 'Terep', tools: ['raise', 'lower', 'bulldoze'] },
-  { title: 'Építés', tools: ['dirtroad', 'road', 'rail', 'bridge', 'tunnel', 'signal', 'station', 'truckstop', 'depot'] },
+  { title: 'Építés', tools: ['dirtroad', 'road', 'highway', 'ramp', 'rail', 'bridge', 'tunnel', 'signal', 'station', 'truckstop', 'depot'] },
   { title: 'Olaj', tools: ['pipe', 'oildepot', 'refinery'] },
   { title: 'Forgalom', tools: ['yield', 'stop', 'light', 'roundabout'] },
 ];
@@ -127,6 +131,8 @@ const HINT: Record<ToolId, string> = {
   bulldoze: 'Bontás — út, sín, megálló, tábla, fa; húzva is',
   road: 'Főút (aszfalt) — húzd az egeret: követi a kurzort, visszahúzva törlődik, elengedve megépül · vagy kattints a kezdő-, majd a célpontra · földútra húzva felújítja · Esc: mégse',
   dirtroad: `Földút — olcsó, kis fenntartású, de a kamionok ${Math.round(DIRT_SPEED * 100)}%-os sebességgel mennek rajta és jobban kopnak (drágább üzemeltetés) · Főúttal (1) ráhúzva felújítható · húzd az egeret, vagy két kattintás · Esc: mégse`,
+  highway: 'Autópálya — húzd végig (egyenesek és derékszögű kanyarok): a húzott sor a menetirány, mellette balra a másik irány · víz / völgy fölött magától híd, hegyen át alagút · a végein útvég, oda köss utat · keresztezni aluljáróval lehet · Esc: mégse',
+  ramp: 'Felhajtó — az autópálya mellé, a külső oldalára (egyenes szakasz mellé): innen lehet rá- és lehajtani; köss hozzá utat · a másik irányhoz a túloldalra is kell egy',
   rail: 'Sín — a legrövidebb sín a kurzorig (bármilyen hosszú), oldalra húzva kanyarodik · Shift: csak egyenesen · kattintás: lerakja és folytatod · Esc: vége · végállomáson hurok kell',
   signal: 'Vasúti jelző — kattints a sínre: arra az oldalra kerül, ahol a kurzor van, és az ott (jobb kéz felől) haladó vonatoknak szól · újra kattintva megfordul · Bontás (B): leszedi · váltótól legyen 1–2 cella távolságra',
   station: 'Vasútállomás — egy ipar telkének oldalára kattints · Q: peronhossz (6 / 8 / 10 / 12 cella; a hosszú vonatnak) · a vágány mindkét végét bekötheted (pl. hurokba)',
@@ -376,7 +382,7 @@ export function GameUI() {
                       type="button"
                       className={'ui-tool' + (active === id ? ' is-active' : '') + (poor ? ' is-poor' : '')}
                       onClick={() => pickTool(id)}
-                      title={`${t.label}${t.cost ? ` · $${t.cost}${id === 'road' || id === 'dirtroad' || id === 'rail' || id === 'raise' || id === 'lower' ? ' / cella' : ''}` : ''} (${KEY_OF[id]})`}
+                      title={`${t.label}${t.cost ? ` · $${t.cost}${id === 'road' || id === 'dirtroad' || id === 'highway' || id === 'rail' || id === 'raise' || id === 'lower' ? ' / cella' : ''}` : ''} (${KEY_OF[id]})`}
                     >
                       <kbd className="ui-tool__key">{KEY_OF[id]}</kbd>
                       <span className="ui-tool__icon" aria-hidden>

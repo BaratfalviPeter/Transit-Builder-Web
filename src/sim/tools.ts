@@ -8,6 +8,7 @@
  * Infrastructure (road/rail/station). "Select" is the neutral default.
  */
 
+import { HIGHWAY_PRICE, RAMP_PRICE } from './highway';
 import { RAIL_PRICE, ROAD_PRICE } from './roads';
 import { CellType } from './terrain';
 import type { ControlKind } from './traffic';
@@ -24,6 +25,8 @@ export type ToolId =
   | 'bulldoze'
   | 'road'
   | 'dirtroad'
+  | 'highway'
+  | 'ramp'
   | 'rail'
   | 'station'
   | 'truckstop'
@@ -63,6 +66,9 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   // Road types (see roads.ts): main road (asphalt) and dirt road (cheap, slow).
   road: { id: 'road', label: 'Főút', cost: ROAD_PRICE.main, builds: CellType.Road },
   dirtroad: { id: 'dirtroad', label: 'Földút', cost: ROAD_PRICE.dirt, builds: CellType.Road },
+  // Motorway (see highway.ts): two one-way cell rows; per cell. A ramp: the way on / off.
+  highway: { id: 'highway', label: 'Autópálya', cost: HIGHWAY_PRICE, builds: CellType.Road },
+  ramp: { id: 'ramp', label: 'Felhajtó', cost: RAMP_PRICE, builds: null },
   rail: { id: 'rail', label: 'Sín', cost: RAIL_PRICE, builds: CellType.Rail },
   // Rail station on an industry's side (flat price per station).
   station: { id: 'station', label: 'Vasútállomás', cost: 500, builds: null },

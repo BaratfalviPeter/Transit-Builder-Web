@@ -161,6 +161,34 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
   (csak főúttal ugyanaz, mint a régi szélességi keresés — a regressziós tesztek azonosak). Rajz: `Roads.tsx` barna
   (`DIRT_COLOR`), felezővonal nélkül. Teszt: scratchpad `roadtype.ts` (útvonal-választás, ugyanaz a járat főúton /
   földúton, mentés, felújítás).
+- AUTÓPÁLYA (`src/sim/highway.ts`, 1. rész, 2026-11; a felhasználó választotta: 2 cella széles, csak csomóponttal,
+  1,5× sebesség, $40/cella): két EGYIRÁNYÚ cellasor (irányonként 1 cella, benne 2 sáv), `map.highway` (cella → a
+  kilépés iránya 0 +x, 1 +z, 2 −x, 3 −z; a cellák `CellType.Road`), középen szalagkorlát. Eszköz: X (`highway`): a húzott
+  sor a menetirány, mellette BALRA a másik (`highwayPlan`: `besideRoute` eltolás, sarkok gérelve; ha balra nem fér /
+  ütközik, jobbra próbálja — így egy meglévő pálya végéről is folytatható). A VÉGEKEN útvég (`caps`: 2 sima útcella a
+  pálya végén, ott köt be az út, és a kamion megfordulhat; ha nem építhető, a terv piros). FELHAJTÓ: C (`ramp`, $150):
+  sima útcella a pálya KÜLSŐ (jobb) oldalán, egyenes szakasz mellett (`rampProblem`), `map.ramps`; jobbra fel / jobbra le.
+  A pálya mellett futó sima út NEM csatlakozik; sima út nem mehet át rajta (`roadOverHighway`), csak aluljáróval.
+  KÖZÖS SZABÁLY: `roadStep(map, x, z, nx, nz)` (irányított lépés) / `roadLinked` (irányítatlan) — ezt használja a
+  `roadRoute`, a `junctionMap`, a `traffic.isJunction` és a `Roads.tsx` `connects`. Autópálya-cella sosem kereszteződés;
+  a felhajtóról besoroló kamion vár (`mergeWait`), ha a pályán `MERGE_GAP` (3,5) cellán belül jön valaki. Sebesség:
+  `Lane.zones` [s0, s1, szorzó] (földút 0,7, autópálya `HIGHWAY_SPEED` 1,5) + `Lane.fast`; a `brakeCapOn` és a
+  `trafficCap` a sáv legnagyobb sebességével számol. Útvonal: `HIGHWAY_STEP` 3 (főút 5, földút 7). Fenntartás 4 $/cella.
+  Rajz: `Roads.tsx` `HighwayMarks` (sávelválasztó szaggatott, szélső vonalak, felhajtónál nyitott, korlát a két pálya
+  között). Bontás: a cella egyből megy. Mentés: `highway` / `ramps` tömbként. Tesztek: scratchpad `hw.ts` (valódi
+  térkép, a fatelep → gyár út közepén autópálya: oda-vissza rajta mennek; 5-ös térkép +17% forduló), `hwramp.ts`
+  (sík terület, felhajtós besorolás, 5 kamion: ütközés 0), `hwdbg.ts` (útvonal-szabályok), böngésző `pw/hwdrag.mjs`.
+  2. RÉSZ: HÍD / ALAGÚT MAGÁTÓL — a `highwayPlan` a pályánként egybefüggő, nem építhető szakaszt (víz, völgy, hegy, alatta
+  út / sín) egyenes részen hídra / alagútra teszi (`spanOver`: előbb híd, aztán alagút a `structureProblem` szerint; a
+  két szomszéd cella a hídfő), `plan.spans`, ár `spansPrice`; a `buildHighway` előbb a szerkezeteket rakja le, a végén
+  `layOnStructure(…, 'road')`. A hídon csak a menetirányba lehet átmenni (`roadJumpOk` a `roadRoute`-ban), a hídon /
+  alagútban autópálya-sebesség (`speedZones`: a deck dobozban a szerkezet hídfője dönt). A végek két útvég-cellájának
+  össze kell érnie (`trackStepOk`, különben piros: lejtő). ELŐZÉS (`steerLane`, a `drive` ágban): `Truck.lat` (oldalirányú
+  eltolás, jobbra +; bal sáv `LEFT_LANE` −0,4; `LANE_CHANGE` 0,5 cella/s; `latTo`, `prevLat` a rajzhoz): ha előtte 2,2
+  cellán belül lassabb kamion van, a bal sáv (3 hátra / 2,5 előre) szabad, és még `OVERTAKE_AHEAD` (3) cella autópálya
+  jön, kihúzódik; visszasorol, ha a jobb sáv szabad, vagy a pálya vége / lehajtó előtt. A `pose`, `drawPose`, `inWay`,
+  `trafficCap` a `laneAtLat`-tal az eltolt sávon számol. Teszt: `hwramp.ts` 8 kamion: 164 előzés; `hwspan.ts` (hidas
+  autópálya valódi térképeken, oda-vissza útvonal), böngésző `pw/hwbr.mjs`. Még nincs: látványosabb csomópont.
 - Forgalomirányítás (`traffic.ts`): `map.controls` (cellaindex → light | roundabout | yield |
   stop), olvasáskor validálva (`activeControl`). Lámpa/körforgalom kereszteződésre, tábla a
   kereszteződés előtti útcellára. Logika: `controlWait` a `junctionWait`-ben ('approach' =
@@ -169,7 +197,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Kamera (`CameraRig.tsx`): a görgő az egér felé zoomol (`zoomToCursor`); WASD lágyan gyorsul (és tartva tovább gyorsul), elengedve
   kisiklik, a zoomtól függ; érzékenység `cameraSettings.ts` (Dev fül csúszka, localStorage),
   a forgatás/zoom sebességét is szorozza.
-- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, E földút, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
+- Gyorsbillentyűk (`GameUI.tsx` KEYS / PANEL_KEYS): V/Esc, R/F/B, E földút, X autópálya, C felhajtó, 1–9 eszközök, G jelző, N híd, U alagút, Szóköz, T,
   J/P/M/0 panelek (M = Játék: mentés, új játék; a 0 a beírt karakter szerint is: magyar billentyűzeten
   az 1 bal oldalán van, code 'Backquote'), H súgó; WASD a kamera (CameraRig). Az egy példányos listener ref-en át
   hívja a friss kezelőt (különben az Esc-re újrarajzolás közben elveszik a billentyű).
@@ -510,7 +538,8 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 - Mergelve: #115 (OLAJ 4. rész — finomító, benzin a városba, a depóval közös telek-alapon).
 - Mergelve (#116): gazdaság hangolása — olajlánc (fúró 0,8/s, finomító 1/s/oszlop, benzin 36, fenntartás 200 / 300);
   az erőmű nem vesz át olajat; a teli rakományra várakozó kamion holtpontjának javítása (`FULL_LOAD_YIELD`).
-- Folyamatban (#117): ÚTTÍPUSOK 1. rész (földút + főút + felújítás, kopás, bontás → földút). A teli rakomány elengedése (`FULL_LOAD_YIELD`) a
+- Mergelve (#117): ÚTTÍPUSOK 1. rész (földút + főút + felújítás, kopás, bontás → földút).
+- Folyamatban (#118): AUTÓPÁLYA 1–2. rész (építés, felhajtó, útvonal, sebesség, rajz; híd / alagút magától, előzés). A teli rakomány elengedése (`FULL_LOAD_YIELD`) a
   felhasználó szerint lehet, hogy jobb volt nélküle (nehezítés) — `ötletek.md`, döntés később.
 - Mergelve: #103 (a 0 billentyű magyar billentyűzeten), #104 (olajdepó javításai: U alakú kamionforgalom, hátul be
   és ki, elöl forduló, töltőállás-lámpák). Mergelve: #105 (tartálykamion: `Trailer kind="tank"`, paraméteres olajdepó).
@@ -533,7 +562,7 @@ se commit-üzenetbe, se PR-leírásba / címbe, se kommentbe, se fájlba.
 ## Következő lépések
 - A gazdaság hangolása játék közben (díjak, kereslet, növekedési ütem, PAY_SPEED, LEVEL_RATE)
 - Jelzők / vonatok finomítása (a felhasználó jóváhagyta; konkrétumok tőle)
-- Úttípusok: földút + főút + felújítás KÉSZ; utána autópálya (a felhasználó FIXEN szeretné; `ötletek.md`)
+- Úttípusok: földút + főút + felújítás KÉSZ; autópálya 1–2. rész KÉSZ; később: látványosabb csomópont (rombusz, lóhere)
 - Ötletek (`ötletek.md`): sokszínű ipar (rakománycsoportok, lépcsőzetes láncok), épületek anyagból,
   sínépítő vonat
 - Döntés a lerakható iparágakról (`ötletek.md`)

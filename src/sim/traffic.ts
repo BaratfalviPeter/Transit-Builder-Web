@@ -15,6 +15,7 @@
  * stops counting, and comes back if the junction does. Pure TypeScript.
  */
 
+import { roadLinked } from './highway';
 import { CellType, type TerrainMap } from './terrain';
 import { hasRailAt } from './railNet';
 
@@ -40,7 +41,7 @@ function isRoad(map: TerrainMap, x: number, z: number): boolean {
 export function isJunction(map: TerrainMap, x: number, z: number): boolean {
   if (!isRoad(map, x, z)) return false;
   let k = 0;
-  for (let d = 0; d < 4; d++) if (isRoad(map, x + DX[d], z + DZ[d])) k++;
+  for (let d = 0; d < 4; d++) if (roadLinked(map, x, z, x + DX[d], z + DZ[d])) k++;
   return k >= 3;
 }
 

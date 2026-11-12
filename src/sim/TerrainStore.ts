@@ -9,6 +9,7 @@
  * Grid indexing matches `generateTerrain`: cells[x][z], x,z in [0, size).
  */
 
+import { rampProblem, type HighwayPlan } from './highway';
 import type { RoadKind } from './roads';
 import { DEPOT_SIZE, depotCells, depotProblem, depotTracks, type DepotRot } from './depot';
 import { MAX_REFINERY_UNITS, OIL_START_BAYS, OIL_START_TRACKS, isOilLot, oilCells, oilDepotProblem, oilGrown, oilStub, oilTrackColumn, oilTracks, oilUpgradeProblem } from './oilDepot';
@@ -166,6 +167,74 @@ export class TerrainStore {
       if (touched && road(s.a) && road(s.b)) this.layOnStructure(s.id, 'road');
     }
     return placed;
+  }
+
+  /**
+   * Build a planned motorway (highway.ts `highwayPlan`): its cells become
+   * Road with their direction (existing ends may turn). Returns the new cells.
+   */
+  buildHighway(plan: HighwayPlan): number {
+    if (plan.problem || !plan.cells.length) return 0;
+    // Its bridges / tunnels first (on the still free abutments).
+    const spanIds: number[] = [];
+    for (const sp of plan.spans) {
+      if (!this.buildStructure(sp.kind, sp.a, sp.b)) return 0;
+      const all = this.map.structures!;
+      spanIds.push(all[all.length - 1].id);
+    }
+    const n = this.map.size;
+    const cells = this.map.cells.slice();
+    const touched = new Set<number>();
+    const highway = new Map(this.map.highway ?? []);
+    const dirt = new Set(this.map.dirt ?? []);
+    const ramps = new Set(this.map.ramps ?? []);
+    let placed = 0;
+    for (const c of plan.cells) {
+      const k = c.x * n + c.z;
+      if (!touched.has(c.x)) {
+        cells[c.x] = cells[c.x].slice();
+        touched.add(c.x);
+      }
+      if (cells[c.x][c.z] !== CellType.Road) placed++;
+      cells[c.x][c.z] = CellType.Road;
+      highway.set(k, c.d);
+      dirt.delete(k);
+      ramps.delete(k);
+    }
+    for (const c of plan.caps) {
+      if (cells[c.x][c.z] === CellType.Road) continue;
+      if (!touched.has(c.x)) {
+        cells[c.x] = cells[c.x].slice();
+        touched.add(c.x);
+      }
+      cells[c.x][c.z] = CellType.Road;
+      placed++;
+    }
+    this.roadCount += placed;
+    this.commit({ cells, highway, dirt, ramps }, true);
+    this.emit();
+    for (const id of spanIds) this.layOnStructure(id, 'road');
+    return placed;
+  }
+
+  /** A motorway ramp at (x, z) (highway.ts `rampProblem`). */
+  buildRamp(x: number, z: number): boolean {
+    if (rampProblem(this.map, x, z)) return false;
+    const n = this.map.size;
+    const ramps = new Set(this.map.ramps ?? []);
+    ramps.add(x * n + z);
+    const dirt = new Set(this.map.dirt ?? []);
+    dirt.delete(x * n + z);
+    let cells = this.map.cells;
+    if (cells[x][z] !== CellType.Road) {
+      cells = cells.slice();
+      cells[x] = cells[x].slice();
+      cells[x][z] = CellType.Road;
+      this.roadCount++;
+    }
+    this.commit({ cells, ramps, dirt }, true);
+    this.emit();
+    return true;
   }
 
   /**
@@ -639,6 +708,21 @@ export class TerrainStore {
     // A pipeline under bare ground / water goes (a road, track or tree over it first).
     if (current !== CellType.Road && current !== CellType.Rail && current !== CellType.Forest && this.removePipe(x, z)) return true;
 
+    // A motorway / ramp cell: it goes at once (and leaves the lists).
+    if (current === CellType.Road && (this.map.highway?.has(key) || this.map.ramps?.has(key))) {
+      const highway = new Map(this.map.highway ?? []);
+      highway.delete(key);
+      const ramps = new Set(this.map.ramps ?? []);
+      ramps.delete(key);
+      this.map = { ...this.map, highway, ramps };
+      this.roadCount -= 1;
+      const next = new Set(cleared);
+      next.add(key);
+      this.map = { ...this.map, cleared: next };
+      this.applyCell(x, z, this.map.heights[x][z] > 0 ? CellType.Hill : CellType.Empty);
+      this.emit();
+      return true;
+    }
     // A main road goes back to a dirt road first (roads.ts); the next pass takes it.
     if (current === CellType.Road && !this.map.dirt?.has(key)) {
       const dirt = new Set(this.map.dirt ?? []);
@@ -832,6 +916,8 @@ export class TerrainStore {
       heights?: number[][];
       cleared?: ReadonlySet<number>;
       dirt?: ReadonlySet<number>;
+      highway?: TerrainMap['highway'];
+      ramps?: ReadonlySet<number>;
       railNet?: RailNet;
       stations?: TerrainMap['stations'];
       structures?: TerrainMap['structures'];

@@ -609,9 +609,9 @@ function speedZones(lane: Lane, map: TerrainMap): Array<[number, number, number]
     // Up on a motorway bridge / in its tunnel: motorway speed (its abutment says).
     const span = inBoxes(lane.deck, x, z) ? interiorAt(map, Math.round(x), Math.round(z)) : null;
     const f = span ? (hwAt(map, span.a[0], span.a[1]) >= 0 ? HIGHWAY_SPEED : 1) : factor(Math.round(x), Math.round(z));
-    if (f === cur) continue;
+    if (Math.abs(f - cur) < 1e-6) continue;
     if (open >= 0) out.push([open, s, cur]);
-    open = f === 1 ? -1 : s;
+    open = Math.abs(f - 1) < 1e-6 ? -1 : s;
     cur = f;
   }
   if (open >= 0) out.push([open, lane.length, cur]);
@@ -1287,7 +1287,8 @@ export class TransportSim {
       return true;
     };
     if (!ahead || !onHw(0)) to = 0;
-    else if (to === 0 && lat > -0.01) {
+    // Which lane it is (heading for): left of the middle between the two = the overtaking lane.
+    else if (to > LEFT_LANE / 2 && lat > LEFT_LANE / 2) {
       // A slower truck close ahead in my lane?
       let slow = false;
       for (const o of this.trucks) {
@@ -1297,7 +1298,7 @@ export class TransportSim {
         if (Math.abs(side) < 0.2 && along > 0 && along < 2.2 && o.v < Math.max(t.v, TRUCK_SPEED) - 0.4) slow = true;
       }
       if (slow && laneFree(LEFT_LANE, 3, 2.5)) to = LEFT_LANE;
-    } else if (to === LEFT_LANE && laneFree(0, 1.6, 2.2)) to = 0;
+    } else if (to < LEFT_LANE / 2 && laneFree(0, 1.6, 2.2)) to = 0;
     t.latTo = to;
     const step = LANE_CHANGE * dt;
     t.lat = Math.abs(to - lat) <= step ? to : lat + Math.sign(to - lat) * step;
